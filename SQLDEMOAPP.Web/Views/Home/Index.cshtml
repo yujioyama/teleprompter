@@ -1,0 +1,43 @@
+@model List<SQLDEMOAPP.Web.Models.User>
+
+<h1>ユーザー一覧</h1>
+
+<!-- ユーザーを追加するボタン -->
+<a href="/Home/AddUser" class="btn btn-primary" style="margin-bottom: 10px">ユーザーを追加</a>
+
+<form method="get" asp-action="Index" class="mb-3">
+    <input type="text" name="searchTerm" placeholder="名前で検索" class="form-control" />
+    <button type="submit" class="btn btn-primary mt-2">検索</button>
+</form>
+
+<table border="1" cellpadding="8">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>名前</th>
+            <th>年齢</th>
+            <th>登録日</th>
+            <th></th>
+            
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var user in Model)
+    {
+        <tr>
+            <td>@user.Id</td>
+            <td>@user.Name</td>
+            <td>@user.Age</td>
+            <td>@user.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+            <td>
+                <div style="display: flex;">
+                    <a asp-action="Edit" asp-route-id="@user.Id" class="btn btn-warning">編集</a>
+                    <form method="post" action="@Url.Action("Delete", "Home", new { id = user.Id })" onsubmit="return confirm('本当に削除しますか？');" style="margin-left: 10px;">
+                        <button type="submit" class="btn btn-danger">削除</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
