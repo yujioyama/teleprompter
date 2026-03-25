@@ -59,6 +59,7 @@ export default function RecordPage() {
   }
 
   function handleRecord() {
+    if (state !== 'idle') return
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
     startRecording(stream)
@@ -146,7 +147,10 @@ export default function RecordPage() {
       {/* Back navigation */}
       <button
         className={styles.backBtn}
-        onClick={() => navigate(`/scripts/${safeScript.id}/shots`)}
+        onClick={() => {
+          if (state === 'recording') stopRecording()
+          navigate(`/scripts/${safeScript.id}/shots`)
+        }}
       >
         ‹ 編集に戻る
       </button>
