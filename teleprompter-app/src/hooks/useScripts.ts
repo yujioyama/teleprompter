@@ -36,24 +36,34 @@ export function useScripts() {
       createdAt: now,
       updatedAt: now,
     }
-    // Note: returned script is a snapshot constructed at call time.
-    // Values are identical to what enters state; only use id for navigation.
-    setScripts(prev => [...prev, script])
+    // Save to localStorage synchronously inside the updater so the data is
+    // persisted before navigate() fires (useEffect runs too late on unmount).
+    setScripts(prev => {
+      const updated = [...prev, script]
+      saveToStorage(updated)
+      return updated
+    })
     return script
   }
 
   function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots'>>): void {
-    setScripts(prev =>
-      prev.map(s =>
+    setScripts(prev => {
+      const updated = prev.map(s =>
         s.id === id
           ? { ...s, ...changes, updatedAt: new Date().toISOString() }
           : s
       )
-    )
+      saveToStorage(updated)
+      return updated
+    })
   }
 
   function deleteScript(id: string): void {
-    setScripts(prev => prev.filter(s => s.id !== id))
+    setScripts(prev => {
+      const updated = prev.filter(s => s.id !== id)
+      saveToStorage(updated)
+      return updated
+    })
   }
 
   function getScript(id: string): Script | undefined {

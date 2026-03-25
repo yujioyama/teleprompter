@@ -5,6 +5,8 @@ import { splitShots } from '../utils/splitShots'
 import { Shot } from '../types'
 import styles from './ScriptEditPage.module.css'
 
+const DRAFT_KEY = 'teleprompter_new_script_draft'
+
 function generateId() {
   return crypto.randomUUID()
 }
@@ -17,13 +19,27 @@ export default function ScriptEditPage() {
   const existingScript = id ? getScript(id) : undefined
   const isEdit = Boolean(existingScript)
 
-  const [title, setTitle] = useState(existingScript?.title ?? '')
-  const [body, setBody] = useState(
-    existingScript ? existingScript.shots.map(s => s.text).join('\n') : ''
-  )
+  const [title, setTitle] = useState(() => {
+    if (existingScript) return existingScript.title
+    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}').title ?? '' } catch { return '' }
+  })
+  const [body, setBody] = useState(() => {
+    if (existingScript) return existingScript.shots.map(s => s.text).join('\n')
+    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}').body ?? '' } catch { return '' }
+  })
   const [preview, setPreview] = useState<string[]>(
     () => existingScript ? existingScript.shots.map(s => s.text) : []
   )
+
+  function saveDraft(nextTitle: string, nextBody: string) {
+    if (!isEdit) {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ title: nextTitle, body: nextBody }))
+    }
+  }
+
+  function clearDraft() {
+    sessionStorage.removeItem(DRAFT_KEY)
+  }
 
   function handleSplit() {
     const segments = splitShots(body)
@@ -47,6 +63,7 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${id}/shots`)
     } else {
       const script = createScript(title.trim(), shots)
+      clearDraft()
       navigate(`/scripts/${script.id}/shots`)
     }
   }
@@ -70,7 +87,7 @@ export default function ScriptEditPage() {
           type="text"
           placeholder="例：商品紹介動画"
           value={title}
-          onChange={e => setTitle(e.target.value)}
+          onChange={e => { setTitle(e.target.value); saveDraft(e.target.value, body) }}
         />
 
         <label className={styles.label} htmlFor="script-body">スクリプト全文</label>
@@ -82,6 +99,7 @@ export default function ScriptEditPage() {
           onChange={e => {
             setBody(e.target.value)
             setPreview([])
+            saveDraft(title, e.target.value)
           }}
           rows={8}
         />
