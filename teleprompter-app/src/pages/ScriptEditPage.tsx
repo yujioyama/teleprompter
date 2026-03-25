@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { splitShots } from '../utils/splitShots'
@@ -21,13 +21,9 @@ export default function ScriptEditPage() {
   const [body, setBody] = useState(
     existingScript ? existingScript.shots.map(s => s.text).join('\n') : ''
   )
-  const [preview, setPreview] = useState<string[]>([])
-
-  useEffect(() => {
-    if (existingScript) {
-      setPreview(existingScript.shots.map(s => s.text))
-    }
-  }, [])
+  const [preview, setPreview] = useState<string[]>(
+    () => existingScript ? existingScript.shots.map(s => s.text) : []
+  )
 
   function handleSplit() {
     const segments = splitShots(body)
@@ -67,8 +63,9 @@ export default function ScriptEditPage() {
       </header>
 
       <div className={styles.body}>
-        <label className={styles.label}>タイトル</label>
+        <label className={styles.label} htmlFor="script-title">タイトル</label>
         <input
+          id="script-title"
           className={styles.titleInput}
           type="text"
           placeholder="例：商品紹介動画"
@@ -76,8 +73,9 @@ export default function ScriptEditPage() {
           onChange={e => setTitle(e.target.value)}
         />
 
-        <label className={styles.label}>スクリプト全文</label>
+        <label className={styles.label} htmlFor="script-body">スクリプト全文</label>
         <textarea
+          id="script-body"
           className={styles.textarea}
           placeholder="ここにスクリプトを入力または貼り付け..."
           value={body}
