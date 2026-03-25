@@ -20,6 +20,11 @@ describe('splitShots', () => {
     expect(result).toEqual(['Hello world.', 'This is a test.'])
   })
 
+  it('splits on fullwidth period（．）', () => {
+    const result = splitShots('第一章です．第二章に移ります．')
+    expect(result).toEqual(['第一章です．', '第二章に移ります．'])
+  })
+
   it('splits on exclamation and question marks', () => {
     const result = splitShots('すごい！本当に？やった！')
     expect(result).toEqual(['すごい！', '本当に？', 'やった！'])
