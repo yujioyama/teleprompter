@@ -43,3 +43,15 @@ input, textarea {
   font-family: inherit;
   outline: none;
 }
+
+/* iPhone notch / home indicator safe areas */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Prevent pull-to-refresh and double-tap zoom */
+html {
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
