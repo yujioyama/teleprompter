@@ -58,4 +58,17 @@ describe('useScripts', () => {
     const parsed = JSON.parse(raw!)
     expect(parsed[0].title).toBe('保存テスト')
   })
+
+  it('gets a script by id', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('検索テスト', [{ id: '1', text: 'テスト' }])
+    })
+    const id = result.current.scripts[0].id
+    const found = result.current.getScript(id)
+    expect(found).toBeDefined()
+    expect(found!.title).toBe('検索テスト')
+    const missing = result.current.getScript('nonexistent')
+    expect(missing).toBeUndefined()
+  })
 })

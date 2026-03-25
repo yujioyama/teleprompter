@@ -36,6 +36,8 @@ export function useScripts() {
       createdAt: now,
       updatedAt: now,
     }
+    // Note: returned script is a snapshot constructed at call time.
+    // Values are identical to what enters state; only use id for navigation.
     setScripts(prev => [...prev, script])
     return script
   }
