@@ -25,8 +25,10 @@ export default function ShotCard({ shot, index, onUpdate, onDelete }: Props) {
   }
 
   function handleConfirm() {
-    if (draft.trim()) {
-      onUpdate(shot.id, draft.trim())
+    const trimmed = draft.trim()
+    if (trimmed) {
+      onUpdate(shot.id, trimmed)
+      setDraft(trimmed) // keep draft in sync with committed value
     }
     setEditing(false)
   }

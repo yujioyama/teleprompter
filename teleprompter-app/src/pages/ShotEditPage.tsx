@@ -50,12 +50,17 @@ export default function ShotEditPage() {
     )
   }
 
+  // Capture narrowed script reference for use in inner functions
+  const safeScript = script
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const oldIndex = shots.findIndex(s => s.id === active.id)
-    const newIndex = shots.findIndex(s => s.id === over.id)
-    setShots(arrayMove(shots, oldIndex, newIndex))
+    setShots(prev => {
+      const oldIndex = prev.findIndex(s => s.id === active.id)
+      const newIndex = prev.findIndex(s => s.id === over.id)
+      return arrayMove(prev, oldIndex, newIndex)
+    })
   }
 
   function handleUpdate(shotId: string, text: string) {
@@ -71,8 +76,8 @@ export default function ShotEditPage() {
   }
 
   function handleSave() {
-    updateScript(script!.id, { shots })
-    navigate(`/scripts/${script!.id}/record`)
+    updateScript(safeScript.id, { shots })
+    navigate(`/scripts/${safeScript.id}/record`)
   }
 
   return (
@@ -80,11 +85,11 @@ export default function ShotEditPage() {
       <header className={styles.header}>
         <button
           className={styles.backBtn}
-          onClick={() => navigate(`/scripts/${script.id}/edit`)}
+          onClick={() => navigate(`/scripts/${safeScript.id}/edit`)}
         >
           ‹ 戻る
         </button>
-        <h1 className={styles.heading}>{script.title}</h1>
+        <h1 className={styles.heading}>{safeScript.title}</h1>
       </header>
 
       <div className={styles.body}>
