@@ -51,7 +51,9 @@ export function useRecorder(): UseRecorderResult {
   }
 
   function stopRecording() {
-    recorderRef.current?.stop()
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop()
+    }
   }
 
   async function shareOrDownload(filename: string): Promise<void> {
@@ -80,7 +82,7 @@ export function useRecorder(): UseRecorderResult {
     a.href = url
     a.download = fullName
     a.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 100)
   }
 
   function reset() {

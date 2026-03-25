@@ -26,7 +26,7 @@ export function useCamera(): UseCameraResult {
         })
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          videoRef.current.play()
+          await videoRef.current.play()
           setReady(true)
         }
       } catch (err) {

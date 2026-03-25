@@ -13,27 +13,35 @@ export function useWakeLock(): UseWakeLockResult {
   useEffect(() => {
     if (!supported) return
 
+    let mounted = true
+
     async function acquire() {
       try {
-        lockRef.current = await navigator.wakeLock.request('screen')
+        const lock = await navigator.wakeLock.request('screen')
+        if (!mounted) {
+          lock.release()
+          return
+        }
+        lockRef.current = lock
         setActive(true)
-        lockRef.current.addEventListener('release', () => setActive(false))
+        lock.addEventListener('release', () => { if (mounted) setActive(false) })
       } catch {
         // Not available (e.g., iOS 16.3 or lower, or background tab)
-        setActive(false)
+        if (mounted) setActive(false)
       }
     }
 
     acquire()
 
-    // Re-acquire when tab becomes visible again
     function handleVisibility() {
       if (document.visibilityState === 'visible') acquire()
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
+      mounted = false
       lockRef.current?.release()
+      lockRef.current = null
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [supported])
