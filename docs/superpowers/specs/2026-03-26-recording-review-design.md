@@ -14,8 +14,8 @@
 ## スコープ
 
 - 対象ページ: `RecordPage.tsx`
-- 変更ファイル: `RecordPage.tsx`（新コンポーネント追加も含む）
-- 変更しないもの: `useRecorder.ts` フック、ルーティング、localStorage/sessionStorage
+- 変更ファイル: `RecordPage.tsx`（新コンポーネント追加も含む）、`useRecorder.ts`（`blobRef` の公開のみ）
+- 変更しないもの: ルーティング、localStorage/sessionStorage
 
 ---
 
@@ -63,7 +63,7 @@ const [reviewUrl, setReviewUrl] = useState<string | null>(null)
 
 ### Blob の取得元
 
-`useRecorder` が返す `blobRef`（既存）を使用する。録画停止後は `blobRef.current` に Blob が入っている。
+`useRecorder` の `UseRecorderResult` に `blobRef: React.RefObject<Blob | null>` を追加して公開する。録画停止後は `blobRef.current` に Blob が入っている。これが `useRecorder.ts` への唯一の変更点。
 
 ---
 
@@ -98,9 +98,9 @@ props:
 | 機能 | 影響 |
 |------|------|
 | 📤 保存 | なし（ボタンはそのまま残す） |
-| 🔄 もう一度（撮り直し） | なし（`reset()` 呼び出し前にモーダルが開いている場合は自動クローズ） |
+| 🔄 もう一度（撮り直し） | `handleRetry` は必ず `closeModal()`（`revokeObjectURL` を含む）を先に呼んでから `reset()` を呼ぶ。順序が逆になるとメモリリークになる。 |
 | 次へ → | なし |
-| useRecorder フック | 変更なし |
+| useRecorder フック | `blobRef` を `UseRecorderResult` に追加して公開（それ以外は変更なし） |
 
 ---
 
