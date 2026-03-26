@@ -9,12 +9,14 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "mkdir -p public/ffmpeg && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js public/ffmpeg/ && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm public/ffmpeg/"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "react": "^18.3.1",

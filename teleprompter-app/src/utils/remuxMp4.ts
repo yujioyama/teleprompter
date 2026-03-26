@@ -5,17 +5,16 @@ import { fetchFile } from '@ffmpeg/util'
 let ffmpeg: FFmpeg | null = null
 let loaded = false
 
-const CORE_VERSION = '0.12.6'
-const CDN = `https://unpkg.com/@ffmpeg/core@${CORE_VERSION}/dist/umd`
-
 async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpeg) {
     ffmpeg = new FFmpeg()
   }
   if (!loaded) {
+    // Serve core files from same origin to avoid CORS issues in iOS Safari PWA
+    const origin = window.location.origin
     await ffmpeg.load({
-      coreURL: `${CDN}/ffmpeg-core.js`,
-      wasmURL: `${CDN}/ffmpeg-core.wasm`,
+      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
+      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
     })
     loaded = true
   }

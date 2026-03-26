@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# ffmpeg WASM files — large binaries, copied from node_modules at install time
+public/ffmpeg/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
