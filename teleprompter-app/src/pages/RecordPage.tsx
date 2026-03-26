@@ -156,7 +156,7 @@ export default function RecordPage() {
 
           {state === 'stopped' && (
             <div className={styles.stoppedActions}>
-              <button className={styles.playBtn} onClick={openModal}>
+              <button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">
                 ▶ 再生
               </button>
               <button className={styles.saveBtn} onClick={handleSave}>

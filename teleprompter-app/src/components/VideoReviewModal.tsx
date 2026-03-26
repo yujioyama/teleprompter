@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import styles from './VideoReviewModal.module.css'
 
 interface Props {
@@ -7,6 +7,12 @@ interface Props {
 }
 
 export default function VideoReviewModal({ url, onClose }: Props) {
+  const closeBtnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    closeBtnRef.current?.focus()
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -28,6 +34,7 @@ export default function VideoReviewModal({ url, onClose }: Props) {
         aria-label="録画レビュー"
       >
         <button
+          ref={closeBtnRef}
           className={styles.closeBtn}
           onClick={onClose}
           aria-label="閉じる"
