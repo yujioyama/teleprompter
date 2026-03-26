@@ -103,6 +103,16 @@
   justify-content: center;
 }
 
+.playBtn {
+  background: var(--surface2);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 2px solid var(--accent);
+}
+
 .saveBtn {
   background: var(--success);
   color: #000;

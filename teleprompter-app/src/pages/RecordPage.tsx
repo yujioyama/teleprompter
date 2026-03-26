@@ -5,6 +5,7 @@ import { useCamera } from '../hooks/useCamera'
 import { useRecorder } from '../hooks/useRecorder'
 import { useWakeLock } from '../hooks/useWakeLock'
 import CameraPreview from '../components/CameraPreview'
+import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
 export default function RecordPage() {
@@ -15,8 +16,11 @@ export default function RecordPage() {
 
   const [shotIndex, setShotIndex] = useState(0)
   const { videoRef, error: cameraError, ready } = useCamera()
-  const { state, startRecording, stopRecording, shareOrDownload, reset } = useRecorder()
+  const { state, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
   const { supported: wakeLockSupported } = useWakeLock()
+
+  const [isReviewing, setIsReviewing] = useState(false)
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null)
 
   if (!script || script.shots.length === 0) {
     return (
@@ -54,7 +58,27 @@ export default function RecordPage() {
     setShotIndex(i => i + 1)
   }
 
+  function openModal() {
+    if (!blobRef.current) return
+    try {
+      const url = URL.createObjectURL(blobRef.current)
+      setReviewUrl(url)
+      setIsReviewing(true)
+    } catch (err) {
+      console.error('createObjectURL failed', err)
+    }
+  }
+
+  function closeModal() {
+    if (reviewUrl) {
+      URL.revokeObjectURL(reviewUrl)
+    }
+    setReviewUrl(null)
+    setIsReviewing(false)
+  }
+
   function handleRetry() {
+    closeModal()
     reset()
   }
 
@@ -130,6 +154,9 @@ export default function RecordPage() {
 
           {state === 'stopped' && (
             <div className={styles.stoppedActions}>
+              <button className={styles.playBtn} onClick={openModal}>
+                ▶ 再生
+              </button>
               <button className={styles.saveBtn} onClick={handleSave}>
                 📤 保存
               </button>
@@ -154,6 +181,10 @@ export default function RecordPage() {
       >
         ‹ 編集に戻る
       </button>
+
+      {isReviewing && reviewUrl && (
+        <VideoReviewModal url={reviewUrl} onClose={closeModal} />
+      )}
     </div>
   )
 }
