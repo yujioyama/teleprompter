@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0c0c18"/>
+  <!-- camera body -->
+  <rect x="8" y="20" width="38" height="26" rx="4" fill="#1e1e2e"/>
+  <!-- viewfinder bump -->
+  <rect x="20" y="15" width="14" height="8" rx="3" fill="#1e1e2e"/>
+  <!-- lens outer ring -->
+  <circle cx="27" cy="33" r="10.5" fill="#3a3670"/>
+  <!-- lens -->
+  <circle cx="27" cy="33" r="8.5" fill="#6c63ff"/>
+  <!-- lens highlight -->
+  <circle cx="27" cy="33" r="8.5" fill="url(#lg)"/>
+  <!-- pupil -->
+  <circle cx="27" cy="33" r="2.8" fill="#0a0a14"/>
+  <!-- REC dot -->
+  <circle cx="42" cy="24" r="2.8" fill="#ff3b4e"/>
+  <!-- text lines -->
+  <rect x="10" y="41" width="18" height="2" rx="1" fill="white" opacity="0.45"/>
+  <rect x="10" y="37" width="22" height="2" rx="1" fill="white" opacity="0.35"/>
+  <defs>
+    <radialGradient id="lg" cx="38%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#a09fff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#6c63ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>
