@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 
 export type RecordState = 'idle' | 'recording' | 'stopped'
 
@@ -8,6 +8,7 @@ interface UseRecorderResult {
   stopRecording: () => void
   shareOrDownload: (filename: string) => Promise<void>
   reset: () => void
+  blobRef: RefObject<Blob | null>
 }
 
 function getSupportedMimeType(): string {
@@ -92,5 +93,5 @@ export function useRecorder(): UseRecorderResult {
     setState('idle')
   }
 
-  return { state, startRecording, stopRecording, shareOrDownload, reset }
+  return { state, startRecording, stopRecording, shareOrDownload, reset, blobRef }
 }
