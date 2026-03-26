@@ -8,7 +8,7 @@ interface UseRecorderResult {
   stopRecording: () => void
   shareOrDownload: (filename: string) => Promise<void>
   reset: () => void
-  blobRef: RefObject<Blob | null>
+  blobRef: Readonly<RefObject<Blob | null>>
 }
 
 function getSupportedMimeType(): string {
