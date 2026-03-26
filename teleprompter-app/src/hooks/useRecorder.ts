@@ -47,7 +47,7 @@ export function useRecorder(): UseRecorderResult {
       setState('stopped')
     }
 
-    recorder.start(100) // collect data every 100ms
+    recorder.start() // collect all data at once on stop for cleaner file structure
     setState('recording')
   }
 
