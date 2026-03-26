@@ -26,7 +26,11 @@ export function useCamera(): UseCameraResult {
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
-        audio: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       })
       streamRef.current = stream
       if (videoRef.current) {
