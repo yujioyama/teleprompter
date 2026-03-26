@@ -163,6 +163,12 @@ export default function RecordPage() {
             </button>
           )}
 
+          {state === 'remuxing' && (
+            <div className={styles.remuxing}>
+              🔄 変換中...
+            </div>
+          )}
+
           {state === 'stopped' && (
             <div className={styles.stoppedActions}>
               <button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">

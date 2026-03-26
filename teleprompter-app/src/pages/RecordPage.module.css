@@ -150,6 +150,13 @@
   font-weight: 700;
 }
 
+.remuxing {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  padding: 12px;
+  text-align: center;
+}
+
 .complete {
   height: 100dvh;
   display: flex;

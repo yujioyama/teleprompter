@@ -1,6 +1,7 @@
 import { useRef, useState, type RefObject } from 'react'
+import { remuxMp4 } from '../utils/remuxMp4'
 
-export type RecordState = 'idle' | 'recording' | 'stopped'
+export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
 interface UseRecorderResult {
   state: RecordState
@@ -40,14 +41,23 @@ export function useRecorder(): UseRecorderResult {
       if (e.data.size > 0) chunksRef.current.push(e.data)
     }
 
-    recorder.onstop = () => {
-      blobRef.current = new Blob(chunksRef.current, {
+    recorder.onstop = async () => {
+      const raw = new Blob(chunksRef.current, {
         type: mimeType || 'video/webm',
       })
+
+      // Remux MP4 to move moov atom to front (faststart) for editor compatibility
+      if (mimeType.includes('mp4')) {
+        setState('remuxing')
+        blobRef.current = await remuxMp4(raw)
+      } else {
+        blobRef.current = raw
+      }
+
       setState('stopped')
     }
 
-    recorder.start() // collect all data at once on stop for cleaner file structure
+    recorder.start() // collect all data at once on stop
     setState('recording')
   }
 
