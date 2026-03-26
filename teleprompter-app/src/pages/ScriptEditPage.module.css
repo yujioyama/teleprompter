@@ -20,6 +20,8 @@
   color: var(--accent);
   font-size: 1.1rem;
   padding: 4px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .heading {
@@ -29,11 +31,12 @@
 
 .body {
   flex: 1;
+  min-height: 0;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
+  overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
 }
 
