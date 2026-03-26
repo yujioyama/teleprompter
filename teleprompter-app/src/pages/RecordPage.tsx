@@ -54,11 +54,13 @@ export default function RecordPage() {
   }
 
   function handleNext() {
+    closeModal()
     reset()
     setShotIndex(i => i + 1)
   }
 
   function openModal() {
+    if (isReviewing) return
     if (!blobRef.current) return
     try {
       const url = URL.createObjectURL(blobRef.current)
@@ -176,6 +178,7 @@ export default function RecordPage() {
         className={styles.backBtn}
         onClick={() => {
           if (state === 'recording') stopRecording()
+          closeModal()
           navigate(`/scripts/${safeScript.id}/shots`)
         }}
       >
