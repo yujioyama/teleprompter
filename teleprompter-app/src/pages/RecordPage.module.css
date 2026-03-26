@@ -131,6 +131,16 @@
   border: 1px solid var(--border);
 }
 
+.micRestartBtn {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  margin-top: 4px;
+}
+
 .nextBtn {
   background: var(--accent);
   color: #fff;

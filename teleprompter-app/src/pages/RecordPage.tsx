@@ -15,7 +15,7 @@ export default function RecordPage() {
   const script = id ? getScript(id) : undefined
 
   const [shotIndex, setShotIndex] = useState(0)
-  const { videoRef, error: cameraError, ready } = useCamera()
+  const { videoRef, error: cameraError, ready, restart: restartCamera } = useCamera()
   const { state, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
   const { supported: wakeLockSupported } = useWakeLock()
 
@@ -139,13 +139,21 @@ export default function RecordPage() {
 
         <div className={styles.buttons}>
           {state === 'idle' && (
-            <button
-              className={styles.recordBtn}
-              onClick={handleRecord}
-              disabled={!ready}
-            >
-              🔴 録画
-            </button>
+            <>
+              <button
+                className={styles.recordBtn}
+                onClick={handleRecord}
+                disabled={!ready}
+              >
+                🔴 録画
+              </button>
+              <button
+                className={styles.micRestartBtn}
+                onClick={restartCamera}
+              >
+                🎙 マイク再接続
+              </button>
+            </>
           )}
 
           {state === 'recording' && (
