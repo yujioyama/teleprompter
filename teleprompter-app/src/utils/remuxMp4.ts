@@ -27,7 +27,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
  * This makes the file compatible with editors like CapCut.
  * Falls back to the original blob if remux fails.
  */
-export async function remuxMp4(blob: Blob): Promise<{ blob: Blob; ok: boolean }> {
+export async function remuxMp4(blob: Blob): Promise<{ blob: Blob; ok: boolean; error?: string }> {
   try {
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
@@ -37,7 +37,8 @@ export async function remuxMp4(blob: Blob): Promise<{ blob: Blob; ok: boolean }>
     ff.deleteFile('out.mp4')
     return { blob: new Blob([data as Uint8Array], { type: 'video/mp4' }), ok: true }
   } catch (err) {
-    console.error('remuxMp4 failed:', err)
-    return { blob, ok: false }
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    console.error('remuxMp4 failed:', msg)
+    return { blob, ok: false, error: msg }
   }
 }

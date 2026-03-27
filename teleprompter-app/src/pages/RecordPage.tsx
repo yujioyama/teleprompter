@@ -16,7 +16,7 @@ export default function RecordPage() {
 
   const [shotIndex, setShotIndex] = useState(0)
   const { videoRef, error: cameraError, ready, restart: restartCamera } = useCamera()
-  const { state, remuxOk, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
+  const { state, remuxOk, remuxError, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
   const { supported: wakeLockSupported } = useWakeLock()
 
   const [isReviewing, setIsReviewing] = useState(false)
@@ -173,7 +173,7 @@ export default function RecordPage() {
             <div className={styles.stoppedActions}>
               {remuxOk === false && (
                 <div className={styles.remuxError}>
-                  ⚠️ 変換失敗 — CapCutで再生できない場合があります
+                  ⚠️ 変換失敗{remuxError ? `: ${remuxError}` : ''}
                 </div>
               )}
               {remuxOk === true && (

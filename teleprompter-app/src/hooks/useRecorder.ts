@@ -6,6 +6,7 @@ export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 interface UseRecorderResult {
   state: RecordState
   remuxOk: boolean | null
+  remuxError: string | null
   startRecording: (stream: MediaStream) => void
   stopRecording: () => void
   shareOrDownload: (filename: string) => Promise<void>
@@ -25,6 +26,7 @@ function getExtension(mimeType: string): string {
 export function useRecorder(): UseRecorderResult {
   const [state, setState] = useState<RecordState>('idle')
   const [remuxOk, setRemuxOk] = useState<boolean | null>(null)
+  const [remuxError, setRemuxError] = useState<string | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const blobRef = useRef<Blob | null>(null)
@@ -36,6 +38,7 @@ export function useRecorder(): UseRecorderResult {
     chunksRef.current = []
     blobRef.current = null
     setRemuxOk(null)
+    setRemuxError(null)
 
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
     recorderRef.current = recorder
@@ -55,6 +58,7 @@ export function useRecorder(): UseRecorderResult {
         const result = await remuxMp4(raw)
         blobRef.current = result.blob
         setRemuxOk(result.ok)
+        setRemuxError(result.error ?? null)
       } else {
         blobRef.current = raw
         setRemuxOk(true)
@@ -107,8 +111,9 @@ export function useRecorder(): UseRecorderResult {
     chunksRef.current = []
     recorderRef.current = null
     setRemuxOk(null)
+    setRemuxError(null)
     setState('idle')
   }
 
-  return { state, remuxOk, startRecording, stopRecording, shareOrDownload, reset, blobRef }
+  return { state, remuxOk, remuxError, startRecording, stopRecording, shareOrDownload, reset, blobRef }
 }
