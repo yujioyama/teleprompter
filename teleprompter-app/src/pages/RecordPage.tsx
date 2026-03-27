@@ -16,7 +16,7 @@ export default function RecordPage() {
 
   const [shotIndex, setShotIndex] = useState(0)
   const { videoRef, error: cameraError, ready, restart: restartCamera } = useCamera()
-  const { state, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
+  const { state, remuxOk, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
   const { supported: wakeLockSupported } = useWakeLock()
 
   const [isReviewing, setIsReviewing] = useState(false)
@@ -171,6 +171,16 @@ export default function RecordPage() {
 
           {state === 'stopped' && (
             <div className={styles.stoppedActions}>
+              {remuxOk === false && (
+                <div className={styles.remuxError}>
+                  ⚠️ 変換失敗 — CapCutで再生できない場合があります
+                </div>
+              )}
+              {remuxOk === true && (
+                <div className={styles.remuxSuccess}>
+                  ✅ 変換完了
+                </div>
+              )}
               <button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">
                 ▶ 再生
               </button>
