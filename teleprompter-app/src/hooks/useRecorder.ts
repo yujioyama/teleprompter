@@ -1,5 +1,6 @@
 import { useRef, useState, type RefObject } from 'react'
 import { remuxMp4 } from '../utils/remuxMp4'
+import { detectSpeechBounds } from '../utils/detectSpeechBounds'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
@@ -55,10 +56,12 @@ export function useRecorder(): UseRecorderResult {
         type: mimeType || 'video/webm',
       })
 
-      // Remux MP4 to move moov atom to front (faststart) for editor compatibility
+      // Remux MP4 to move moov atom to front (faststart) for editor compatibility.
+      // Also detect and trim leading/trailing silence in the same FFmpeg pass.
       if (mimeType.includes('mp4')) {
         setState('remuxing')
-        const result = await remuxMp4(raw)
+        const trim = await detectSpeechBounds(raw)
+        const result = await remuxMp4(raw, { trim: trim ?? undefined })
         blobRef.current = result.blob
         setRemuxOk(result.ok)
         setRemuxError(result.error ?? null)
