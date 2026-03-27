@@ -40,7 +40,10 @@ export function useRecorder(): UseRecorderResult {
     setRemuxOk(null)
     setRemuxError(null)
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 256_000,
+    })
     recorderRef.current = recorder
 
     recorder.ondataavailable = e => {

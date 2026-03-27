@@ -31,6 +31,8 @@ export function useCamera(): UseCameraResult {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          sampleRate: 48000,
+          channelCount: 2,
         },
       })
       streamRef.current = stream
