@@ -9,9 +9,10 @@ interface Props {
   index: number
   onUpdate: (id: string, text: string) => void
   onDelete: (id: string) => void
+  isMergeTarget?: boolean
 }
 
-export default function ShotCard({ shot, index, onUpdate, onDelete }: Props) {
+export default function ShotCard({ shot, index, onUpdate, onDelete, isMergeTarget }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(shot.text)
 
@@ -39,7 +40,14 @@ export default function ShotCard({ shot, index, onUpdate, onDelete }: Props) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className={styles.card}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${styles.card}${isMergeTarget ? ` ${styles.mergeTarget}` : ''}`}
+    >
+      {isMergeTarget && (
+        <div className={styles.mergeLabel}>🔗 合体</div>
+      )}
       <button
         className={styles.handle}
         {...attributes}
