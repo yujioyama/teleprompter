@@ -3,7 +3,6 @@
  * Returns trimmed bounds with padding, or null if nothing meaningful to cut.
  */
 
-const PADDING_S = 0.5      // seconds to keep before/after speech
 const RMS_THRESHOLD = 0.015 // ~-36 dBFS — treat below this as silence
 const WINDOW_S = 0.05       // analyze in 50 ms windows
 
@@ -12,7 +11,7 @@ export interface SpeechBounds {
   end: number   // seconds from beginning to stop playback
 }
 
-export async function detectSpeechBounds(blob: Blob): Promise<SpeechBounds | null> {
+export async function detectSpeechBounds(blob: Blob, padding: number): Promise<SpeechBounds | null> {
   try {
     const arrayBuffer = await blob.arrayBuffer()
     const ctx = new AudioContext()
@@ -61,8 +60,8 @@ export async function detectSpeechBounds(blob: Blob): Promise<SpeechBounds | nul
       }
     }
 
-    const start = Math.max(0, speechStart - PADDING_S)
-    const end = Math.min(duration, speechEnd + PADDING_S)
+    const start = Math.max(0, speechStart - padding)
+    const end = Math.min(duration, speechEnd + padding)
 
     // Skip trim if we'd cut less than 0.3 s total — not worth re-encoding
     const savedStart = start

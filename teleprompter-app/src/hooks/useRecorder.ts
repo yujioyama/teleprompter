@@ -60,7 +60,7 @@ export function useRecorder(): UseRecorderResult {
       // Also detect and trim leading/trailing silence in the same FFmpeg pass.
       if (mimeType.includes('mp4')) {
         setState('remuxing')
-        const trim = await detectSpeechBounds(raw)
+        const trim = await detectSpeechBounds(raw, 0.5)
         const result = await remuxMp4(raw, { trim: trim ?? undefined })
         blobRef.current = result.blob
         setRemuxOk(result.ok)
