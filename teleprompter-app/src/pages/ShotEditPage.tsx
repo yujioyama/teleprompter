@@ -37,9 +37,17 @@ export default function ShotEditPage() {
   const [lastMergeSnapshot, setLastMergeSnapshot] = useState<Shot[] | null>(null)
   const [undoVisible, setUndoVisible] = useState(false)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Ref mirrors mergeTargetId state so handleDragEnd always reads the latest value
-  // even if React hasn't flushed the setState from onDragMove yet
+  // Ref mirrors mergeTargetId state so handleDragEnd reads the latest value
+  // regardless of React's render/flush timing
   const mergeTargetRef = useRef<string | null>(null)
+  // Timer that fires after MERGE_HOVER_MS of hovering over the same card
+  const mergeHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tracks which card id the dragged item is currently over
+  const currentOverIdRef = useRef<string | null>(null)
+
+  // How long (ms) to hover over a card before merge mode activates.
+  // Distinct from the drag-start delay (250ms) so total deliberate action ≈ 550ms.
+  const MERGE_HOVER_MS = 300
 
   // All hooks MUST be called before any conditional return (React rules of hooks)
   // Support both pointer (desktop) and touch (iPhone) drag
@@ -57,28 +65,45 @@ export default function ShotEditPage() {
     }
   }
 
-  // onDragMove fires on every pointer/touch movement (unlike onDragOver which only
-  // fires when the "over" target changes). We need continuous updates to detect
-  // when the dragged card's center enters the middle zone of another card.
+  function clearMergeHoverTimer() {
+    if (mergeHoverTimerRef.current !== null) {
+      clearTimeout(mergeHoverTimerRef.current)
+      mergeHoverTimerRef.current = null
+    }
+  }
+
+  // Hover-based merge detection: position calculations are unreliable because
+  // dnd-kit's sortable algorithm displaces cards mid-drag, shifting over.rect.
+  // Instead we detect intent by time: if the dragged card stays over the same
+  // target for MERGE_HOVER_MS without moving to a different card, merge activates.
   function handleDragMove(event: DragMoveEvent) {
     const { active, over } = event
+
     if (!over || over.id === active.id) {
+      // Not hovering over any valid target — cancel any pending merge
+      clearMergeHoverTimer()
+      currentOverIdRef.current = null
       mergeTargetRef.current = null
       setMergeTargetId(null)
       return
     }
-    const translated = active.rect.current.translated
-    if (!translated) {
+
+    const overId = over.id as string
+
+    if (overId !== currentOverIdRef.current) {
+      // Moved to a different card — reset and start a fresh hover timer
+      clearMergeHoverTimer()
       mergeTargetRef.current = null
       setMergeTargetId(null)
-      return
+      currentOverIdRef.current = overId
+
+      mergeHoverTimerRef.current = setTimeout(() => {
+        mergeTargetRef.current = overId
+        setMergeTargetId(overId)
+        mergeHoverTimerRef.current = null
+      }, MERGE_HOVER_MS)
     }
-    const dragCenterY = translated.top + translated.height / 2
-    const targetRect = over.rect
-    const relativeY = (dragCenterY - targetRect.top) / targetRect.height
-    const newTarget = (relativeY > 0.3 && relativeY < 0.7) ? (over.id as string) : null
-    mergeTargetRef.current = newTarget
-    setMergeTargetId(newTarget)
+    // else: still over the same card — let the timer run (or merge is already active)
   }
 
   // Early return AFTER all hooks
@@ -121,12 +146,18 @@ export default function ShotEditPage() {
     }, 5000)
   }
 
+  function resetMergeState() {
+    clearMergeHoverTimer()
+    currentOverIdRef.current = null
+    mergeTargetRef.current = null
+    setMergeTargetId(null)
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     // Read from ref (not state) to get the latest value regardless of React batching
     const currentMergeTarget = mergeTargetRef.current
-    mergeTargetRef.current = null
-    setMergeTargetId(null)
+    resetMergeState()
 
     if (!over || active.id === over.id) return
 
@@ -194,6 +225,7 @@ export default function ShotEditPage() {
           collisionDetection={closestCenter}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
+          onDragCancel={resetMergeState}
         >
           <SortableContext
             items={shots.map(s => s.id)}
