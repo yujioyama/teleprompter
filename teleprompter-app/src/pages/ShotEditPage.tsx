@@ -8,7 +8,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-  DragOverEvent,
+  DragMoveEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -37,6 +37,9 @@ export default function ShotEditPage() {
   const [lastMergeSnapshot, setLastMergeSnapshot] = useState<Shot[] | null>(null)
   const [undoVisible, setUndoVisible] = useState(false)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ref mirrors mergeTargetId state so handleDragEnd always reads the latest value
+  // even if React hasn't flushed the setState from onDragMove yet
+  const mergeTargetRef = useRef<string | null>(null)
 
   // All hooks MUST be called before any conditional return (React rules of hooks)
   // Support both pointer (desktop) and touch (iPhone) drag
@@ -54,25 +57,28 @@ export default function ShotEditPage() {
     }
   }
 
-  function handleDragOver(event: DragOverEvent) {
+  // onDragMove fires on every pointer/touch movement (unlike onDragOver which only
+  // fires when the "over" target changes). We need continuous updates to detect
+  // when the dragged card's center enters the middle zone of another card.
+  function handleDragMove(event: DragMoveEvent) {
     const { active, over } = event
     if (!over || over.id === active.id) {
+      mergeTargetRef.current = null
       setMergeTargetId(null)
       return
     }
     const translated = active.rect.current.translated
     if (!translated) {
+      mergeTargetRef.current = null
       setMergeTargetId(null)
       return
     }
     const dragCenterY = translated.top + translated.height / 2
     const targetRect = over.rect
     const relativeY = (dragCenterY - targetRect.top) / targetRect.height
-    if (relativeY > 0.3 && relativeY < 0.7) {
-      setMergeTargetId(over.id as string)
-    } else {
-      setMergeTargetId(null)
-    }
+    const newTarget = (relativeY > 0.3 && relativeY < 0.7) ? (over.id as string) : null
+    mergeTargetRef.current = newTarget
+    setMergeTargetId(newTarget)
   }
 
   // Early return AFTER all hooks
@@ -117,7 +123,9 @@ export default function ShotEditPage() {
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    const currentMergeTarget = mergeTargetId
+    // Read from ref (not state) to get the latest value regardless of React batching
+    const currentMergeTarget = mergeTargetRef.current
+    mergeTargetRef.current = null
     setMergeTargetId(null)
 
     if (!over || active.id === over.id) return
@@ -184,7 +192,7 @@ export default function ShotEditPage() {
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragOver={handleDragOver}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
         >
           <SortableContext
