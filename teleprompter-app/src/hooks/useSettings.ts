@@ -2,11 +2,12 @@ import { useState } from 'react'
 
 export interface AppSettings {
   trimEnabled: boolean
-  trimPadding: number
+  trimPaddingStart: number
+  trimPaddingEnd: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
-const DEFAULTS: AppSettings = { trimEnabled: true, trimPadding: 0.5 }
+const DEFAULTS: AppSettings = { trimEnabled: true, trimPaddingStart: 0.5, trimPaddingEnd: 0.8 }
 
 function loadSettings(): AppSettings {
   try {
