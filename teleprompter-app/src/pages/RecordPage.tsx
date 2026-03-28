@@ -1,6 +1,8 @@
+// teleprompter-app/src/pages/RecordPage.tsx
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
+import { useSettings } from '../hooks/useSettings'
 import { useCamera } from '../hooks/useCamera'
 import { useRecorder } from '../hooks/useRecorder'
 import { useWakeLock } from '../hooks/useWakeLock'
@@ -11,7 +13,8 @@ import styles from './RecordPage.module.css'
 export default function RecordPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const { getScript } = useScripts()
+  const { getScript, updateScript } = useScripts()
+  const [globalSettings] = useSettings()
   const script = id ? getScript(id) : undefined
 
   const [shotIndex, setShotIndex] = useState(0)
@@ -21,6 +24,7 @@ export default function RecordPage() {
 
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
+  const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
 
   if (!script || script.shots.length === 0) {
     return (
@@ -30,12 +34,15 @@ export default function RecordPage() {
     )
   }
 
-  // Narrowed after guard — safeScript is always defined below this point
   const safeScript = script
   const isComplete = shotIndex >= safeScript.shots.length
-  // Guard against undefined — currentShot is only used when !isComplete
   const currentShot = safeScript.shots[shotIndex] as (typeof safeScript.shots)[0] | undefined
   const isLast = shotIndex === safeScript.shots.length - 1
+
+  // Effective settings: shot override ?? global
+  const effectiveTrimEnabled = currentShot?.trimEnabled ?? globalSettings.trimEnabled
+  const effectiveTrimPadding = currentShot?.trimPadding ?? globalSettings.trimPadding
+  const hasOverride = currentShot?.trimEnabled !== undefined || currentShot?.trimPadding !== undefined
 
   function getFilename() {
     const safeTitle = safeScript.title.replace(/[^a-zA-Z0-9ぁ-ん一-龯ァ-ン]/g, '-')
@@ -45,8 +52,6 @@ export default function RecordPage() {
 
   function handleStop() {
     stopRecording()
-    // State transitions to 'stopped' via MediaRecorder.onstop — shareOrDownload
-    // is called by the "保存" button after state becomes 'stopped'
   }
 
   async function handleNext() {
@@ -83,13 +88,40 @@ export default function RecordPage() {
   function handleRetry() {
     closeModal()
     reset()
+    setShotSettingsOpen(false)
   }
 
   function handleRecord() {
     if (state !== 'idle') return
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
-    startRecording(stream, { trimEnabled: true, trimPadding: 0.5 })
+    startRecording(stream, { trimEnabled: effectiveTrimEnabled, trimPadding: effectiveTrimPadding })
+  }
+
+  function handleToggleOverride(enabled: boolean) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id
+        ? { ...s, trimEnabled: enabled ? globalSettings.trimEnabled : undefined, trimPadding: enabled ? globalSettings.trimPadding : undefined }
+        : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotTrimEnabled(value: boolean) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, trimEnabled: value } : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotTrimPadding(value: number) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, trimPadding: value } : s
+    )
+    updateScript(id, { shots: updatedShots })
   }
 
   if (isComplete) {
@@ -134,6 +166,74 @@ export default function RecordPage() {
         <p className={styles.promptText}>{currentShot?.text}</p>
       </div>
 
+      {/* Per-shot trim settings */}
+      {state === 'idle' && (
+        <div className={styles.shotSettings}>
+          <button
+            className={styles.shotSettingsToggle}
+            onClick={() => setShotSettingsOpen(o => !o)}
+          >
+            ⚙ このショットの設定{hasOverride ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
+          </button>
+
+          {shotSettingsOpen && (
+            <div className={styles.shotSettingsPanel}>
+              {/* Use global / override toggle */}
+              <div className={styles.shotSettingsRow}>
+                <div>
+                  <div className={styles.shotSettingsLabel}>グローバル設定を使用</div>
+                  <div className={styles.shotSettingsSub}>
+                    {hasOverride ? 'このショット専用の設定を使用中' : '設定ページの値を使用中'}
+                  </div>
+                </div>
+                <label className={styles.toggle}>
+                  <input
+                    type="checkbox"
+                    checked={!hasOverride}
+                    onChange={e => handleToggleOverride(!e.target.checked)}
+                  />
+                  <span className={styles.toggleTrack} />
+                </label>
+              </div>
+
+              {/* Per-shot controls — only shown when override is active */}
+              {hasOverride && (
+                <>
+                  <div className={styles.shotSettingsRow}>
+                    <div className={styles.shotSettingsLabel}>自動トリミング</div>
+                    <label className={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        checked={effectiveTrimEnabled}
+                        onChange={e => handleShotTrimEnabled(e.target.checked)}
+                      />
+                      <span className={styles.toggleTrack} />
+                    </label>
+                  </div>
+
+                  <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
+                    <div className={styles.sliderGroupHeader}>
+                      <div className={styles.shotSettingsLabel}>前後に残す時間</div>
+                      <span className={styles.sliderValue}>{effectiveTrimPadding.toFixed(1)}秒</span>
+                    </div>
+                    <input
+                      type="range"
+                      className={styles.shotSlider}
+                      min={0.2}
+                      max={2.0}
+                      step={0.1}
+                      value={effectiveTrimPadding}
+                      onChange={e => handleShotTrimPadding(parseFloat(e.target.value))}
+                      disabled={!effectiveTrimEnabled}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Camera + controls — bottom */}
       <div className={styles.controls}>
         <CameraPreview videoRef={videoRef} />
@@ -171,7 +271,7 @@ export default function RecordPage() {
 
           {state === 'stopped' && (
             <div className={styles.stoppedActions}>
-<button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">
+              <button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">
                 ▶ 再生
               </button>
               <button className={styles.retryBtn} onClick={handleRetry}>
