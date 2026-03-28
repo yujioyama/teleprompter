@@ -14,12 +14,21 @@ export default function HomePage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>🎬 Teleprompter</h1>
-        <button
-          className={styles.newBtn}
-          onClick={() => navigate('/scripts/new')}
-        >
-          ＋ 新規
-        </button>
+        <div className={styles.headerActions}>
+          <button
+            className={styles.settingsBtn}
+            onClick={() => navigate('/settings')}
+            aria-label="設定"
+          >
+            ⚙
+          </button>
+          <button
+            className={styles.newBtn}
+            onClick={() => navigate('/scripts/new')}
+          >
+            ＋ 新規
+          </button>
+        </div>
       </header>
 
       {sorted.length === 0 ? (
