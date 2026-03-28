@@ -102,6 +102,7 @@ export function useRecorder(): UseRecorderResult {
       type: mimeTypeRef.current || 'video/webm',
     })
 
+    // Try Web Share API first (saves to camera roll on iOS Safari 15+)
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: fullName })
