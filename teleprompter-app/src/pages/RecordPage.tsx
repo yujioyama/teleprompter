@@ -191,6 +191,7 @@ export default function RecordPage() {
                   <input
                     type="checkbox"
                     checked={!hasOverride}
+                    // checked=true means "use global" (no override), so checked→false means "enable override"
                     onChange={e => handleToggleOverride(!e.target.checked)}
                   />
                   <span className={styles.toggleTrack} />
