@@ -89,7 +89,7 @@ export default function RecordPage() {
     if (state !== 'idle') return
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
-    startRecording(stream)
+    startRecording(stream, { trimEnabled: true, trimPadding: 0.5 })
   }
 
   if (isComplete) {

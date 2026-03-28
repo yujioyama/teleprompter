@@ -4,11 +4,16 @@ import { detectSpeechBounds } from '../utils/detectSpeechBounds'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
+export interface ShotTrimSettings {
+  trimEnabled: boolean
+  trimPadding: number
+}
+
 interface UseRecorderResult {
   state: RecordState
   remuxOk: boolean | null
   remuxError: string | null
-  startRecording: (stream: MediaStream) => void
+  startRecording: (stream: MediaStream, shotSettings: ShotTrimSettings) => void
   stopRecording: () => void
   shareOrDownload: (filename: string) => Promise<void>
   reset: () => void
@@ -33,7 +38,7 @@ export function useRecorder(): UseRecorderResult {
   const blobRef = useRef<Blob | null>(null)
   const mimeTypeRef = useRef<string>('')
 
-  function startRecording(stream: MediaStream) {
+  function startRecording(stream: MediaStream, shotSettings: ShotTrimSettings) {
     const mimeType = getSupportedMimeType()
     mimeTypeRef.current = mimeType
     chunksRef.current = []
@@ -60,12 +65,16 @@ export function useRecorder(): UseRecorderResult {
       // Also detect and trim leading/trailing silence in the same FFmpeg pass.
       if (mimeType.includes('mp4')) {
         setState('remuxing')
-        const trim = await detectSpeechBounds(raw, 0.5)
+        let trim = null
+        if (shotSettings.trimEnabled) {
+          trim = await detectSpeechBounds(raw, shotSettings.trimPadding)
+        }
         const result = await remuxMp4(raw, { trim: trim ?? undefined })
         blobRef.current = result.blob
         setRemuxOk(result.ok)
         setRemuxError(result.error ?? null)
       } else {
+        // webm: trimming not supported, silently ignored
         blobRef.current = raw
         setRemuxOk(true)
       }
