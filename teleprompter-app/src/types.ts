@@ -2,8 +2,8 @@ export interface Shot {
   id: string
   text: string
   trimEnabled?: boolean  // undefined = use global setting
-  trimPaddingStart?: number
-  trimPaddingEnd?: number
+  trimPaddingStart?: number  // undefined = use global setting
+  trimPaddingEnd?: number    // undefined = use global setting
 }
 
 export interface Script {
