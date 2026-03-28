@@ -62,6 +62,7 @@ export default function RecordPage() {
     }
     closeModal()
     reset()
+    setShotSettingsOpen(false)
     setShotIndex(i => i + 1)
   }
 
