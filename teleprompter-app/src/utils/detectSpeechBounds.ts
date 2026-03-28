@@ -11,7 +11,7 @@ export interface SpeechBounds {
   end: number   // seconds from beginning to stop playback
 }
 
-export async function detectSpeechBounds(blob: Blob, padding: number): Promise<SpeechBounds | null> {
+export async function detectSpeechBounds(blob: Blob, paddingStart: number, paddingEnd: number): Promise<SpeechBounds | null> {
   try {
     const arrayBuffer = await blob.arrayBuffer()
     const ctx = new AudioContext()
@@ -60,10 +60,10 @@ export async function detectSpeechBounds(blob: Blob, padding: number): Promise<S
       }
     }
 
-    const start = Math.max(0, speechStart - padding)
-    const end = Math.min(duration, speechEnd + padding)
+    const start = Math.max(0, speechStart - paddingStart)
+    const end = Math.min(duration, speechEnd + paddingEnd)
 
-    // Skip trim if we'd cut less than 0.3 s total — not worth re-encoding
+    // Skip trim if speech fills nearly the whole clip — less than 0.1 s saved on each side
     const savedStart = start
     const savedEnd = duration - end
     if (savedStart < 0.1 && savedEnd < 0.1) return null
