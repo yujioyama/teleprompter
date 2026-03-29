@@ -6,7 +6,8 @@ export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
 export interface ShotTrimSettings {
   trimEnabled: boolean
-  trimPadding: number
+  trimPaddingStart: number
+  trimPaddingEnd: number
 }
 
 interface UseRecorderResult {
@@ -15,7 +16,7 @@ interface UseRecorderResult {
   remuxError: string | null
   startRecording: (stream: MediaStream, shotSettings: ShotTrimSettings) => void
   stopRecording: () => void
-  shareOrDownload: (filename: string) => Promise<void>
+  shareOrDownload: (filename: string) => Promise<boolean>
   reset: () => void
   blobRef: Readonly<RefObject<Blob | null>>
 }
@@ -67,7 +68,7 @@ export function useRecorder(): UseRecorderResult {
         setState('remuxing')
         let trim = null
         if (shotSettings.trimEnabled) {
-          trim = await detectSpeechBounds(raw, shotSettings.trimPadding)
+          trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
         }
         const result = await remuxMp4(raw, { trim: trim ?? undefined })
         blobRef.current = result.blob
@@ -92,8 +93,8 @@ export function useRecorder(): UseRecorderResult {
     }
   }
 
-  async function shareOrDownload(filename: string): Promise<void> {
-    if (!blobRef.current) return
+  async function shareOrDownload(filename: string): Promise<boolean> {
+    if (!blobRef.current) return false
 
     const ext = getExtension(mimeTypeRef.current)
     const fullName = `${filename}.${ext}`
@@ -105,20 +106,21 @@ export function useRecorder(): UseRecorderResult {
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: fullName })
-        return
+        return true
       } catch (err) {
-        // User cancelled share or share failed - fall through to download
-        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (err instanceof DOMException && err.name === 'AbortError') return false
+        // Non-AbortError: share API failed for other reason — fall through to download fallback
       }
     }
 
-    // Fallback: trigger download
+    // Fallback: trigger download (always succeeds)
     const url = URL.createObjectURL(blobRef.current)
     const a = document.createElement('a')
     a.href = url
     a.download = fullName
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 100)
+    return true
   }
 
   function reset() {

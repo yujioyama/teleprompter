@@ -34,10 +34,10 @@ export default function SettingsPage() {
         <div className={`${styles.row} ${styles.sliderRow} ${!settings.trimEnabled ? styles.disabled : ''}`}>
           <div className={styles.sliderHeader}>
             <div>
-              <div className={styles.rowLabel}>前後に残す時間</div>
-              <div className={styles.rowSub}>音声の前後に保持する無音の長さ</div>
+              <div className={styles.rowLabel}>前に残す時間</div>
+              <div className={styles.rowSub}>音声の前に保持する無音の長さ</div>
             </div>
-            <span className={styles.sliderValue}>{settings.trimPadding.toFixed(1)}秒</span>
+            <span className={styles.sliderValue}>{settings.trimPaddingStart.toFixed(1)}秒</span>
           </div>
           <input
             type="range"
@@ -45,8 +45,28 @@ export default function SettingsPage() {
             min={0.2}
             max={2.0}
             step={0.1}
-            value={settings.trimPadding}
-            onChange={e => updateSettings({ trimPadding: parseFloat(e.target.value) })}
+            value={settings.trimPaddingStart}
+            onChange={e => updateSettings({ trimPaddingStart: parseFloat(e.target.value) })}
+            disabled={!settings.trimEnabled}
+          />
+        </div>
+
+        <div className={`${styles.row} ${styles.sliderRow} ${!settings.trimEnabled ? styles.disabled : ''}`}>
+          <div className={styles.sliderHeader}>
+            <div>
+              <div className={styles.rowLabel}>後ろに残す時間</div>
+              <div className={styles.rowSub}>音声の後ろに保持する無音の長さ</div>
+            </div>
+            <span className={styles.sliderValue}>{settings.trimPaddingEnd.toFixed(1)}秒</span>
+          </div>
+          <input
+            type="range"
+            className={styles.slider}
+            min={0.2}
+            max={2.0}
+            step={0.1}
+            value={settings.trimPaddingEnd}
+            onChange={e => updateSettings({ trimPaddingEnd: parseFloat(e.target.value) })}
             disabled={!settings.trimEnabled}
           />
         </div>
