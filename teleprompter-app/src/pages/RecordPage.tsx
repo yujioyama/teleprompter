@@ -41,8 +41,12 @@ export default function RecordPage() {
 
   // Effective settings: shot override ?? global
   const effectiveTrimEnabled = currentShot?.trimEnabled ?? globalSettings.trimEnabled
-  const effectiveTrimPadding = currentShot?.trimPadding ?? globalSettings.trimPadding
-  const hasOverride = currentShot?.trimEnabled !== undefined || currentShot?.trimPadding !== undefined
+  const effectiveTrimPaddingStart = currentShot?.trimPaddingStart ?? globalSettings.trimPaddingStart
+  const effectiveTrimPaddingEnd = currentShot?.trimPaddingEnd ?? globalSettings.trimPaddingEnd
+  const hasOverride =
+    currentShot?.trimEnabled !== undefined ||
+    currentShot?.trimPaddingStart !== undefined ||
+    currentShot?.trimPaddingEnd !== undefined
 
   function getFilename() {
     const safeTitle = safeScript.title.replace(/[^a-zA-Z0-9ぁ-ん一-龯ァ-ン]/g, '-')
@@ -54,12 +58,16 @@ export default function RecordPage() {
     stopRecording()
   }
 
-  async function handleNext() {
-    try {
-      await shareOrDownload(getFilename())
-    } catch {
-      // save cancelled or failed — still advance
-    }
+  async function handleSaveAndNext() {
+    const saved = await shareOrDownload(getFilename())
+    if (!saved) return  // user cancelled — stay on current shot
+    closeModal()
+    reset()
+    setShotSettingsOpen(false)
+    setShotIndex(i => i + 1)
+  }
+
+  function handleSkipAndNext() {
     closeModal()
     reset()
     setShotSettingsOpen(false)
@@ -96,14 +104,19 @@ export default function RecordPage() {
     if (state !== 'idle') return
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
-    startRecording(stream, { trimEnabled: effectiveTrimEnabled, trimPadding: effectiveTrimPadding })
+    startRecording(stream, { trimEnabled: effectiveTrimEnabled, trimPaddingStart: effectiveTrimPaddingStart, trimPaddingEnd: effectiveTrimPaddingEnd })
   }
 
   function handleToggleOverride(enabled: boolean) {
     if (!currentShot || !id) return
     const updatedShots = safeScript.shots.map(s =>
       s.id === currentShot.id
-        ? { ...s, trimEnabled: enabled ? globalSettings.trimEnabled : undefined, trimPadding: enabled ? globalSettings.trimPadding : undefined }
+        ? {
+            ...s,
+            trimEnabled: enabled ? globalSettings.trimEnabled : undefined,
+            trimPaddingStart: enabled ? globalSettings.trimPaddingStart : undefined,
+            trimPaddingEnd: enabled ? globalSettings.trimPaddingEnd : undefined,
+          }
         : s
     )
     updateScript(id, { shots: updatedShots })
@@ -117,10 +130,18 @@ export default function RecordPage() {
     updateScript(id, { shots: updatedShots })
   }
 
-  function handleShotTrimPadding(value: number) {
+  function handleShotTrimPaddingStart(value: number) {
     if (!currentShot || !id) return
     const updatedShots = safeScript.shots.map(s =>
-      s.id === currentShot.id ? { ...s, trimPadding: value } : s
+      s.id === currentShot.id ? { ...s, trimPaddingStart: value } : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotTrimPaddingEnd(value: number) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, trimPaddingEnd: value } : s
     )
     updateScript(id, { shots: updatedShots })
   }
@@ -215,8 +236,8 @@ export default function RecordPage() {
 
                   <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
                     <div className={styles.sliderGroupHeader}>
-                      <div className={styles.shotSettingsLabel}>前後に残す時間</div>
-                      <span className={styles.sliderValue}>{effectiveTrimPadding.toFixed(1)}秒</span>
+                      <div className={styles.shotSettingsLabel}>前に残す時間</div>
+                      <span className={styles.sliderValue}>{effectiveTrimPaddingStart.toFixed(1)}秒</span>
                     </div>
                     <input
                       type="range"
@@ -224,8 +245,25 @@ export default function RecordPage() {
                       min={0.2}
                       max={2.0}
                       step={0.1}
-                      value={effectiveTrimPadding}
-                      onChange={e => handleShotTrimPadding(parseFloat(e.target.value))}
+                      value={effectiveTrimPaddingStart}
+                      onChange={e => handleShotTrimPaddingStart(parseFloat(e.target.value))}
+                      disabled={!effectiveTrimEnabled}
+                    />
+                  </div>
+
+                  <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
+                    <div className={styles.sliderGroupHeader}>
+                      <div className={styles.shotSettingsLabel}>後ろに残す時間</div>
+                      <span className={styles.sliderValue}>{effectiveTrimPaddingEnd.toFixed(1)}秒</span>
+                    </div>
+                    <input
+                      type="range"
+                      className={styles.shotSlider}
+                      min={0.2}
+                      max={2.0}
+                      step={0.1}
+                      value={effectiveTrimPaddingEnd}
+                      onChange={e => handleShotTrimPaddingEnd(parseFloat(e.target.value))}
                       disabled={!effectiveTrimEnabled}
                     />
                   </div>
@@ -279,9 +317,14 @@ export default function RecordPage() {
               <button className={styles.retryBtn} onClick={handleRetry}>
                 もう一度
               </button>
-              <button className={styles.nextBtn} onClick={handleNext}>
-                {isLast ? '完了 ✓' : '次へ →'}
-              </button>
+              <div className={styles.saveGroup}>
+                <button className={styles.nextBtn} onClick={handleSaveAndNext}>
+                  {isLast ? '保存して完了 ✓' : '保存して次へ →'}
+                </button>
+                <button className={styles.skipBtn} onClick={handleSkipAndNext}>
+                  {isLast ? '保存せずに完了' : '保存せずに次へ'}
+                </button>
+              </div>
             </div>
           )}
         </div>
