@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitShots } from './splitShots'
+import { splitShots, DEFAULT_SPLIT_OPTIONS } from './splitShots'
 
 describe('splitShots', () => {
   it('splits on Japanese period（。）', () => {
@@ -48,5 +48,32 @@ describe('splitShots', () => {
   it('returns empty array for empty input', () => {
     const result = splitShots('')
     expect(result).toEqual([])
+  })
+
+  // SplitOptions tests
+  it('does not split on period when period: false', () => {
+    const result = splitShots('今日はAIの話をします。次に機械学習を説明します。', {
+      ...DEFAULT_SPLIT_OPTIONS,
+      period: false,
+    })
+    expect(result).toEqual(['今日はAIの話をします。次に機械学習を説明します。'])
+  })
+
+  it('does not split on newline when newline: false', () => {
+    const result = splitShots('1行目\n2行目\n3行目', {
+      ...DEFAULT_SPLIT_OPTIONS,
+      newline: false,
+    })
+    expect(result).toEqual(['1行目\n2行目\n3行目'])
+  })
+
+  it('returns whole text as single item when all options are false', () => {
+    const result = splitShots('今日はAIの話をします。\n次に機械学習を説明します！', {
+      period: false,
+      exclamation: false,
+      englishPeriod: false,
+      newline: false,
+    })
+    expect(result).toEqual(['今日はAIの話をします。\n次に機械学習を説明します！'])
   })
 })

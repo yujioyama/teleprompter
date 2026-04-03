@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
-import { splitShots } from '../utils/splitShots'
+import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { Shot } from '../types'
 import styles from './ScriptEditPage.module.css'
 
@@ -30,6 +30,7 @@ export default function ScriptEditPage() {
   const [preview, setPreview] = useState<string[]>(
     () => existingScript ? existingScript.shots.map(s => s.text) : []
   )
+  const [splitOptions, setSplitOptions] = useState<SplitOptions>(DEFAULT_SPLIT_OPTIONS)
 
   function saveDraft(nextTitle: string, nextBody: string) {
     if (!isEdit) {
@@ -42,7 +43,7 @@ export default function ScriptEditPage() {
   }
 
   function handleSplit() {
-    const segments = splitShots(body)
+    const segments = splitShots(body, splitOptions)
     setPreview(segments)
   }
 
@@ -103,6 +104,27 @@ export default function ScriptEditPage() {
           }}
           rows={8}
         />
+
+        <div className={styles.splitOptions}>
+          <span className={styles.splitOptionsLabel}>区切り単位</span>
+          <div className={styles.splitOptionsList}>
+            {([
+              ['period', '句点（。）'],
+              ['exclamation', '感嘆・疑問符（！？）'],
+              ['englishPeriod', '英語ピリオド（.）'],
+              ['newline', '改行'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className={styles.splitOptionItem}>
+                <input
+                  type="checkbox"
+                  checked={splitOptions[key]}
+                  onChange={e => setSplitOptions(o => ({ ...o, [key]: e.target.checked }))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <button className={styles.splitBtn} onClick={handleSplit}>
           自動分割する

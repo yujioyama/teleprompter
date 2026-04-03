@@ -25,6 +25,8 @@ export default function RecordPage() {
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
+  const [shotListOpen, setShotListOpen] = useState(false)
+  const [cameraExpanded, setCameraExpanded] = useState(false)
 
   if (!script || script.shots.length === 0) {
     return (
@@ -72,6 +74,15 @@ export default function RecordPage() {
     reset()
     setShotSettingsOpen(false)
     setShotIndex(i => i + 1)
+  }
+
+  function handleJumpToShot(index: number) {
+    if (state === 'recording') stopRecording()
+    closeModal()
+    reset()
+    setShotSettingsOpen(false)
+    setShotIndex(index)
+    setShotListOpen(false)
   }
 
   function openModal() {
@@ -179,10 +190,10 @@ export default function RecordPage() {
           <div className={styles.errorBanner}>{cameraError}</div>
         )}
 
-        {/* Shot counter */}
-        <div className={styles.counter}>
-          {shotIndex + 1} / {safeScript.shots.length}
-        </div>
+        {/* Shot counter — tap to open shot list */}
+        <button className={styles.counter} onClick={() => setShotListOpen(true)}>
+          {shotIndex + 1} / {safeScript.shots.length} ≡
+        </button>
 
         {/* Teleprompter text — top of screen, near front camera */}
         <div className={styles.promptArea}>
@@ -278,7 +289,7 @@ export default function RecordPage() {
 
       {/* Camera + controls — bottom (fixed dock) */}
       <div className={styles.controls}>
-        <CameraPreview videoRef={videoRef} />
+        <CameraPreview videoRef={videoRef} onClick={() => setCameraExpanded(true)} />
 
         <div className={styles.buttons}>
           {state === 'idle' && (
@@ -343,6 +354,47 @@ export default function RecordPage() {
       >
         ‹ 編集に戻る
       </button>
+
+      {/* Shot list overlay */}
+      {shotListOpen && (
+        <div className={styles.shotListOverlay} onClick={() => setShotListOpen(false)}>
+          <div className={styles.shotListPanel} onClick={e => e.stopPropagation()}>
+            <div className={styles.shotListHeader}>
+              <span>ショットを選択</span>
+              <button onClick={() => setShotListOpen(false)}>✕</button>
+            </div>
+            <div className={styles.shotListScroll}>
+              {safeScript.shots.map((shot, i) => (
+                <button
+                  key={shot.id}
+                  className={`${styles.shotListItem} ${i === shotIndex ? styles.shotListItemActive : ''}`}
+                  onClick={() => handleJumpToShot(i)}
+                >
+                  <span className={styles.shotListNum}>{i + 1}</span>
+                  <span className={styles.shotListText}>{shot.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera expanded overlay */}
+      {cameraExpanded && (
+        <div className={styles.cameraOverlay} onClick={() => setCameraExpanded(false)}>
+          <video
+            className={styles.cameraOverlayVideo}
+            autoPlay
+            muted
+            playsInline
+            ref={el => {
+              if (el && videoRef.current?.srcObject) {
+                el.srcObject = videoRef.current.srcObject
+              }
+            }}
+          />
+        </div>
+      )}
 
       {isReviewing && reviewUrl && (
         <VideoReviewModal url={reviewUrl} onClose={closeModal} />

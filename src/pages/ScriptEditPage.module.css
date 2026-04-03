@@ -77,6 +77,32 @@
   border-color: var(--accent);
 }
 
+.splitOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.splitOptionsLabel {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.splitOptionsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.splitOptionItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
 .splitBtn {
   background: var(--surface2);
   color: var(--accent);

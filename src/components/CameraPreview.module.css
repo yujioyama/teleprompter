@@ -1,10 +1,11 @@
 .wrapper {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 10px;
   overflow: hidden;
-  max-width: 200px;
+  max-width: 60px;
+  cursor: pointer;
 }
 
 .video {
