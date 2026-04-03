@@ -1,3 +1,0 @@
-
-## sqlにログインする用のコマンド
-`sqlcmd -S localhost,1433 -U sa -P your_password`

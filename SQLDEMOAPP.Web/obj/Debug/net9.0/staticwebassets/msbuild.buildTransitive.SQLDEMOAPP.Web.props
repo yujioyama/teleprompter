@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../buildMultiTargeting/SQLDEMOAPP.Web.props" />
-</Project>
