@@ -1,0 +1,86 @@
+<h2>再生モーダルのデザイン</h2>
+<p class="subtitle">録画停止後の画面と、▶ 再生タップ後のモーダル</p>
+
+<div class="split">
+  <!-- Left: Recording page stopped state -->
+  <div class="mockup">
+    <div class="mockup-header">録画停止後の画面</div>
+    <div class="mockup-body" style="background:#1e1e2e;padding:16px;min-height:320px;display:flex;flex-direction:column">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="color:#89b4fa;font-size:11px">‹ 戻る</span>
+        <span style="color:#a6adc8;font-size:11px">Shot 2 / 5</span>
+      </div>
+      <!-- Teleprompter text -->
+      <div style="background:#313244;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:#cba6f7;line-height:1.5">
+        「今日の天気はとても良く、お出かけ日和ですね。」
+      </div>
+      <!-- Camera preview (stopped) -->
+      <div style="background:#000;border-radius:8px;flex:1;display:flex;align-items:center;justify-content:center;margin-bottom:10px;border:1px solid #313244;min-height:100px">
+        <span style="color:#585b70;font-size:11px">📹 録画済み</span>
+      </div>
+      <!-- Action buttons -->
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button style="background:#89b4fa;color:#1e1e2e;border:none;border-radius:20px;padding:8px;font-size:12px;font-weight:bold;width:100%">▶ 再生して確認</button>
+        <div style="display:flex;gap:6px">
+          <button style="background:#313244;color:#cdd6f4;border:none;border-radius:20px;padding:7px;font-size:11px;flex:1">📤 保存</button>
+          <button style="background:#f38ba8;color:#1e1e2e;border:none;border-radius:20px;padding:7px;font-size:11px;flex:1">🔄 撮り直し</button>
+          <button style="background:#a6e3a1;color:#1e1e2e;border:none;border-radius:20px;padding:7px;font-size:11px;flex:1">次へ →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Modal open state -->
+  <div class="mockup">
+    <div class="mockup-header">▶ 再生タップ後（モーダル表示）</div>
+    <div class="mockup-body" style="background:#1e1e2e;padding:16px;min-height:320px;display:flex;flex-direction:column;position:relative">
+      <!-- Dimmed background content -->
+      <div style="opacity:0.25;display:flex;flex-direction:column;flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="color:#89b4fa;font-size:11px">‹ 戻る</span>
+          <span style="color:#a6adc8;font-size:11px">Shot 2 / 5</span>
+        </div>
+        <div style="background:#313244;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:#cba6f7">
+          「今日の天気はとても良く…」
+        </div>
+        <div style="background:#000;border-radius:8px;flex:1;min-height:80px"></div>
+      </div>
+
+      <!-- Modal overlay -->
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.85);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:10px">
+        <!-- Close button -->
+        <div style="width:100%;display:flex;justify-content:flex-end;margin-bottom:4px">
+          <span style="color:#a6adc8;font-size:14px;cursor:pointer">✕ 閉じる</span>
+        </div>
+        <!-- Shot label -->
+        <div style="color:#a6adc8;font-size:11px;margin-bottom:2px">Shot 2 の録画</div>
+        <!-- Video player area -->
+        <div style="background:#000;border-radius:8px;width:100%;height:110px;display:flex;align-items:center;justify-content:center;border:1px solid #45475a;margin-bottom:6px">
+          <div style="text-align:center">
+            <div style="font-size:28px;color:#cdd6f4">▶</div>
+            <div style="font-size:9px;color:#585b70;margin-top:4px">タップして再生</div>
+          </div>
+        </div>
+        <!-- Teleprompter text reference -->
+        <div style="background:#313244;border-radius:6px;padding:8px;width:100%;font-size:10px;color:#a6adc8;text-align:center;line-height:1.4">
+          「今日の天気はとても良く、<br>お出かけ日和ですね。」
+        </div>
+        <!-- Actions in modal -->
+        <div style="display:flex;gap:6px;width:100%;margin-top:4px">
+          <button style="background:#f38ba8;color:#1e1e2e;border:none;border-radius:20px;padding:7px;font-size:11px;flex:1">🔄 撮り直し</button>
+          <button style="background:#a6e3a1;color:#1e1e2e;border:none;border-radius:20px;padding:7px;font-size:11px;flex:1">次へ →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px">
+  <p class="label">ポイント</p>
+  <ul style="color:var(--text-muted);font-size:14px;line-height:1.8;margin:8px 0 0 16px">
+    <li>モーダル内にセリフテキストを一緒に表示 → 「ちゃんと言えてたか」確認しやすい</li>
+    <li>撮り直し・次へボタンはモーダル内にも置く → 閉じなくてもそのまま操作できる</li>
+    <li>📤 保存は外側のまま残す（あなたの希望通り）</li>
+  </ul>
+</div>

@@ -1,0 +1,5 @@
+{"type":"server-started","port":59819,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:59819","screen_dir":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/67035-1774655756"}
+{"type":"screen-added","file":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/67035-1774655756/merge-zone.html"}
+{"source":"user-event","type":"click","text":"A\n    \n      中央ゾーン に重ねると合体\n      カードの上部・下部 → 並び替え（今まで通り）カードの中央 → 合体\n      \n        ▲ ここにドロップ → 並び替え\n        ✦ ここにドロップ → 合体\n        ▼ ここにドロップ → 並び替え","choice":"a","id":null,"timestamp":1774655858731}
+{"type":"screen-added","file":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/67035-1774655756/waiting-1.html"}
+{"type":"server-stopped","reason":"owner process exited"}

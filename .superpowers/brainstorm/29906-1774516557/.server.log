@@ -1,0 +1,10 @@
+{"type":"server-started","port":64179,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:64179","screen_dir":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/29906-1774516557"}
+{"type":"screen-added","file":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/29906-1774516557/playback-location.html"}
+{"source":"user-event","type":"click","text":"A\n    \n      ショットごとに確認\n      録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。\n      \n        Shot 2 / 5\n        「今日の天気はとても良く…」\n        \n          ▶ 再生\n          🔄 撮り直し\n          次へ →","choice":"a","id":null,"timestamp":1774516664196}
+{"source":"user-event","type":"click","text":"A\n    \n      ショットごとに確認\n      録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。\n      \n        Shot 2 / 5\n        「今日の天気はとても良く…」\n        \n          ▶ 再生\n          🔄 撮り直し\n          次へ →","choice":"a","id":null,"timestamp":1774516668328}
+{"source":"user-event","type":"click","text":"A\n    \n      ショットごとに確認\n      録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。\n      \n        Shot 2 / 5\n        「今日の天気はとても良く…」\n        \n          ▶ 再生\n          🔄 撮り直し\n          次へ →","choice":"a","id":null,"timestamp":1774516668494}
+{"source":"user-event","type":"click","text":"A\n    \n      ショットごとに確認\n      録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。\n      \n        Shot 2 / 5\n        「今日の天気はとても良く…」\n        \n          ▶ 再生\n          🔄 撮り直し\n          次へ →","choice":"a","id":null,"timestamp":1774516669444}
+{"source":"user-event","type":"click","text":"A\n    \n      ショットごとに確認\n      録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。\n      \n        Shot 2 / 5\n        「今日の天気はとても良く…」\n        \n          ▶ 再生\n          🔄 撮り直し\n          次へ →","choice":"a","id":null,"timestamp":1774516669611}
+{"type":"screen-added","file":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/29906-1774516557/playback-layout.html"}
+{"type":"screen-added","file":"/Users/yujioyama/Site/teleprompter/.superpowers/brainstorm/29906-1774516557/waiting-1.html"}
+{"type":"server-stopped","reason":"idle timeout"}

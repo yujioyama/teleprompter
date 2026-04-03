@@ -1,0 +1,42 @@
+<h2>「合体」はどこにドロップしたら発動する？</h2>
+<p class="subtitle">ドラッグ中、カードのどこに重ねたら「合体」になるかを選んでください</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>中央ゾーン に重ねると合体</h3>
+      <p>カードの上部・下部 → 並び替え（今まで通り）<br>カードの中央 → 合体</p>
+      <div style="margin-top:12px; border:1px solid #444; border-radius:8px; overflow:hidden; font-size:0.8rem; width:240px">
+        <div style="background:#2a2a3a; padding:6px 10px; text-align:center; color:#888">▲ ここにドロップ → 並び替え</div>
+        <div style="background:#6c63ff33; border-top:1px dashed #6c63ff; border-bottom:1px dashed #6c63ff; padding:10px; text-align:center; color:#6c63ff; font-weight:700">✦ ここにドロップ → 合体</div>
+        <div style="background:#2a2a3a; padding:6px 10px; text-align:center; color:#888">▼ ここにドロップ → 並び替え</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>長押し中に「合体ボタン」が出現</h3>
+      <p>ドラッグ開始後、各カードに合体アイコン（⊕）が表示される<br>そこにドロップすると合体</p>
+      <div style="margin-top:12px; border:1px solid #444; border-radius:8px; padding:10px; width:240px; display:flex; gap:8px; align-items:center; font-size:0.8rem; background:#16161f">
+        <span style="color:#888">⠿</span>
+        <span style="flex:1; color:#f0f0f5">今日は東京に来ました</span>
+        <span style="background:#6c63ff; color:white; border-radius:6px; padding:3px 8px; font-size:0.75rem">⊕</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>全体に重ねると合体（ゾーン分けなし）</h3>
+      <p>通常ドロップは並び替え。<br>合体は別の操作（カード同士を長押しでつなぐ など）で発動</p>
+      <div style="margin-top:12px; border:1px solid #444; border-radius:8px; padding:10px; width:240px; font-size:0.8rem; background:#16161f; display:flex; gap:8px; align-items:center">
+        <span style="font-size:1rem">✌️</span>
+        <span style="color:#f0f0f5">両カードを同時長押し → 合体メニュー表示</span>
+      </div>
+    </div>
+  </div>
+</div>

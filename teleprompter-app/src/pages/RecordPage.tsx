@@ -166,115 +166,117 @@ export default function RecordPage() {
 
   return (
     <div className={styles.page}>
-      {/* Wake Lock warning */}
-      {!wakeLockSupported && (
-        <div className={styles.wakeLockWarning}>
-          ⚠️ 画面オフに注意してください（iOS 16.4未満では自動防止できません）
+      <div className={styles.mainScroll}>
+        {/* Wake Lock warning */}
+        {!wakeLockSupported && (
+          <div className={styles.wakeLockWarning}>
+            ⚠️ 画面オフに注意してください（iOS 16.4未満では自動防止できません）
+          </div>
+        )}
+
+        {/* Camera error */}
+        {cameraError && (
+          <div className={styles.errorBanner}>{cameraError}</div>
+        )}
+
+        {/* Shot counter */}
+        <div className={styles.counter}>
+          {shotIndex + 1} / {safeScript.shots.length}
         </div>
-      )}
 
-      {/* Camera error */}
-      {cameraError && (
-        <div className={styles.errorBanner}>{cameraError}</div>
-      )}
+        {/* Teleprompter text — top of screen, near front camera */}
+        <div className={styles.promptArea}>
+          <p className={styles.promptText}>{currentShot?.text}</p>
+        </div>
 
-      {/* Shot counter */}
-      <div className={styles.counter}>
-        {shotIndex + 1} / {safeScript.shots.length}
-      </div>
+        {/* Per-shot trim settings */}
+        {state === 'idle' && (
+          <div className={styles.shotSettings}>
+            <button
+              className={styles.shotSettingsToggle}
+              onClick={() => setShotSettingsOpen(o => !o)}
+            >
+              ⚙ このショットの設定{hasOverride ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
+            </button>
 
-      {/* Teleprompter text — top of screen, near front camera */}
-      <div className={styles.promptArea}>
-        <p className={styles.promptText}>{currentShot?.text}</p>
-      </div>
-
-      {/* Per-shot trim settings */}
-      {state === 'idle' && (
-        <div className={styles.shotSettings}>
-          <button
-            className={styles.shotSettingsToggle}
-            onClick={() => setShotSettingsOpen(o => !o)}
-          >
-            ⚙ このショットの設定{hasOverride ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
-          </button>
-
-          {shotSettingsOpen && (
-            <div className={styles.shotSettingsPanel}>
-              {/* Use global / override toggle */}
-              <div className={styles.shotSettingsRow}>
-                <div>
-                  <div className={styles.shotSettingsLabel}>グローバル設定を使用</div>
-                  <div className={styles.shotSettingsSub}>
-                    {hasOverride ? 'このショット専用の設定を使用中' : '設定ページの値を使用中'}
+            {shotSettingsOpen && (
+              <div className={styles.shotSettingsPanel}>
+                {/* Use global / override toggle */}
+                <div className={styles.shotSettingsRow}>
+                  <div>
+                    <div className={styles.shotSettingsLabel}>グローバル設定を使用</div>
+                    <div className={styles.shotSettingsSub}>
+                      {hasOverride ? 'このショット専用の設定を使用中' : '設定ページの値を使用中'}
+                    </div>
                   </div>
+                  <label className={styles.toggle}>
+                    <input
+                      type="checkbox"
+                      checked={!hasOverride}
+                      // checked=true means "use global" (no override), so checked→false means "enable override"
+                      onChange={e => handleToggleOverride(!e.target.checked)}
+                    />
+                    <span className={styles.toggleTrack} />
+                  </label>
                 </div>
-                <label className={styles.toggle}>
-                  <input
-                    type="checkbox"
-                    checked={!hasOverride}
-                    // checked=true means "use global" (no override), so checked→false means "enable override"
-                    onChange={e => handleToggleOverride(!e.target.checked)}
-                  />
-                  <span className={styles.toggleTrack} />
-                </label>
-              </div>
 
-              {/* Per-shot controls — only shown when override is active */}
-              {hasOverride && (
-                <>
-                  <div className={styles.shotSettingsRow}>
-                    <div className={styles.shotSettingsLabel}>自動トリミング</div>
-                    <label className={styles.toggle}>
+                {/* Per-shot controls — only shown when override is active */}
+                {hasOverride && (
+                  <>
+                    <div className={styles.shotSettingsRow}>
+                      <div className={styles.shotSettingsLabel}>自動トリミング</div>
+                      <label className={styles.toggle}>
+                        <input
+                          type="checkbox"
+                          checked={effectiveTrimEnabled}
+                          onChange={e => handleShotTrimEnabled(e.target.checked)}
+                        />
+                        <span className={styles.toggleTrack} />
+                      </label>
+                    </div>
+
+                    <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
+                      <div className={styles.sliderGroupHeader}>
+                        <div className={styles.shotSettingsLabel}>前に残す時間</div>
+                        <span className={styles.sliderValue}>{effectiveTrimPaddingStart.toFixed(1)}秒</span>
+                      </div>
                       <input
-                        type="checkbox"
-                        checked={effectiveTrimEnabled}
-                        onChange={e => handleShotTrimEnabled(e.target.checked)}
+                        type="range"
+                        className={styles.shotSlider}
+                        min={0.2}
+                        max={2.0}
+                        step={0.1}
+                        value={effectiveTrimPaddingStart}
+                        onChange={e => handleShotTrimPaddingStart(parseFloat(e.target.value))}
+                        disabled={!effectiveTrimEnabled}
                       />
-                      <span className={styles.toggleTrack} />
-                    </label>
-                  </div>
-
-                  <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
-                    <div className={styles.sliderGroupHeader}>
-                      <div className={styles.shotSettingsLabel}>前に残す時間</div>
-                      <span className={styles.sliderValue}>{effectiveTrimPaddingStart.toFixed(1)}秒</span>
                     </div>
-                    <input
-                      type="range"
-                      className={styles.shotSlider}
-                      min={0.2}
-                      max={2.0}
-                      step={0.1}
-                      value={effectiveTrimPaddingStart}
-                      onChange={e => handleShotTrimPaddingStart(parseFloat(e.target.value))}
-                      disabled={!effectiveTrimEnabled}
-                    />
-                  </div>
 
-                  <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
-                    <div className={styles.sliderGroupHeader}>
-                      <div className={styles.shotSettingsLabel}>後ろに残す時間</div>
-                      <span className={styles.sliderValue}>{effectiveTrimPaddingEnd.toFixed(1)}秒</span>
+                    <div className={`${styles.sliderGroup} ${!effectiveTrimEnabled ? styles.overrideDisabled : ''}`}>
+                      <div className={styles.sliderGroupHeader}>
+                        <div className={styles.shotSettingsLabel}>後ろに残す時間</div>
+                        <span className={styles.sliderValue}>{effectiveTrimPaddingEnd.toFixed(1)}秒</span>
+                      </div>
+                      <input
+                        type="range"
+                        className={styles.shotSlider}
+                        min={0.2}
+                        max={2.0}
+                        step={0.1}
+                        value={effectiveTrimPaddingEnd}
+                        onChange={e => handleShotTrimPaddingEnd(parseFloat(e.target.value))}
+                        disabled={!effectiveTrimEnabled}
+                      />
                     </div>
-                    <input
-                      type="range"
-                      className={styles.shotSlider}
-                      min={0.2}
-                      max={2.0}
-                      step={0.1}
-                      value={effectiveTrimPaddingEnd}
-                      onChange={e => handleShotTrimPaddingEnd(parseFloat(e.target.value))}
-                      disabled={!effectiveTrimEnabled}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Camera + controls — bottom */}
+      {/* Camera + controls — bottom (fixed dock) */}
       <div className={styles.controls}>
         <CameraPreview videoRef={videoRef} />
 

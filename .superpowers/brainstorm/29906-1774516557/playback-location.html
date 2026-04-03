@@ -1,0 +1,56 @@
+<h2>再生機能をどこに置く？</h2>
+<p class="subtitle">録画直後の確認タイミングを選んでください</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>ショットごとに確認</h3>
+      <p>録画停止の直後に、そのショットの再生ボタンが表示される。OKなら次のショットへ、NGなら撮り直し。</p>
+      <div style="margin-top:12px;background:#1e1e2e;border-radius:8px;padding:12px;font-size:12px;color:#cdd6f4">
+        <div style="color:#a6adc8;margin-bottom:6px">Shot 2 / 5</div>
+        <div style="background:#313244;border-radius:6px;padding:8px;margin-bottom:8px;color:#cba6f7">「今日の天気はとても良く…」</div>
+        <div style="display:flex;gap:6px;justify-content:center">
+          <span style="background:#45475a;color:#cdd6f4;padding:4px 10px;border-radius:20px;font-size:11px">▶ 再生</span>
+          <span style="background:#f38ba8;color:#1e1e2e;padding:4px 10px;border-radius:20px;font-size:11px">🔄 撮り直し</span>
+          <span style="background:#a6e3a1;color:#1e1e2e;padding:4px 10px;border-radius:20px;font-size:11px">次へ →</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>全ショット完了後にまとめて確認</h3>
+      <p>全部録り終わったあと、ショット一覧で各録画を確認できるレビュー画面に移動する。</p>
+      <div style="margin-top:12px;background:#1e1e2e;border-radius:8px;padding:12px;font-size:12px;color:#cdd6f4">
+        <div style="color:#f9e2af;margin-bottom:8px">🎉 全ショット録画完了！</div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">
+          <div style="background:#313244;border-radius:4px;padding:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>Shot 1</span><span style="color:#a6e3a1">▶ 再生</span>
+          </div>
+          <div style="background:#313244;border-radius:4px;padding:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>Shot 2</span><span style="color:#a6e3a1">▶ 再生</span>
+          </div>
+          <div style="background:#313244;border-radius:4px;padding:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>Shot 3</span><span style="color:#a6e3a1">▶ 再生</span>
+          </div>
+        </div>
+        <div style="text-align:center;color:#89b4fa;font-size:11px">ショットをタップして再生・撮り直し</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>両方（ショットごと＋まとめて）</h3>
+      <p>録画直後にも確認でき、さらに全完了後のレビュー画面でも全ショットを見直せる。</p>
+      <div style="margin-top:12px;background:#1e1e2e;border-radius:8px;padding:10px;font-size:11px;color:#cdd6f4">
+        <div style="color:#a6adc8;margin-bottom:4px">① 録画直後に▶ボタン表示</div>
+        <div style="color:#a6adc8">② 全完了後にまとめてレビュー画面</div>
+      </div>
+    </div>
+  </div>
+</div>
