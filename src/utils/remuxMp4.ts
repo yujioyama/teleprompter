@@ -54,7 +54,16 @@ export async function remuxMp4(
       args.push('-t', duration.toFixed(3))
     }
 
-    args.push('-c', 'copy', '-movflags', '+faststart', 'out.mp4')
+    if (trim) {
+      // Re-encode for frame-accurate trim.
+      // Stream copy (-c copy) can only cut at keyframe boundaries, causing video to end
+      // earlier than audio when trim.end falls between keyframes (typically ~1s apart on iOS).
+      args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac')
+    } else {
+      // No trim — fast stream copy just to move moov atom to front
+      args.push('-c', 'copy')
+    }
+    args.push('-movflags', '+faststart', 'out.mp4')
 
     await ff.exec(args)
     const data = await ff.readFile('out.mp4')
