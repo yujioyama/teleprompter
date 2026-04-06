@@ -27,6 +27,36 @@ interface RemuxOptions {
 }
 
 /**
+ * Extract all keyframe timestamps from the already-written 'in.mp4' in FFmpeg's FS.
+ * Uses showinfo filter with -skip_frame nokey so only I-frames are decoded.
+ * Returns timestamps sorted ascending.
+ */
+async function getKeyframeTimes(ff: FFmpeg): Promise<number[]> {
+  const times: number[] = []
+  const handler = ({ message }: { message: string }) => {
+    if (!message.includes('iskey:1')) return
+    const m = /pts_time:(\d+\.?\d*)/.exec(message)
+    if (m) times.push(parseFloat(m[1]))
+  }
+  ff.on('log', handler)
+  try {
+    await ff.exec([
+      '-skip_frame', 'nokey',
+      '-i', 'in.mp4',
+      '-an',
+      '-vf', 'showinfo',
+      '-vsync', '0',
+      '-f', 'null',
+      '-',
+    ])
+  } catch {
+    // showinfo writes to stderr which FFmpeg may report as an error — ignore
+  }
+  ff.off('log', handler)
+  return times.sort((a, b) => a - b)
+}
+
+/**
  * Remux a fragmented MP4 (from MediaRecorder) into a flat MP4 with
  * the moov atom at the front (-movflags +faststart).
  * Optionally trims silence from the start/end in the same FFmpeg pass.
@@ -42,7 +72,7 @@ export async function remuxMp4(
 
     const args: string[] = []
 
-    // Input seek before decode = fast; 0.5 s padding makes keyframe imprecision acceptable
+    // Input seek before decode = fast
     if (trim && trim.start > 0.05) {
       args.push('-ss', trim.start.toFixed(3))
     }
@@ -50,12 +80,13 @@ export async function remuxMp4(
     args.push('-i', 'in.mp4')
 
     if (trim) {
-      // Extend end by 1.5 s so the last video keyframe is always included.
-      // Stream copy (-c copy) can only cut at keyframe boundaries (~1 s apart on iOS).
-      // Without this buffer the video track ends at the keyframe *before* trim.end
-      // while audio ends exactly at trim.end, causing an apparent video freeze.
-      const KEY_FRAME_BUFFER = 1.0
-      const duration = (trim.end + KEY_FRAME_BUFFER) - (trim.start > 0.05 ? trim.start : 0)
+      // Find the first keyframe at or after trim.end so stream-copy (-c copy)
+      // lands on a real keyframe boundary — eliminates the video-freeze gap.
+      // Falls back to trim.end + 1.5 s if keyframe detection fails.
+      const keyframeTimes = await getKeyframeTimes(ff)
+      const cutPoint =
+        keyframeTimes.find(t => t >= trim.end) ?? trim.end + 1.5
+      const duration = cutPoint - (trim.start > 0.05 ? trim.start : 0)
       args.push('-t', duration.toFixed(3))
     }
 
