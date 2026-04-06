@@ -54,7 +54,7 @@ export async function remuxMp4(
       // Stream copy (-c copy) can only cut at keyframe boundaries (~1 s apart on iOS).
       // Without this buffer the video track ends at the keyframe *before* trim.end
       // while audio ends exactly at trim.end, causing an apparent video freeze.
-      const KEY_FRAME_BUFFER = 1.5
+      const KEY_FRAME_BUFFER = 1.0
       const duration = (trim.end + KEY_FRAME_BUFFER) - (trim.start > 0.05 ? trim.start : 0)
       args.push('-t', duration.toFixed(3))
     }
