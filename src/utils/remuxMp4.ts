@@ -70,24 +70,33 @@ export async function remuxMp4(
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
 
+    // Detect keyframes BEFORE building args so we can compute the exact seek
+    // keyframe (KF_start) and end keyframe (KF_end) together.
+    let KF_start = 0
+    let KF_end: number | null = null
+    if (trim) {
+      const keyframeTimes = await getKeyframeTimes(ff)
+
+      // -ss before -i seeks to the last keyframe <= trim.start, NOT trim.start itself.
+      // Use that actual seek keyframe so duration = KF_end - KF_start is exact.
+      if (trim.start > 0.05) {
+        KF_start = [...keyframeTimes].reverse().find(t => t <= trim.start) ?? 0
+      }
+
+      // First keyframe at or after trim.end — both video and audio end here, no freeze.
+      KF_end = keyframeTimes.find(t => t >= trim.end) ?? trim.end + 1.5
+    }
+
     const args: string[] = []
 
-    // Input seek before decode = fast
-    if (trim && trim.start > 0.05) {
-      args.push('-ss', trim.start.toFixed(3))
+    if (KF_start > 0.05) {
+      args.push('-ss', KF_start.toFixed(3))
     }
 
     args.push('-i', 'in.mp4')
 
-    if (trim) {
-      // Find the first keyframe at or after trim.end so stream-copy (-c copy)
-      // lands on a real keyframe boundary — eliminates the video-freeze gap.
-      // Falls back to trim.end + 1.5 s if keyframe detection fails.
-      const keyframeTimes = await getKeyframeTimes(ff)
-      const cutPoint =
-        keyframeTimes.find(t => t >= trim.end) ?? trim.end + 1.5
-      const duration = cutPoint - (trim.start > 0.05 ? trim.start : 0)
-      args.push('-t', duration.toFixed(3))
+    if (KF_end !== null) {
+      args.push('-t', (KF_end - KF_start).toFixed(3))
     }
 
     // Fast stream copy — moov atom move and optional trim in one pass
