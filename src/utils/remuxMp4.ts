@@ -60,6 +60,39 @@ async function getKeyframeTimes(
 }
 
 /**
+ * Probe the source file durations for video and audio streams.
+ * Returns { videoDur, audioDur } parsed from FFmpeg's info log, or null if not found.
+ */
+async function probeSourceDurations(
+  ff: FFmpeg,
+): Promise<{ videoDur: number | null; audioDur: number | null }> {
+  let videoDur: number | null = null
+  let audioDur: number | null = null
+
+  const handler = ({ message }: { message: string }) => {
+    // "Duration: 00:00:20.13" — overall container duration
+    const durMatch = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(message)
+    if (durMatch && videoDur === null) {
+      const h = parseInt(durMatch[1], 10)
+      const m = parseInt(durMatch[2], 10)
+      const s = parseFloat(durMatch[3])
+      videoDur = h * 3600 + m * 60 + s
+    }
+    // Stream-level duration not always in log, but container Duration is enough
+  }
+
+  ff.on('log', handler)
+  try {
+    // Probe-only: run with no output (will "fail" because there's no output, that's fine)
+    await ff.exec(['-i', 'in.mp4', '-f', 'null', '-'])
+  } catch {
+    // expected — no output file
+  }
+  ff.off('log', handler)
+  return { videoDur, audioDur }
+}
+
+/**
  * Remux a fragmented MP4 (from MediaRecorder) into a flat MP4 with
  * the moov atom at the front (-movflags +faststart).
  * Optionally trims silence from the start/end in the same FFmpeg pass.
@@ -73,36 +106,36 @@ export async function remuxMp4(
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
 
+    // --- Diagnostic: log source file info ---
+    const { videoDur } = await probeSourceDurations(ff)
+    console.log('[remuxMp4] source blob size:', blob.size, 'bytes | probed duration:', videoDur, 's')
+    if (trim) {
+      console.log('[remuxMp4] trim requested:', trim)
+    }
+
     let KF_start = 0
     let KF_end: number | null = null
 
     if (trim) {
       // --- KF_start: scan the first few seconds only ---
-      // iOS keyframes typically start at t=0, so the relevant keyframe is almost always 0.
-      // Scan just the opening window to confirm.
       if (trim.start > 0.05) {
         const startKFs = await getKeyframeTimes(ff, 0, trim.start + 2.0)
         KF_start = [...startKFs].reverse().find(t => t <= trim.start) ?? 0
+        console.log('[remuxMp4] startKFs:', startKFs, '→ KF_start:', KF_start)
       }
 
-      // --- KF_end: scan a short window around trim.end ---
-      // Key insight: scan only ~4 seconds near trim.end, NOT the full video.
-      // For a 20-second recording this avoids the WASM memory / timeout failure
-      // that caused getKeyframeTimes to return [] and trigger the freeze-inducing fallback.
+      // --- KF_end: scan a short window around trim.end only ---
+      // Scanning the full video in WASM fails for long recordings (memory/timeout).
       const scanFrom = Math.max(0, trim.end - 1.5)
       const endKFs = await getKeyframeTimes(ff, scanFrom, 4.0)
       const found = endKFs.find(t => t >= trim.end)
+      console.log('[remuxMp4] endKFs (scanned from', scanFrom.toFixed(2), '):', endKFs, '→ found:', found)
 
       if (found !== undefined) {
         KF_end = found
       } else {
-        // No keyframe found near trim.end.
-        // Do NOT use an arbitrary fallback time — that guarantees a freeze.
-        // Skipping end-trim leaves trailing silence but no freeze: far better UX.
-        console.warn(
-          '[remuxMp4] No keyframe found ≥ trim.end =', trim.end,
-          '— skipping end trim to avoid freeze.',
-        )
+        // No keyframe found near trim.end — skip end trim rather than risk a freeze
+        console.warn('[remuxMp4] No keyframe ≥ trim.end =', trim.end, '— skipping end trim')
         KF_end = null
       }
     }
@@ -119,8 +152,12 @@ export async function remuxMp4(
       args.push('-t', (KF_end - KF_start).toFixed(3))
     }
 
-    // Fast stream copy — moov atom move and optional trim in one pass
-    args.push('-c', 'copy', '-movflags', '+faststart', 'out.mp4')
+    // -shortest: if the iOS video track is shorter than the audio track (common with
+    // long recordings where the video encoder lags), stop ALL streams at the video end.
+    // This prevents the "video freezes while audio continues" symptom.
+    args.push('-c', 'copy', '-movflags', '+faststart', '-shortest', 'out.mp4')
+
+    console.log('[remuxMp4] final args:', args.join(' '))
 
     await ff.exec(args)
     const data = await ff.readFile('out.mp4')
