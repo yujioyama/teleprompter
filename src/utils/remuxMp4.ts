@@ -27,30 +27,33 @@ interface RemuxOptions {
 }
 
 /**
- * Extract all keyframe timestamps from the already-written 'in.mp4' in FFmpeg's FS.
- * Uses showinfo filter with -skip_frame nokey so only I-frames are decoded.
+ * Scan a short window [fromSec, fromSec+windowSec] of the video for keyframe timestamps.
+ * Passing a short window avoids processing the full video in WASM (critical for long recordings).
  * Returns timestamps sorted ascending.
  */
-async function getKeyframeTimes(ff: FFmpeg): Promise<number[]> {
+async function getKeyframeTimes(
+  ff: FFmpeg,
+  fromSec: number,
+  windowSec: number,
+): Promise<number[]> {
   const times: number[] = []
   const handler = ({ message }: { message: string }) => {
     if (!message.includes('iskey:1')) return
-    const m = /pts_time:(\d+\.?\d*)/.exec(message)
+    const m = /pts_time:(\d+(?:\.\d+)?)/.exec(message)
     if (m) times.push(parseFloat(m[1]))
   }
   ff.on('log', handler)
   try {
-    await ff.exec([
-      '-skip_frame', 'nokey',
-      '-i', 'in.mp4',
-      '-an',
-      '-vf', 'showinfo',
-      '-vsync', '0',
-      '-f', 'null',
-      '-',
-    ])
-  } catch {
-    // showinfo writes to stderr which FFmpeg may report as an error — ignore
+    const args: string[] = []
+    if (fromSec > 0.05) {
+      args.push('-ss', fromSec.toFixed(3))
+    }
+    args.push('-i', 'in.mp4')
+    args.push('-t', windowSec.toFixed(3))
+    args.push('-an', '-vf', 'showinfo', '-vsync', '0', '-f', 'null', '-')
+    await ff.exec(args)
+  } catch (e) {
+    console.warn('[remuxMp4] keyframe scan failed:', e)
   }
   ff.off('log', handler)
   return times.sort((a, b) => a - b)
@@ -70,21 +73,38 @@ export async function remuxMp4(
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
 
-    // Detect keyframes BEFORE building args so we can compute the exact seek
-    // keyframe (KF_start) and end keyframe (KF_end) together.
     let KF_start = 0
     let KF_end: number | null = null
-    if (trim) {
-      const keyframeTimes = await getKeyframeTimes(ff)
 
-      // -ss before -i seeks to the last keyframe <= trim.start, NOT trim.start itself.
-      // Use that actual seek keyframe so duration = KF_end - KF_start is exact.
+    if (trim) {
+      // --- KF_start: scan the first few seconds only ---
+      // iOS keyframes typically start at t=0, so the relevant keyframe is almost always 0.
+      // Scan just the opening window to confirm.
       if (trim.start > 0.05) {
-        KF_start = [...keyframeTimes].reverse().find(t => t <= trim.start) ?? 0
+        const startKFs = await getKeyframeTimes(ff, 0, trim.start + 2.0)
+        KF_start = [...startKFs].reverse().find(t => t <= trim.start) ?? 0
       }
 
-      // First keyframe at or after trim.end — both video and audio end here, no freeze.
-      KF_end = keyframeTimes.find(t => t >= trim.end) ?? trim.end + 1.5
+      // --- KF_end: scan a short window around trim.end ---
+      // Key insight: scan only ~4 seconds near trim.end, NOT the full video.
+      // For a 20-second recording this avoids the WASM memory / timeout failure
+      // that caused getKeyframeTimes to return [] and trigger the freeze-inducing fallback.
+      const scanFrom = Math.max(0, trim.end - 1.5)
+      const endKFs = await getKeyframeTimes(ff, scanFrom, 4.0)
+      const found = endKFs.find(t => t >= trim.end)
+
+      if (found !== undefined) {
+        KF_end = found
+      } else {
+        // No keyframe found near trim.end.
+        // Do NOT use an arbitrary fallback time — that guarantees a freeze.
+        // Skipping end-trim leaves trailing silence but no freeze: far better UX.
+        console.warn(
+          '[remuxMp4] No keyframe found ≥ trim.end =', trim.end,
+          '— skipping end trim to avoid freeze.',
+        )
+        KF_end = null
+      }
     }
 
     const args: string[] = []
