@@ -50,6 +50,10 @@ export function useRecorder(): UseRecorderResult {
     const recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
       audioBitsPerSecond: 256_000,
+      // Explicit video bitrate cap: default iOS MediaRecorder can exceed 10 Mbps,
+      // exhausting the encoder's internal buffer after ~10 s and stopping video early.
+      // 2.5 Mbps gives excellent quality while keeping buffer usage well within limits.
+      videoBitsPerSecond: 2_500_000,
     })
     recorderRef.current = recorder
 
@@ -83,7 +87,9 @@ export function useRecorder(): UseRecorderResult {
       setState('stopped')
     }
 
-    recorder.start() // collect all data at once on stop
+    // Flush data every second — prevents the iOS video encoder's internal buffer from
+    // accumulating too much data and stopping video capture mid-recording.
+    recorder.start(1000)
     setState('recording')
   }
 
