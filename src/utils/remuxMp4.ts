@@ -27,15 +27,11 @@ interface RemuxOptions {
 }
 
 /**
- * Scan a short window [fromSec, fromSec+windowSec] of the video for keyframe timestamps.
- * Passing a short window avoids processing the full video in WASM (critical for long recordings).
+ * Scan the full video for all keyframe timestamps.
+ * Uses -skip_frame nokey so only I-frames are decoded — fast even for long videos.
  * Returns timestamps sorted ascending.
  */
-async function getKeyframeTimes(
-  ff: FFmpeg,
-  fromSec: number,
-  windowSec: number,
-): Promise<number[]> {
+async function getAllKeyframeTimes(ff: FFmpeg): Promise<number[]> {
   const times: number[] = []
   const handler = ({ message }: { message: string }) => {
     if (!message.includes('iskey:1')) return
@@ -44,52 +40,20 @@ async function getKeyframeTimes(
   }
   ff.on('log', handler)
   try {
-    const args: string[] = []
-    if (fromSec > 0.05) {
-      args.push('-ss', fromSec.toFixed(3))
-    }
-    args.push('-i', 'in.mp4')
-    args.push('-t', windowSec.toFixed(3))
-    args.push('-an', '-vf', 'showinfo', '-vsync', '0', '-f', 'null', '-')
-    await ff.exec(args)
+    await ff.exec([
+      '-skip_frame', 'nokey',   // only decode I-frames: O(keyframes) not O(all frames)
+      '-i', 'in.mp4',
+      '-an',
+      '-vf', 'showinfo',
+      '-vsync', '0',
+      '-f', 'null',
+      '-',
+    ])
   } catch (e) {
     console.warn('[remuxMp4] keyframe scan failed:', e)
   }
   ff.off('log', handler)
   return times.sort((a, b) => a - b)
-}
-
-/**
- * Probe the source file durations for video and audio streams.
- * Returns { videoDur, audioDur } parsed from FFmpeg's info log, or null if not found.
- */
-async function probeSourceDurations(
-  ff: FFmpeg,
-): Promise<{ videoDur: number | null; audioDur: number | null }> {
-  let videoDur: number | null = null
-  let audioDur: number | null = null
-
-  const handler = ({ message }: { message: string }) => {
-    // "Duration: 00:00:20.13" — overall container duration
-    const durMatch = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(message)
-    if (durMatch && videoDur === null) {
-      const h = parseInt(durMatch[1], 10)
-      const m = parseInt(durMatch[2], 10)
-      const s = parseFloat(durMatch[3])
-      videoDur = h * 3600 + m * 60 + s
-    }
-    // Stream-level duration not always in log, but container Duration is enough
-  }
-
-  ff.on('log', handler)
-  try {
-    // Probe-only: run with no output (will "fail" because there's no output, that's fine)
-    await ff.exec(['-i', 'in.mp4', '-f', 'null', '-'])
-  } catch {
-    // expected — no output file
-  }
-  ff.off('log', handler)
-  return { videoDur, audioDur }
 }
 
 /**
@@ -106,58 +70,69 @@ export async function remuxMp4(
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
 
-    // --- Diagnostic: log source file info ---
-    const { videoDur } = await probeSourceDurations(ff)
-    console.log('[remuxMp4] source blob size:', blob.size, 'bytes | probed duration:', videoDur, 's')
-    if (trim) {
-      console.log('[remuxMp4] trim requested:', trim)
+    // Probe container duration (comes from FFmpeg's -i log output)
+    let containerDuration: number | null = null
+    const durHandler = ({ message }: { message: string }) => {
+      const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(message)
+      if (m && containerDuration === null) {
+        containerDuration =
+          parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3])
+      }
     }
+    ff.on('log', durHandler)
+    try { await ff.exec(['-i', 'in.mp4', '-f', 'null', '-']) } catch {}
+    ff.off('log', durHandler)
+
+    console.log('[remuxMp4] blob:', blob.size, 'bytes | container duration:', containerDuration, 's')
+    if (trim) console.log('[remuxMp4] trim requested:', trim)
 
     let KF_start = 0
     let KF_end: number | null = null
 
     if (trim) {
-      // --- KF_start: scan the first few seconds only ---
+      // Full scan with -skip_frame nokey: only decodes I-frames so it stays fast.
+      // (Windowed seek was unreliable for fMP4 which may lack a seek index.)
+      const allKFs = await getAllKeyframeTimes(ff)
+      console.log('[remuxMp4] all keyframes:', allKFs)
+
+      // KF_start: last keyframe at or before trim.start
       if (trim.start > 0.05) {
-        const startKFs = await getKeyframeTimes(ff, 0, trim.start + 2.0)
-        KF_start = [...startKFs].reverse().find(t => t <= trim.start) ?? 0
-        console.log('[remuxMp4] startKFs:', startKFs, '→ KF_start:', KF_start)
+        KF_start = [...allKFs].reverse().find(t => t <= trim.start) ?? 0
       }
+      console.log('[remuxMp4] KF_start:', KF_start)
 
-      // --- KF_end: scan a short window around trim.end only ---
-      // Scanning the full video in WASM fails for long recordings (memory/timeout).
-      const scanFrom = Math.max(0, trim.end - 1.5)
-      const endKFs = await getKeyframeTimes(ff, scanFrom, 4.0)
-      const found = endKFs.find(t => t >= trim.end)
-      console.log('[remuxMp4] endKFs (scanned from', scanFrom.toFixed(2), '):', endKFs, '→ found:', found)
-
+      // KF_end: first keyframe at or after trim.end
+      const found = allKFs.find(t => t >= trim.end)
       if (found !== undefined) {
         KF_end = found
+        console.log('[remuxMp4] KF_end:', KF_end)
       } else {
-        // No keyframe found near trim.end — skip end trim rather than risk a freeze
-        console.warn('[remuxMp4] No keyframe ≥ trim.end =', trim.end, '— skipping end trim')
-        KF_end = null
+        // No keyframe found at or after trim.end — video track likely ends before trim.end.
+        // Use the LAST keyframe found as the cut point. This may cut slightly before
+        // trim.end but avoids the freeze that occurs when cutting past video track end.
+        const lastKF = allKFs[allKFs.length - 1] ?? null
+        console.warn(
+          '[remuxMp4] No keyframe ≥ trim.end =', trim.end,
+          '— last keyframe is', lastKF,
+          '— cutting at last keyframe to avoid freeze',
+        )
+        KF_end = lastKF  // null if no keyframes at all → no end trim
       }
     }
 
     const args: string[] = []
-
     if (KF_start > 0.05) {
       args.push('-ss', KF_start.toFixed(3))
     }
-
     args.push('-i', 'in.mp4')
-
     if (KF_end !== null) {
       args.push('-t', (KF_end - KF_start).toFixed(3))
     }
-
-    // -shortest: if the iOS video track is shorter than the audio track (common with
-    // long recordings where the video encoder lags), stop ALL streams at the video end.
-    // This prevents the "video freezes while audio continues" symptom.
+    // -shortest: safety net — if video track is shorter than audio (iOS encoder lag),
+    // stop all streams when the shortest one ends, preventing the freeze.
     args.push('-c', 'copy', '-movflags', '+faststart', '-shortest', 'out.mp4')
 
-    console.log('[remuxMp4] final args:', args.join(' '))
+    console.log('[remuxMp4] exec args:', args.join(' '))
 
     await ff.exec(args)
     const data = await ff.readFile('out.mp4')
