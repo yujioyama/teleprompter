@@ -115,7 +115,12 @@ export default function RecordPage() {
     if (state !== 'idle') return
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
-    startRecording(stream, { trimEnabled: effectiveTrimEnabled, trimPaddingStart: effectiveTrimPaddingStart, trimPaddingEnd: effectiveTrimPaddingEnd })
+    startRecording(stream, {
+      trimEnabled: effectiveTrimEnabled,
+      trimPaddingStart: effectiveTrimPaddingStart,
+      trimPaddingEnd: effectiveTrimPaddingEnd,
+      normalizeAudio: globalSettings.normalizeAudio,
+    })
   }
 
   function handleToggleOverride(enabled: boolean) {
