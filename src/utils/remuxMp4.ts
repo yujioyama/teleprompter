@@ -24,6 +24,8 @@ async function getFFmpeg(): Promise<FFmpeg> {
 interface RemuxOptions {
   /** Trim bounds in seconds. When provided, clips the output to [start, end]. */
   trim?: { start: number; end: number }
+  /** Normalize audio loudness to -14 LUFS (Instagram/TikTok standard). Default false. */
+  normalize?: boolean
 }
 
 /**
@@ -64,7 +66,7 @@ async function getAllKeyframeTimes(ff: FFmpeg): Promise<number[]> {
  */
 export async function remuxMp4(
   blob: Blob,
-  { trim }: RemuxOptions = {},
+  { trim, normalize }: RemuxOptions = {},
 ): Promise<{ blob: Blob; ok: boolean; error?: string }> {
   try {
     const ff = await getFFmpeg()
@@ -128,9 +130,21 @@ export async function remuxMp4(
     if (KF_end !== null) {
       args.push('-t', (KF_end - KF_start).toFixed(3))
     }
-    // -shortest: safety net — if video track is shorter than audio (iOS encoder lag),
-    // stop all streams when the shortest one ends, preventing the freeze.
-    args.push('-c', 'copy', '-movflags', '+faststart', '-shortest', 'out.mp4')
+    if (normalize) {
+      // Re-encode audio with loudnorm targeting -14 LUFS (Instagram/TikTok standard).
+      // -af must come after -i. -shortest omitted: AAC encoder delay (~23 ms) would
+      // cause premature truncation; -t duration cap already prevents the iOS freeze.
+      args.push(
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-af', 'loudnorm=I=-14:LRA=11:TP=-1',
+        '-movflags', '+faststart',
+        'out.mp4',
+      )
+    } else {
+      // Stream-copy both streams. -shortest removed: -t duration cap is sufficient.
+      args.push('-c', 'copy', '-movflags', '+faststart', 'out.mp4')
+    }
 
     console.log('[remuxMp4] exec args:', args.join(' '))
 
