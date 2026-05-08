@@ -9,7 +9,12 @@ beforeEach(() => {
 describe('useSettings', () => {
   it('returns defaults when localStorage is empty', () => {
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({ trimEnabled: true, trimPaddingStart: 0.5, trimPaddingEnd: 0.8 })
+    expect(result.current[0]).toEqual({
+      trimEnabled: true,
+      trimPaddingStart: 0.5,
+      trimPaddingEnd: 0.8,
+      normalizeAudio: true,
+    })
   })
 
   it('updates trimEnabled', () => {
@@ -46,16 +51,23 @@ describe('useSettings', () => {
   it('loads persisted settings on mount', () => {
     localStorage.setItem(
       'teleprompter_settings',
-      JSON.stringify({ trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2 })
+      JSON.stringify({ trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2, normalizeAudio: false }),
     )
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({ trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2 })
+    expect(result.current[0]).toEqual({
+      trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2, normalizeAudio: false,
+    })
   })
 
   it('falls back to defaults when localStorage contains invalid JSON', () => {
     localStorage.setItem('teleprompter_settings', 'not-json')
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({ trimEnabled: true, trimPaddingStart: 0.5, trimPaddingEnd: 0.8 })
+    expect(result.current[0]).toEqual({
+      trimEnabled: true,
+      trimPaddingStart: 0.5,
+      trimPaddingEnd: 0.8,
+      normalizeAudio: true,
+    })
   })
 
   it('uses defaults for new fields when loading old-format data', () => {
@@ -65,5 +77,27 @@ describe('useSettings', () => {
     expect(result.current[0].trimEnabled).toBe(false)
     expect(result.current[0].trimPaddingStart).toBe(0.5)
     expect(result.current[0].trimPaddingEnd).toBe(0.8)
+  })
+
+  it('normalizeAudio defaults to true', () => {
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0].normalizeAudio).toBe(true)
+  })
+
+  it('updates normalizeAudio', () => {
+    const { result } = renderHook(() => useSettings())
+    act(() => { result.current[1]({ normalizeAudio: false }) })
+    expect(result.current[0].normalizeAudio).toBe(false)
+    expect(result.current[0].trimEnabled).toBe(true) // unchanged
+  })
+
+  it('existing stored data without normalizeAudio gets default true', () => {
+    localStorage.setItem(
+      'teleprompter_settings',
+      JSON.stringify({ trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2 }),
+    )
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0].normalizeAudio).toBe(true)
+    expect(result.current[0].trimEnabled).toBe(false) // old value preserved
   })
 })

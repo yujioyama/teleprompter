@@ -4,10 +4,16 @@ export interface AppSettings {
   trimEnabled: boolean
   trimPaddingStart: number
   trimPaddingEnd: number
+  normalizeAudio: boolean
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
-const DEFAULTS: AppSettings = { trimEnabled: true, trimPaddingStart: 0.5, trimPaddingEnd: 0.8 }
+const DEFAULTS: AppSettings = {
+  trimEnabled: true,
+  trimPaddingStart: 0.5,
+  trimPaddingEnd: 0.8,
+  normalizeAudio: true,
+}
 
 function loadSettings(): AppSettings {
   try {
