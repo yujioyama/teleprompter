@@ -8,6 +8,7 @@ export interface ShotTrimSettings {
   trimEnabled: boolean
   trimPaddingStart: number
   trimPaddingEnd: number
+  normalizeAudio: boolean
 }
 
 interface UseRecorderResult {
@@ -74,7 +75,10 @@ export function useRecorder(): UseRecorderResult {
         if (shotSettings.trimEnabled) {
           trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
         }
-        const result = await remuxMp4(raw, { trim: trim ?? undefined })
+        const result = await remuxMp4(raw, {
+          trim: trim ?? undefined,
+          normalize: shotSettings.normalizeAudio,
+        })
         blobRef.current = result.blob
         setRemuxOk(result.ok)
         setRemuxError(result.error ?? null)
