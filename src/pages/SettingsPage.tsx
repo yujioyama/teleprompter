@@ -14,6 +14,25 @@ export default function SettingsPage() {
       </header>
 
       <div className={styles.section}>
+        <div className={styles.sectionTitle}>音声</div>
+
+        <div className={styles.row}>
+          <div>
+            <div className={styles.rowLabel}>音量の自動調整</div>
+            <div className={styles.rowSub}>SNS投稿に最適な音量に自動調整します</div>
+          </div>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={settings.normalizeAudio}
+              onChange={e => updateSettings({ normalizeAudio: e.target.checked })}
+            />
+            <span className={styles.toggleTrack} />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.section}>
         <div className={styles.sectionTitle}>自動トリミング</div>
 
         <div className={styles.row}>
