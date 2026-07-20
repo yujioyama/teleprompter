@@ -1,5 +1,5 @@
 // teleprompter-app/src/pages/RecordPage.tsx
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
@@ -19,7 +19,8 @@ export default function RecordPage() {
 
   const [shotIndex, setShotIndex] = useState(0)
   const { videoRef, error: cameraError, ready, restart: restartCamera } = useCamera()
-  const { state, startRecording, stopRecording, shareOrDownload, reset, blobRef } = useRecorder()
+  const { state, startRecording, stopRecording, importFile, shareOrDownload, reset, blobRef } = useRecorder()
+  const importInputRef = useRef<HTMLInputElement>(null)
   const { supported: wakeLockSupported } = useWakeLock()
 
   const [isReviewing, setIsReviewing] = useState(false)
@@ -116,6 +117,25 @@ export default function RecordPage() {
     const stream = (videoRef.current?.srcObject as MediaStream) ?? null
     if (!stream) return
     startRecording(stream, {
+      trimEnabled: effectiveTrimEnabled,
+      trimPaddingStart: effectiveTrimPaddingStart,
+      trimPaddingEnd: effectiveTrimPaddingEnd,
+      normalizeAudio: globalSettings.normalizeAudio,
+    })
+  }
+
+  // Hands the current shot list to the native Cinematic-capture companion app
+  // (github.com/yujioyama/teleprompter-cam) so it can be recorded there instead.
+  function handleRecordInNativeApp() {
+    const payload = encodeURIComponent(JSON.stringify(safeScript.shots))
+    window.location.href = `teleprompter-cam://record?shots=${payload}`
+  }
+
+  function handleImportFromCameraRoll(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    importFile(file, {
       trimEnabled: effectiveTrimEnabled,
       trimPaddingStart: effectiveTrimPaddingStart,
       trimPaddingEnd: effectiveTrimPaddingEnd,
@@ -312,6 +332,25 @@ export default function RecordPage() {
               >
                 🎙 マイク再接続
               </button>
+              <button
+                className={styles.nativeBtn}
+                onClick={handleRecordInNativeApp}
+              >
+                📱 ネイティブアプリで撮影
+              </button>
+              <button
+                className={styles.importBtn}
+                onClick={() => importInputRef.current?.click()}
+              >
+                🖼 カメラロールからインポート
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="video/*"
+                onChange={handleImportFromCameraRoll}
+                className={styles.hiddenFileInput}
+              />
             </>
           )}
 

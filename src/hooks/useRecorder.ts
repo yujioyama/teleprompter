@@ -17,6 +17,7 @@ interface UseRecorderResult {
   remuxError: string | null
   startRecording: (stream: MediaStream, shotSettings: ShotTrimSettings) => void
   stopRecording: () => void
+  importFile: (file: File, shotSettings: ShotTrimSettings) => Promise<void>
   shareOrDownload: (filename: string) => Promise<boolean>
   reset: () => void
   blobRef: Readonly<RefObject<Blob | null>>
@@ -29,6 +30,20 @@ function getSupportedMimeType(): string {
 
 function getExtension(mimeType: string): string {
   return mimeType.includes('mp4') ? 'mp4' : 'webm'
+}
+
+// mov and mp4 are both the ISO base media container (ffmpeg's mov,mp4,m4a,3gp,3g2,mj2
+// demuxer handles either identically), so a .mov clip imported from the camera roll
+// (e.g. from the native Cinematic-capture companion app) is just as remuxable as mp4.
+function isRemuxableContainer(mimeType: string): boolean {
+  return mimeType.includes('mp4') || mimeType.includes('quicktime')
+}
+
+function inferMimeType(file: File): string {
+  if (file.type) return file.type
+  if (/\.mov$/i.test(file.name)) return 'video/quicktime'
+  if (/\.mp4$/i.test(file.name)) return 'video/mp4'
+  return 'video/webm'
 }
 
 export function useRecorder(): UseRecorderResult {
@@ -66,29 +81,7 @@ export function useRecorder(): UseRecorderResult {
       const raw = new Blob(chunksRef.current, {
         type: mimeType || 'video/webm',
       })
-
-      // Remux MP4 to move moov atom to front (faststart) for editor compatibility.
-      // Also detect and trim leading/trailing silence in the same FFmpeg pass.
-      if (mimeType.includes('mp4')) {
-        setState('remuxing')
-        let trim = null
-        if (shotSettings.trimEnabled) {
-          trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
-        }
-        const result = await remuxMp4(raw, {
-          trim: trim ?? undefined,
-          normalize: shotSettings.normalizeAudio,
-        })
-        blobRef.current = result.blob
-        setRemuxOk(result.ok)
-        setRemuxError(result.error ?? null)
-      } else {
-        // webm: trimming not supported, silently ignored
-        blobRef.current = raw
-        setRemuxOk(true)
-      }
-
-      setState('stopped')
+      await processFinishedBlob(raw, mimeType, shotSettings)
     }
 
     // Flush data every second — prevents the iOS video encoder's internal buffer from
@@ -101,6 +94,46 @@ export function useRecorder(): UseRecorderResult {
     if (recorderRef.current?.state === 'recording') {
       recorderRef.current.stop()
     }
+  }
+
+  // Shared by both a just-finished MediaRecorder take and an imported camera-roll file,
+  // so trim/normalize/remux behave identically regardless of where the video came from.
+  async function processFinishedBlob(raw: Blob, mimeType: string, shotSettings: ShotTrimSettings) {
+    // Remux to move the moov atom to the front (faststart) for editor compatibility.
+    // Also detect and trim leading/trailing silence in the same FFmpeg pass.
+    if (isRemuxableContainer(mimeType)) {
+      setState('remuxing')
+      let trim = null
+      if (shotSettings.trimEnabled) {
+        trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
+      }
+      const result = await remuxMp4(raw, {
+        trim: trim ?? undefined,
+        normalize: shotSettings.normalizeAudio,
+      })
+      blobRef.current = result.blob
+      // remuxMp4's output is always video/mp4, regardless of the input container.
+      mimeTypeRef.current = 'video/mp4'
+      setRemuxOk(result.ok)
+      setRemuxError(result.error ?? null)
+    } else {
+      // webm: trimming not supported, silently ignored
+      blobRef.current = raw
+      setRemuxOk(true)
+    }
+
+    setState('stopped')
+  }
+
+  async function importFile(file: File, shotSettings: ShotTrimSettings) {
+    if (state !== 'idle') return
+    const mimeType = inferMimeType(file)
+    mimeTypeRef.current = mimeType
+    chunksRef.current = []
+    blobRef.current = null
+    setRemuxOk(null)
+    setRemuxError(null)
+    await processFinishedBlob(file, mimeType, shotSettings)
   }
 
   async function shareOrDownload(filename: string): Promise<boolean> {
@@ -142,5 +175,5 @@ export function useRecorder(): UseRecorderResult {
     setState('idle')
   }
 
-  return { state, remuxOk, remuxError, startRecording, stopRecording, shareOrDownload, reset, blobRef }
+  return { state, remuxOk, remuxError, startRecording, stopRecording, importFile, shareOrDownload, reset, blobRef }
 }

@@ -82,6 +82,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .recordBtn {
@@ -155,6 +157,21 @@
   font-size: 0.75rem;
   border: 1px solid var(--border);
   margin-top: 4px;
+}
+
+.nativeBtn,
+.importBtn {
+  background: transparent;
+  color: var(--accent);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  border: 1px solid var(--accent);
+  margin-top: 4px;
+}
+
+.hiddenFileInput {
+  display: none;
 }
 
 .nextBtn {
