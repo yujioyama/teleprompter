@@ -191,6 +191,11 @@ export default function ShotEditPage() {
 
   function handleSave() {
     updateScript(safeScript.id, { shots })
+    // Jump straight to the native Cinematic-capture companion app
+    // (github.com/yujioyama/teleprompter-cam) instead of making the user
+    // press a second "record" button on the next screen.
+    const payload = encodeURIComponent(JSON.stringify(shots))
+    window.location.href = `teleprompter-cam://record?shots=${payload}`
     navigate(`/scripts/${safeScript.id}/record`)
   }
 
