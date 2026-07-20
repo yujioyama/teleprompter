@@ -3,10 +3,7 @@ import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
-import { useCamera } from '../hooks/useCamera'
 import { useRecorder } from '../hooks/useRecorder'
-import { useWakeLock } from '../hooks/useWakeLock'
-import CameraPreview from '../components/CameraPreview'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
@@ -18,16 +15,13 @@ export default function RecordPage() {
   const script = id ? getScript(id) : undefined
 
   const [shotIndex, setShotIndex] = useState(0)
-  const { videoRef, error: cameraError, ready, restart: restartCamera } = useCamera()
-  const { state, startRecording, stopRecording, importFile, shareOrDownload, reset, blobRef } = useRecorder()
+  const { state, importFile, shareOrDownload, reset, blobRef } = useRecorder()
   const importInputRef = useRef<HTMLInputElement>(null)
-  const { supported: wakeLockSupported } = useWakeLock()
 
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
-  const [cameraExpanded, setCameraExpanded] = useState(false)
 
   if (!script || script.shots.length === 0) {
     return (
@@ -57,10 +51,6 @@ export default function RecordPage() {
     return `${safeTitle}-shot-${num}`
   }
 
-  function handleStop() {
-    stopRecording()
-  }
-
   async function handleSaveAndNext() {
     const saved = await shareOrDownload(getFilename())
     if (!saved) return  // user cancelled — stay on current shot
@@ -78,7 +68,6 @@ export default function RecordPage() {
   }
 
   function handleJumpToShot(index: number) {
-    if (state === 'recording') stopRecording()
     closeModal()
     reset()
     setShotSettingsOpen(false)
@@ -112,22 +101,11 @@ export default function RecordPage() {
     setShotSettingsOpen(false)
   }
 
-  function handleRecord() {
-    if (state !== 'idle') return
-    const stream = (videoRef.current?.srcObject as MediaStream) ?? null
-    if (!stream) return
-    startRecording(stream, {
-      trimEnabled: effectiveTrimEnabled,
-      trimPaddingStart: effectiveTrimPaddingStart,
-      trimPaddingEnd: effectiveTrimPaddingEnd,
-      normalizeAudio: globalSettings.normalizeAudio,
-    })
-  }
-
-  // Hands the current shot list to the native Cinematic-capture companion app
-  // (github.com/yujioyama/teleprompter-cam) so it can be recorded there instead.
+  // Hands the remaining shots (from the current one onward) to the native
+  // Cinematic-capture companion app (github.com/yujioyama/teleprompter-cam),
+  // which is the only way to record — there is no in-browser camera anymore.
   function handleRecordInNativeApp() {
-    const payload = encodeURIComponent(JSON.stringify(safeScript.shots))
+    const payload = encodeURIComponent(JSON.stringify(safeScript.shots.slice(shotIndex)))
     window.location.href = `teleprompter-cam://record?shots=${payload}`
   }
 
@@ -203,18 +181,6 @@ export default function RecordPage() {
   return (
     <div className={styles.page}>
       <div className={styles.mainScroll}>
-        {/* Wake Lock warning */}
-        {!wakeLockSupported && (
-          <div className={styles.wakeLockWarning}>
-            ⚠️ 画面オフに注意してください（iOS 16.4未満では自動防止できません）
-          </div>
-        )}
-
-        {/* Camera error */}
-        {cameraError && (
-          <div className={styles.errorBanner}>{cameraError}</div>
-        )}
-
         {/* Shot counter — tap to open shot list */}
         <button className={styles.counter} onClick={() => setShotListOpen(true)}>
           {shotIndex + 1} / {safeScript.shots.length} ≡
@@ -312,31 +278,16 @@ export default function RecordPage() {
         )}
       </div>
 
-      {/* Camera + controls — bottom (fixed dock) */}
+      {/* Controls — bottom (fixed dock) */}
       <div className={styles.controls}>
-        <CameraPreview videoRef={videoRef} onClick={() => setCameraExpanded(true)} />
-
         <div className={styles.buttons}>
           {state === 'idle' && (
             <>
               <button
                 className={styles.recordBtn}
-                onClick={handleRecord}
-                disabled={!ready}
-              >
-                🔴 録画
-              </button>
-              <button
-                className={styles.micRestartBtn}
-                onClick={restartCamera}
-              >
-                🎙 マイク再接続
-              </button>
-              <button
-                className={styles.nativeBtn}
                 onClick={handleRecordInNativeApp}
               >
-                📱 ネイティブアプリで撮影
+                🔴 撮影開始
               </button>
               <button
                 className={styles.importBtn}
@@ -352,12 +303,6 @@ export default function RecordPage() {
                 className={styles.hiddenFileInput}
               />
             </>
-          )}
-
-          {state === 'recording' && (
-            <button className={`${styles.recordBtn} ${styles.recording}`} onClick={handleStop}>
-              ⏹ 停止
-            </button>
           )}
 
           {state === 'remuxing' && (
@@ -391,7 +336,6 @@ export default function RecordPage() {
       <button
         className={styles.backBtn}
         onClick={() => {
-          if (state === 'recording') stopRecording()
           closeModal()
           navigate(`/scripts/${safeScript.id}/shots`)
         }}
@@ -420,23 +364,6 @@ export default function RecordPage() {
               ))}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Camera expanded overlay */}
-      {cameraExpanded && (
-        <div className={styles.cameraOverlay} onClick={() => setCameraExpanded(false)}>
-          <video
-            className={styles.cameraOverlayVideo}
-            autoPlay
-            muted
-            playsInline
-            ref={el => {
-              if (el && videoRef.current?.srcObject) {
-                el.srcObject = videoRef.current.srcObject
-              }
-            }}
-          />
         </div>
       )}
 
