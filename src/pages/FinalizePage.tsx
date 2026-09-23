@@ -132,7 +132,7 @@ export default function FinalizePage() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <button className={styles.backBtn} onClick={() => navigate(`/scripts/${script.id}/record`)}>
+        <button className={styles.backBtn} onClick={() => navigate(`/scripts/${script.id}/shots`)}>
           ‹ 戻る
         </button>
         <h1 className={styles.heading}>動画を仕上げる</h1>
