@@ -1,5 +1,5 @@
 // teleprompter-app/src/pages/RecordPage.tsx
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
@@ -17,11 +17,20 @@ export default function RecordPage() {
   const [shotIndex, setShotIndex] = useState(0)
   const { state, importFile, shareOrDownload, reset, blobRef } = useRecorder()
   const importInputRef = useRef<HTMLInputElement>(null)
+  const mainScrollRef = useRef<HTMLDivElement>(null)
 
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
+
+  // Scroll the prompt text back to the top whenever we return to the idle
+  // (reading) screen — after a retry, skip, save, or jumping to another shot.
+  useEffect(() => {
+    if (state === 'idle') {
+      mainScrollRef.current?.scrollTo({ top: 0 })
+    }
+  }, [state, shotIndex])
 
   if (!script || script.shots.length === 0) {
     return (
@@ -180,7 +189,7 @@ export default function RecordPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.mainScroll}>
+      <div className={styles.mainScroll} ref={mainScrollRef}>
         {/* Shot counter — tap to open shot list */}
         <button className={styles.counter} onClick={() => setShotListOpen(true)}>
           {shotIndex + 1} / {safeScript.shots.length} ≡
