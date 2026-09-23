@@ -18,8 +18,10 @@ async function getFFmpeg(): Promise<FFmpeg> {
 }
 
 /**
- * Extract a 16kHz mono PCM WAV from a video blob's audio track — the format
- * transformers.js's Whisper pipeline expects when fed a URL/Blob directly.
+ * Extract a 16kHz mono PCM WAV from a video blob's audio track. Whisper
+ * transcription (transcribeSpeech.ts) decodes this WAV on the main thread
+ * into a raw Float32Array before handing it to the Worker — AudioContext,
+ * needed to decode a Blob/URL, isn't available inside a Worker.
  */
 export async function extractAudioForTranscription(videoBlob: Blob): Promise<Blob> {
   const ff = await getFFmpeg()
