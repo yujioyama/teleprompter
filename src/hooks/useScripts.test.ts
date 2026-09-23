@@ -1,6 +1,13 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useScripts } from './useScripts'
+
+// deleteScript fire-and-forgets a real IndexedDB cleanup call, which jsdom
+// (this file's test environment) doesn't implement. Mock it so this hook's
+// localStorage-only behavior can be tested in isolation.
+vi.mock('../utils/shotVideoStore', () => ({
+  clearShotVideos: vi.fn().mockResolvedValue(undefined),
+}))
 
 beforeEach(() => {
   localStorage.clear()
