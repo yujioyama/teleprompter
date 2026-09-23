@@ -39,7 +39,11 @@ export default function MusicMixer({ videoBlob, filenameBase }: MusicMixerProps)
     setStage('mixing')
     setErrorMessage(null)
     try {
-      const trackBlob = await fetch(`/${track.file}`).then(r => r.blob())
+      const trackResponse = await fetch(`/${track.file}`)
+      if (!trackResponse.ok) {
+        throw new Error(`BGMファイルの読み込みに失敗しました: ${track.file}`)
+      }
+      const trackBlob = await trackResponse.blob()
       const mixed = await mixMusic(videoBlob, trackBlob, volume)
       if (mixedUrlRef.current) {
         URL.revokeObjectURL(mixedUrlRef.current)
