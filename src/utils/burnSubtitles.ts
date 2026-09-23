@@ -47,6 +47,29 @@ export function buildOverlayFilterGraph(
 }
 
 /**
+ * Find the largest font size (in 2px steps, down to `minPx`) at which `text`
+ * measures within `maxWidth` when rendered with the given `weight`. Used
+ * instead of passing a `maxWidth` to `fillText`, which condenses/squashes
+ * glyphs horizontally rather than shrinking or wrapping them.
+ */
+function fitFontSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  startPx: number,
+  minPx: number,
+  weight: string,
+): number {
+  let size = startPx
+  while (size > minPx) {
+    ctx.font = `${weight} ${size}px sans-serif`
+    if (ctx.measureText(text).width <= maxWidth) break
+    size -= 2
+  }
+  return size
+}
+
+/**
  * Render one cue's bilingual subtitle (Japanese bold/larger above, English
  * smaller below, on a semi-transparent rounded background) as a transparent
  * PNG sized to the video width.
@@ -73,12 +96,16 @@ export async function renderCueImage(cue: SubtitleCue, videoWidth: number): Prom
   ctx.textAlign = 'center'
   ctx.fillStyle = '#ffffff'
 
-  ctx.font = 'bold 52px sans-serif'
-  ctx.fillText(cue.ja ?? '', videoWidth / 2, boxTop + 70, videoWidth - padding * 4)
+  const textWidth = videoWidth - padding * 4
+  const jaText = cue.ja ?? ''
+  const jaFontSize = fitFontSize(ctx, jaText, textWidth, 52, 24, 'bold')
+  ctx.font = `bold ${jaFontSize}px sans-serif`
+  ctx.fillText(jaText, videoWidth / 2, boxTop + 70)
 
-  ctx.font = '34px sans-serif'
+  const enFontSize = fitFontSize(ctx, cue.en, textWidth, 34, 18, '')
+  ctx.font = `${enFontSize}px sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
-  ctx.fillText(cue.en, videoWidth / 2, boxTop + 130, videoWidth - padding * 4)
+  ctx.fillText(cue.en, videoWidth / 2, boxTop + 130)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => {
