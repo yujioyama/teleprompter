@@ -1,0 +1,55 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
+
+.timeline {
+  position: relative;
+  height: 36px;
+  background: var(--surface2);
+  border-radius: 8px;
+  touch-action: none;
+}
+
+.selectedRange {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  opacity: 0.35;
+  border-radius: 8px;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  margin-left: -8px;
+  background: var(--accent);
+  border-radius: 4px;
+  cursor: ew-resize;
+}
+
+.readout {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.transitionBtn {
+  align-self: flex-start;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
