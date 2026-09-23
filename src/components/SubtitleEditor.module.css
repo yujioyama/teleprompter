@@ -1,0 +1,38 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.num {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+.time {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-left: 6px;
+}
+
+.field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.fieldJa {
+  font-weight: 700;
+}
