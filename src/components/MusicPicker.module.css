@@ -1,0 +1,63 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.genreGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.genreLabel {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.trackRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.trackRowSelected {
+  outline: 2px solid var(--accent);
+}
+
+.trackTitle {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-align: left;
+  background: none;
+}
+
+.previewBtn {
+  background: var(--surface);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.volumeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.volumeLabel {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.volumeSlider {
+  flex: 1;
+}
