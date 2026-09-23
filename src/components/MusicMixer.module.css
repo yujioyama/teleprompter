@@ -1,0 +1,45 @@
+.wrapper {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.mixBtn {
+  background: var(--accent);
+  color: #fff;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.mixBtn:disabled {
+  opacity: 0.5;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.preview {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
