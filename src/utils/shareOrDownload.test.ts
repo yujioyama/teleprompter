@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
 import { shareOrDownload } from './shareOrDownload'
 
 function makeBlob(type = 'video/mp4') {
@@ -6,7 +6,7 @@ function makeBlob(type = 'video/mp4') {
 }
 
 describe('shareOrDownload', () => {
-  let createObjectURLSpy: ReturnType<typeof vi.spyOn>
+  let createObjectURLSpy: MockInstance<(obj: Blob | MediaSource) => string>
 
   beforeEach(() => {
     createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url')
