@@ -56,33 +56,55 @@ export default function ShotTrimmer({
     draggingRef.current = null
   }
 
-  async function playTransitionPreview() {
+  function playTransitionPreview() {
     const a = videoRef.current
     const b = nextVideoRef.current
     if (!a || !b || !nextUrl) return
 
     setPreviewingTransition(true)
-    a.currentTime = Math.max(0, trimEnd - TRANSITION_WINDOW)
-    await a.play()
 
-    a.onpause = null
-    const stopAtEnd = () => {
-      if (a.currentTime >= trimEnd) {
-        a.pause()
-        a.removeEventListener('timeupdate', stopAtEnd)
-        b.currentTime = 0
-        b.play()
-        const stopB = () => {
-          if (b.currentTime >= TRANSITION_WINDOW) {
-            b.pause()
-            b.removeEventListener('timeupdate', stopB)
-            setPreviewingTransition(false)
-          }
-        }
-        b.addEventListener('timeupdate', stopB)
+    function finish() {
+      a!.removeEventListener('timeupdate', stopAtEnd)
+      a!.removeEventListener('pause', onInterrupted)
+      a!.removeEventListener('error', onInterrupted)
+      b!.removeEventListener('timeupdate', stopB)
+      b!.removeEventListener('pause', onInterrupted)
+      b!.removeEventListener('error', onInterrupted)
+      setPreviewingTransition(false)
+    }
+
+    function onInterrupted() {
+      finish()
+    }
+
+    function stopB() {
+      if (b!.currentTime >= TRANSITION_WINDOW) {
+        b!.removeEventListener('pause', onInterrupted)
+        b!.pause()
+        finish()
       }
     }
+
+    function stopAtEnd() {
+      if (a!.currentTime >= trimEnd) {
+        a!.removeEventListener('pause', onInterrupted)
+        a!.pause()
+        a!.removeEventListener('timeupdate', stopAtEnd)
+        a!.removeEventListener('error', onInterrupted)
+        b!.currentTime = 0
+        b!.addEventListener('timeupdate', stopB)
+        b!.addEventListener('pause', onInterrupted)
+        b!.addEventListener('error', onInterrupted)
+        b!.play().catch(finish)
+      }
+    }
+
     a.addEventListener('timeupdate', stopAtEnd)
+    a.addEventListener('pause', onInterrupted)
+    a.addEventListener('error', onInterrupted)
+
+    a.currentTime = Math.max(0, trimEnd - TRANSITION_WINDOW)
+    a.play().catch(finish)
   }
 
   const startPct = duration ? (trimStart / duration) * 100 : 0
