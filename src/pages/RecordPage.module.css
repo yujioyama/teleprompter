@@ -170,6 +170,14 @@
   padding: 4px 0;
 }
 
+.persistError {
+  font-size: 0.8rem;
+  color: #e74c3c;
+  text-align: center;
+  padding: 4px 0;
+  width: 100%;
+}
+
 .complete {
   height: 100dvh;
   display: flex;

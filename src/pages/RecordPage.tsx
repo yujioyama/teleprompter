@@ -24,6 +24,7 @@ export default function RecordPage() {
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
+  const [persistError, setPersistError] = useState<string | null>(null)
 
   // Scroll the prompt text back to the top whenever we return to the idle
   // (reading) screen — after a retry, skip, save, or jumping to another shot.
@@ -31,6 +32,25 @@ export default function RecordPage() {
     if (state === 'idle') {
       mainScrollRef.current?.scrollTo({ top: 0 })
     }
+  }, [state, shotIndex])
+
+  // Persist every processed take to IndexedDB as soon as it's ready, independent
+  // of whether the user later exports it to the camera roll or skips that export.
+  // A retake resets state to 'idle' then back to 'stopped' for the same shotIndex,
+  // so this naturally re-persists (and overwrites) on each new take.
+  useEffect(() => {
+    if (state !== 'stopped') {
+      setPersistError(null)
+      return
+    }
+    if (!blobRef.current || !script) return
+    const shot = script.shots[shotIndex]
+    if (!shot) return
+    saveShotVideo(script.id, shot.id, blobRef.current).catch(err => {
+      console.error('Failed to persist shot video to IndexedDB', err)
+      setPersistError('この動画を保存できませんでした。ストレージの空き容量を確認してください。')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, shotIndex])
 
   if (!script || script.shots.length === 0) {
@@ -64,9 +84,6 @@ export default function RecordPage() {
   async function handleSaveAndNext() {
     const saved = await shareOrDownload(getFilename())
     if (!saved) return  // user cancelled — stay on current shot
-    if (blobRef.current && currentShot) {
-      await saveShotVideo(safeScript.id, currentShot.id, blobRef.current)
-    }
     closeModal()
     reset()
     setShotSettingsOpen(false)
@@ -346,6 +363,9 @@ export default function RecordPage() {
                   {isLast ? '保存せずに完了' : '保存せずに次へ'}
                 </button>
               </div>
+              {persistError && (
+                <p className={styles.persistError}>{persistError}</p>
+              )}
             </div>
           )}
         </div>
