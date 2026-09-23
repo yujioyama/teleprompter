@@ -6,6 +6,7 @@ import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
+import SubtitleWorkflow from '../components/SubtitleWorkflow'
 import styles from './FinalizePage.module.css'
 
 interface ShotEntry {
@@ -195,6 +196,9 @@ export default function FinalizePage() {
               <button className={styles.finalizeBtn} onClick={handleSaveCombined}>
                 保存する
               </button>
+              {combinedBlob && (
+                <SubtitleWorkflow combinedBlob={combinedBlob} filenameBase={`${script.title}-combined`} />
+              )}
             </div>
           )}
         </>
