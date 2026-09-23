@@ -1,6 +1,7 @@
 import { useRef, useState, type RefObject } from 'react'
 import { remuxMp4 } from '../utils/remuxMp4'
 import { detectSpeechBounds } from '../utils/detectSpeechBounds'
+import { shareOrDownload as shareBlob } from '../utils/shareOrDownload'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
@@ -26,10 +27,6 @@ interface UseRecorderResult {
 function getSupportedMimeType(): string {
   const types = ['video/mp4', 'video/webm;codecs=h264', 'video/webm']
   return types.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-}
-
-function getExtension(mimeType: string): string {
-  return mimeType.includes('mp4') ? 'mp4' : 'webm'
 }
 
 // mov and mp4 are both the ISO base media container (ffmpeg's mov,mp4,m4a,3gp,3g2,mj2
@@ -138,32 +135,7 @@ export function useRecorder(): UseRecorderResult {
 
   async function shareOrDownload(filename: string): Promise<boolean> {
     if (!blobRef.current) return false
-
-    const ext = getExtension(mimeTypeRef.current)
-    const fullName = `${filename}.${ext}`
-    const file = new File([blobRef.current], fullName, {
-      type: mimeTypeRef.current || 'video/webm',
-    })
-
-    // Try Web Share API first (saves to camera roll on iOS Safari 15+)
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: fullName })
-        return true
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return false
-        // Non-AbortError: share API failed for other reason — fall through to download fallback
-      }
-    }
-
-    // Fallback: trigger download (always succeeds)
-    const url = URL.createObjectURL(blobRef.current)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fullName
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 100)
-    return true
+    return shareBlob(blobRef.current, filename)
   }
 
   function reset() {

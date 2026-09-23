@@ -1,14 +1,38 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
+import { listShotVideos } from '../utils/shotVideoStore'
 import styles from './HomePage.module.css'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { scripts, deleteScript } = useScripts()
+  const [scriptsWithVideos, setScriptsWithVideos] = useState<Set<string>>(new Set())
 
   const sorted = [...scripts].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   )
+
+  // Small personal app with few scripts — one IndexedDB query per script on
+  // mount is acceptable to find which ones have a Finalize entry point.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(
+      scripts.map(async script => {
+        const stored = await listShotVideos(script.id)
+        return stored.length > 0 ? script.id : null
+      })
+    ).then(ids => {
+      if (cancelled) return
+      setScriptsWithVideos(new Set(ids.filter((id): id is string => id !== null)))
+    }).catch(err => {
+      if (cancelled) return
+      console.error('Failed to check for stored shot videos', err)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [scripts])
 
   return (
     <div className={styles.page}>
@@ -55,6 +79,15 @@ export default function HomePage() {
                   {new Date(script.updatedAt).toLocaleDateString('ja-JP')}
                 </span>
               </button>
+              {scriptsWithVideos.has(script.id) && (
+                <button
+                  className={styles.finalizeBtn}
+                  onClick={() => navigate(`/scripts/${script.id}/finalize`)}
+                  aria-label="動画を仕上げる"
+                >
+                  🎬
+                </button>
+              )}
               <button
                 className={styles.deleteBtn}
                 onClick={() => {

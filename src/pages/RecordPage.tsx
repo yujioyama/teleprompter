@@ -1,9 +1,10 @@
 // teleprompter-app/src/pages/RecordPage.tsx
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import { useRecorder } from '../hooks/useRecorder'
+import { saveShotVideo } from '../utils/shotVideoStore'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
@@ -17,11 +18,40 @@ export default function RecordPage() {
   const [shotIndex, setShotIndex] = useState(0)
   const { state, importFile, shareOrDownload, reset, blobRef } = useRecorder()
   const importInputRef = useRef<HTMLInputElement>(null)
+  const mainScrollRef = useRef<HTMLDivElement>(null)
 
   const [isReviewing, setIsReviewing] = useState(false)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
+  const [persistError, setPersistError] = useState<string | null>(null)
+
+  // Scroll the prompt text back to the top whenever we return to the idle
+  // (reading) screen — after a retry, skip, save, or jumping to another shot.
+  useEffect(() => {
+    if (state === 'idle') {
+      mainScrollRef.current?.scrollTo({ top: 0 })
+    }
+  }, [state, shotIndex])
+
+  // Persist every processed take to IndexedDB as soon as it's ready, independent
+  // of whether the user later exports it to the camera roll or skips that export.
+  // A retake resets state to 'idle' then back to 'stopped' for the same shotIndex,
+  // so this naturally re-persists (and overwrites) on each new take.
+  useEffect(() => {
+    if (state !== 'stopped') {
+      setPersistError(null)
+      return
+    }
+    if (!blobRef.current || !script) return
+    const shot = script.shots[shotIndex]
+    if (!shot) return
+    saveShotVideo(script.id, shot.id, blobRef.current).catch(err => {
+      console.error('Failed to persist shot video to IndexedDB', err)
+      setPersistError('この動画を保存できませんでした。ストレージの空き容量を確認してください。')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, shotIndex])
 
   if (!script || script.shots.length === 0) {
     return (
@@ -169,6 +199,12 @@ export default function RecordPage() {
           {safeScript.shots.length}ショット すべて録画しました
         </p>
         <button
+          className={styles.finalizeBtn}
+          onClick={() => navigate(`/scripts/${safeScript.id}/finalize`)}
+        >
+          🎬 動画を仕上げる
+        </button>
+        <button
           className={styles.doneBtn}
           onClick={() => navigate(`/scripts/${safeScript.id}/shots`)}
         >
@@ -180,7 +216,7 @@ export default function RecordPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.mainScroll}>
+      <div className={styles.mainScroll} ref={mainScrollRef}>
         {/* Shot counter — tap to open shot list */}
         <button className={styles.counter} onClick={() => setShotListOpen(true)}>
           {shotIndex + 1} / {safeScript.shots.length} ≡
@@ -327,6 +363,9 @@ export default function RecordPage() {
                   {isLast ? '保存せずに完了' : '保存せずに次へ'}
                 </button>
               </div>
+              {persistError && (
+                <p className={styles.persistError}>{persistError}</p>
+              )}
             </div>
           )}
         </div>

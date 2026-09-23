@@ -7,6 +7,13 @@ import styles from './ScriptEditPage.module.css'
 
 const DRAFT_KEY = 'teleprompter_new_script_draft'
 
+const NEW_SCRIPT_SPLIT_OPTIONS: SplitOptions = {
+  period: false,
+  exclamation: false,
+  englishPeriod: false,
+  newline: true,
+}
+
 function generateId() {
   return crypto.randomUUID()
 }
@@ -30,7 +37,9 @@ export default function ScriptEditPage() {
   const [preview, setPreview] = useState<string[]>(
     () => existingScript ? existingScript.shots.map(s => s.text) : []
   )
-  const [splitOptions, setSplitOptions] = useState<SplitOptions>(DEFAULT_SPLIT_OPTIONS)
+  const [splitOptions, setSplitOptions] = useState<SplitOptions>(
+    () => existingScript ? DEFAULT_SPLIT_OPTIONS : NEW_SCRIPT_SPLIT_OPTIONS
+  )
 
   function saveDraft(nextTitle: string, nextBody: string) {
     if (!isEdit) {

@@ -89,6 +89,13 @@
   color: var(--text-muted);
 }
 
+.finalizeBtn {
+  padding: 16px 4px 16px 16px;
+  background: none;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
 .headerActions {
   display: flex;
   align-items: center;
