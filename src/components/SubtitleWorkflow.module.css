@@ -1,0 +1,84 @@
+.wrapper {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.genBtn {
+  background: var(--accent);
+  color: #fff;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.genBtn:disabled {
+  opacity: 0.5;
+}
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.copyBtn {
+  align-self: flex-start;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.pasteArea {
+  width: 100%;
+  min-height: 120px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.positionRow {
+  display: flex;
+  gap: 8px;
+}
+
+.positionBtn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.positionBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.preview {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
