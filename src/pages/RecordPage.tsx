@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import { useRecorder } from '../hooks/useRecorder'
+import { saveShotVideo } from '../utils/shotVideoStore'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
@@ -63,6 +64,9 @@ export default function RecordPage() {
   async function handleSaveAndNext() {
     const saved = await shareOrDownload(getFilename())
     if (!saved) return  // user cancelled — stay on current shot
+    if (blobRef.current && currentShot) {
+      await saveShotVideo(safeScript.id, currentShot.id, blobRef.current)
+    }
     closeModal()
     reset()
     setShotSettingsOpen(false)
