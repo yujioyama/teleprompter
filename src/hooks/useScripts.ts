@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Script, Shot } from '../types'
+import { clearShotVideos } from '../utils/shotVideoStore'
 
 const STORAGE_KEY = 'teleprompter_scripts'
 
@@ -55,6 +56,9 @@ export function useScripts() {
     const updated = scripts.filter(s => s.id !== id)
     saveToStorage(updated)
     setScripts(updated)
+    // Fire-and-forget: clean up orphaned IndexedDB blobs without making
+    // deleteScript async.
+    clearShotVideos(id).catch(err => console.error('Failed to clear stored shot videos', err))
   }
 
   function getScript(id: string): Script | undefined {
