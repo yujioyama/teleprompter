@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { SubtitleCue, buildClaudePrompt, parseJapanesePaste } from '../utils/subtitleCues'
-import { extractAudioForTranscription } from '../utils/extractAudioForTranscription'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { burnSubtitles } from '../utils/burnSubtitles'
 import { SubtitlePosition } from '../utils/subtitlePosition'
@@ -39,8 +38,7 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase }: Subtitl
     setStage('transcribing')
     setErrorMessage(null)
     try {
-      const audio = await extractAudioForTranscription(combinedBlob)
-      const generated = await transcribeSpeech(audio)
+      const generated = await transcribeSpeech(combinedBlob)
       setCues(generated)
       setStage('reviewing')
     } catch (err) {

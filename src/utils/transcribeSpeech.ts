@@ -28,6 +28,13 @@ export function cuesFromWhisperChunks(chunks: WhisperChunk[]): SubtitleCue[] {
  * straight to the worker throws "AudioContext is not available in your
  * environment"). Decoding here and transferring the raw samples avoids that
  * entirely.
+ *
+ * `decodeAudioData` is container-agnostic: it decodes straight out of a
+ * combined H.264/AAC video Blob just as well as a standalone WAV, and
+ * `AudioContext({ sampleRate: WHISPER_SAMPLE_RATE })` resamples to 16kHz on
+ * its own — confirmed by manual testing directly against a real MP4 with an
+ * AAC audio track. So callers pass the source video Blob directly; there is
+ * no separate audio-extraction step.
  */
 async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
   const arrayBuffer = await blob.arrayBuffer()
@@ -55,9 +62,12 @@ async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
 /**
  * Run on-device Whisper transcription in a Web Worker (keeps model load and
  * inference off the main thread). Resolves with timestamped English cues.
+ *
+ * Accepts the combined video Blob directly (no separate audio-extraction
+ * step needed) — see `decodeToWhisperPcm` above.
  */
-export async function transcribeSpeech(audioBlob: Blob): Promise<SubtitleCue[]> {
-  const audioData = await decodeToWhisperPcm(audioBlob)
+export async function transcribeSpeech(videoBlob: Blob): Promise<SubtitleCue[]> {
+  const audioData = await decodeToWhisperPcm(videoBlob)
 
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/whisperWorker.ts', import.meta.url), {
