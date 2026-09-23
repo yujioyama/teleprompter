@@ -105,6 +105,11 @@ export default function FinalizePage() {
   async function handleCombine() {
     setCombineState('combining')
     setCombineError(null)
+    // A fresh combine invalidates any previously burned/mixed downstream output
+    // (SubtitleWorkflow's burned video, this page's subtitledBlob) even before
+    // the new combine finishes, so nothing stale is shown or fed to MusicMixer
+    // in the meantime.
+    setSubtitledBlob(null)
     try {
       const normalized: Blob[] = []
       for (const entry of availableEntries) {
@@ -201,6 +206,11 @@ export default function FinalizePage() {
               </button>
               {combinedBlob && (
                 <SubtitleWorkflow
+                  // Key on the combined video's own object URL so React unmounts
+                  // and remounts SubtitleWorkflow whenever a fresh combine
+                  // completes, resetting its internal stage/cues/burnedBlob
+                  // state rather than leaving it pointing at the old video.
+                  key={combinedUrl}
                   combinedBlob={combinedBlob}
                   filenameBase={`${script.title}-combined`}
                   onBurned={setSubtitledBlob}
