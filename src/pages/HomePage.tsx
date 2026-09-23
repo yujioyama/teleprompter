@@ -25,6 +25,9 @@ export default function HomePage() {
     ).then(ids => {
       if (cancelled) return
       setScriptsWithVideos(new Set(ids.filter((id): id is string => id !== null)))
+    }).catch(err => {
+      if (cancelled) return
+      console.error('Failed to check for stored shot videos', err)
     })
     return () => {
       cancelled = true
