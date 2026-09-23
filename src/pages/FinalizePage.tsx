@@ -28,6 +28,7 @@ export default function FinalizePage() {
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [combineState, setCombineState] = useState<CombineState>('idle')
   const [combineError, setCombineError] = useState<string | null>(null)
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
@@ -59,6 +60,11 @@ export default function FinalizePage() {
         }
       })
       setEntries(next)
+      setLoading(false)
+    }).catch(err => {
+      if (cancelled) return
+      console.error('Failed to load stored shot videos', err)
+      setLoadError('動画の読み込みに失敗しました。ページを再読み込みしてください。')
       setLoading(false)
     })
 
@@ -140,6 +146,8 @@ export default function FinalizePage() {
 
       {loading ? (
         <p className={styles.missing}>読み込み中...</p>
+      ) : loadError ? (
+        <p className={styles.missing}>{loadError}</p>
       ) : (
         <>
           <div className={styles.shotList}>
