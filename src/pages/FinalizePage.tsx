@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
@@ -19,6 +19,7 @@ export default function FinalizePage() {
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const urlsRef = useRef<string[]>([])
 
   useEffect(() => {
     if (!script) return
@@ -29,11 +30,15 @@ export default function FinalizePage() {
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
+        const url = blob ? URL.createObjectURL(blob) : null
+        if (url) {
+          urlsRef.current.push(url)
+        }
         return {
           shotId: shot.id,
           text: shot.text,
           blob,
-          url: blob ? URL.createObjectURL(blob) : null,
+          url,
         }
       })
       setEntries(next)
@@ -48,12 +53,10 @@ export default function FinalizePage() {
 
   // Revoke object URLs on unmount to avoid leaking memory
   useEffect(() => {
+    const urls = urlsRef.current
     return () => {
-      entries.forEach(e => {
-        if (e.url) URL.revokeObjectURL(e.url)
-      })
+      urls.forEach(url => URL.revokeObjectURL(url))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!script) {
