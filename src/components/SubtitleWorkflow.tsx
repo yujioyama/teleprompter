@@ -10,11 +10,12 @@ import styles from './SubtitleWorkflow.module.css'
 interface SubtitleWorkflowProps {
   combinedBlob: Blob
   filenameBase: string
+  onBurned?: (blob: Blob) => void
 }
 
 type Stage = 'idle' | 'transcribing' | 'reviewing' | 'burning' | 'done' | 'error'
 
-export default function SubtitleWorkflow({ combinedBlob, filenameBase }: SubtitleWorkflowProps) {
+export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned }: SubtitleWorkflowProps) {
   const [stage, setStage] = useState<Stage>('idle')
   const [cues, setCues] = useState<SubtitleCue[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -82,6 +83,7 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase }: Subtitl
       setBurnedBlob(burned)
       setBurnedUrl(url)
       setStage('done')
+      onBurned?.(burned)
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err))
       setStage('error')

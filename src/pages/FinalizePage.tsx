@@ -7,6 +7,7 @@ import { concatVideos } from '../utils/concatVideos'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow from '../components/SubtitleWorkflow'
+import MusicMixer from '../components/MusicMixer'
 import styles from './FinalizePage.module.css'
 
 interface ShotEntry {
@@ -34,6 +35,7 @@ export default function FinalizePage() {
   const [combineError, setCombineError] = useState<string | null>(null)
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
+  const [subtitledBlob, setSubtitledBlob] = useState<Blob | null>(null)
   const urlsRef = useRef<string[]>([])
   const combinedUrlRef = useRef<string | null>(null)
 
@@ -98,6 +100,7 @@ export default function FinalizePage() {
 
   const availableEntries = entries.filter(e => e.blob)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
+  const finalBlob = subtitledBlob ?? combinedBlob
 
   async function handleCombine() {
     setCombineState('combining')
@@ -197,7 +200,14 @@ export default function FinalizePage() {
                 保存する
               </button>
               {combinedBlob && (
-                <SubtitleWorkflow combinedBlob={combinedBlob} filenameBase={`${script.title}-combined`} />
+                <SubtitleWorkflow
+                  combinedBlob={combinedBlob}
+                  filenameBase={`${script.title}-combined`}
+                  onBurned={setSubtitledBlob}
+                />
+              )}
+              {finalBlob && (
+                <MusicMixer videoBlob={finalBlob} filenameBase={`${script.title}-final`} />
               )}
             </div>
           )}
