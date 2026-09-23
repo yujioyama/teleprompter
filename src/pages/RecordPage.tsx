@@ -182,6 +182,12 @@ export default function RecordPage() {
           {safeScript.shots.length}ショット すべて録画しました
         </p>
         <button
+          className={styles.finalizeBtn}
+          onClick={() => navigate(`/scripts/${safeScript.id}/finalize`)}
+        >
+          🎬 動画を仕上げる
+        </button>
+        <button
           className={styles.doneBtn}
           onClick={() => navigate(`/scripts/${safeScript.id}/shots`)}
         >
