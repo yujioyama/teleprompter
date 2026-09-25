@@ -1,16 +1,15 @@
 import { useRef, useState, type RefObject } from 'react'
-import { remuxMp4 } from '../utils/remuxMp4'
-import { detectSpeechBounds } from '../utils/detectSpeechBounds'
 import { shareOrDownload as shareBlob } from '../utils/shareOrDownload'
+import {
+  processRecordedVideo,
+  inferMimeType,
+  isRemuxableContainer,
+  type ShotTrimSettings,
+} from '../utils/processRecordedVideo'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
-export interface ShotTrimSettings {
-  trimEnabled: boolean
-  trimPaddingStart: number
-  trimPaddingEnd: number
-  normalizeAudio: boolean
-}
+export type { ShotTrimSettings }
 
 interface UseRecorderResult {
   state: RecordState
@@ -27,20 +26,6 @@ interface UseRecorderResult {
 function getSupportedMimeType(): string {
   const types = ['video/mp4', 'video/webm;codecs=h264', 'video/webm']
   return types.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-}
-
-// mov and mp4 are both the ISO base media container (ffmpeg's mov,mp4,m4a,3gp,3g2,mj2
-// demuxer handles either identically), so a .mov clip imported from the camera roll
-// (e.g. from the native Cinematic-capture companion app) is just as remuxable as mp4.
-function isRemuxableContainer(mimeType: string): boolean {
-  return mimeType.includes('mp4') || mimeType.includes('quicktime')
-}
-
-function inferMimeType(file: File): string {
-  if (file.type) return file.type
-  if (/\.mov$/i.test(file.name)) return 'video/quicktime'
-  if (/\.mp4$/i.test(file.name)) return 'video/mp4'
-  return 'video/webm'
 }
 
 export function useRecorder(): UseRecorderResult {
@@ -96,28 +81,19 @@ export function useRecorder(): UseRecorderResult {
   // Shared by both a just-finished MediaRecorder take and an imported camera-roll file,
   // so trim/normalize/remux behave identically regardless of where the video came from.
   async function processFinishedBlob(raw: Blob, mimeType: string, shotSettings: ShotTrimSettings) {
-    // Remux to move the moov atom to the front (faststart) for editor compatibility.
-    // Also detect and trim leading/trailing silence in the same FFmpeg pass.
-    if (isRemuxableContainer(mimeType)) {
+    const remuxable = isRemuxableContainer(mimeType)
+    if (remuxable) {
       setState('remuxing')
-      let trim = null
-      if (shotSettings.trimEnabled) {
-        trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
-      }
-      const result = await remuxMp4(raw, {
-        trim: trim ?? undefined,
-        normalize: shotSettings.normalizeAudio,
-      })
-      blobRef.current = result.blob
+    }
+
+    const result = await processRecordedVideo(raw, mimeType, shotSettings)
+    blobRef.current = result.blob
+    if (remuxable) {
       // remuxMp4's output is always video/mp4, regardless of the input container.
       mimeTypeRef.current = 'video/mp4'
-      setRemuxOk(result.ok)
-      setRemuxError(result.error ?? null)
-    } else {
-      // webm: trimming not supported, silently ignored
-      blobRef.current = raw
-      setRemuxOk(true)
     }
+    setRemuxOk(result.ok)
+    setRemuxError(result.error)
 
     setState('stopped')
   }
