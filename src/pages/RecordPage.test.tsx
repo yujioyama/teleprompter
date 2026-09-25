@@ -4,6 +4,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import RecordPage from './RecordPage'
 import { Script } from '../types'
+import { listShotVideos } from '../utils/shotVideoStore'
+import { processRecordedVideo } from '../utils/processRecordedVideo'
 
 vi.mock('../utils/processRecordedVideo', async () => {
   const actual = await vi.importActual<typeof import('../utils/processRecordedVideo')>(
@@ -105,5 +107,51 @@ describe('RecordPage bulk import from teleprompter-cam', () => {
       await screen.findByText(/一致しないファイルがあります: IMG_1234\.MOV/)
     ).toBeInTheDocument()
     expect(screen.getByText('1 / 3 ≡')).toBeInTheDocument()
+    expect(await listShotVideos('script-1')).toHaveLength(0)
+  })
+
+  it('hides the import controls while a bulk import is in progress', async () => {
+    const script = seedScript()
+    let resolveProcessing!: (value: { blob: Blob; ok: boolean; error: string | null }) => void
+    vi.mocked(processRecordedVideo).mockImplementation(
+      () => new Promise(resolve => { resolveProcessing = resolve })
+    )
+    renderRecordPage(script.id)
+
+    const input = screen.getByLabelText('録画した動画をインポート') as HTMLInputElement
+    selectFiles(input, [videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`)])
+
+    await waitFor(() => {
+      expect(screen.getByText('インポート中 (0/1)...')).toBeInTheDocument()
+    })
+    expect(screen.queryByLabelText('録画した動画をインポート')).not.toBeInTheDocument()
+
+    resolveProcessing({ blob: new Blob(['x']), ok: true, error: null })
+    await waitFor(() => {
+      expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument()
+    })
+  })
+
+  it('still saves a shot when remux fails, and shows the warning on the finish screen', async () => {
+    const script = seedScript()
+    vi.mocked(processRecordedVideo).mockImplementation(async (raw: Blob) => {
+      const name = (raw as File).name
+      if (name.includes(SHOT_2)) {
+        return { blob: raw, ok: false, error: 'remux failed' }
+      }
+      return { blob: raw, ok: true, error: null }
+    })
+    renderRecordPage(script.id)
+
+    const input = screen.getByLabelText('録画した動画をインポート') as HTMLInputElement
+    selectFiles(input, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      videoFile(`TeleprompterCam-abc-shot2of3-${SHOT_2}.mov`),
+      videoFile(`TeleprompterCam-abc-shot3of3-${SHOT_3}.mov`),
+    ])
+
+    expect(await screen.findByText('撮影完了！')).toBeInTheDocument()
+    expect(screen.getByText(/動画の変換に失敗したため/)).toBeInTheDocument()
+    expect(await listShotVideos('script-1')).toHaveLength(3)
   })
 })
