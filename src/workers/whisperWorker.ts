@@ -1,4 +1,13 @@
-import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+
+// Safari's multi-threaded WASM backend (SharedArrayBuffer + growable memory)
+// reliably fails during model init with "no available backend found" / "out
+// of memory" even for whisper-tiny, while Chrome handles it fine. Pinning to
+// a single thread avoids that path entirely; the model is small enough that
+// the throughput cost is negligible.
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.numThreads = 1
+}
 
 let transcriberPromise: Promise<AutomaticSpeechRecognitionPipeline> | null = null
 
