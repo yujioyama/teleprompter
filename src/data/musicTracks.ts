@@ -16,7 +16,37 @@ export const GENRE_LABELS: Record<MusicGenre, string> = {
   corporate: 'コーポレート / モチベーション',
 }
 
-// Populated in a follow-up once royalty-free tracks have been sourced and
-// added under public/music/ — see docs/superpowers/specs/2026-09-23-video-finalize-design.md.
-// The BGM section in FinalizePage does not render while this is empty.
-export const MUSIC_TRACKS: MusicTrack[] = []
+// Sourced from Pixabay Music (pixabay.com/music), used under the Pixabay
+// Content License (free to use, no attribution required, modification
+// allowed) — see https://pixabay.com/service/license-summary/.
+// `credit` is not currently rendered anywhere in the UI; kept for reference.
+export const MUSIC_TRACKS: MusicTrack[] = [
+  {
+    id: 'lofi-sunny-cafe',
+    title: 'Lofi Sunny Cafe',
+    genre: 'lofi',
+    credit: 'alex-morgan (Pixabay)',
+    file: 'music/lofi-01-sunny-cafe.mp3',
+  },
+  {
+    id: 'summer-pop',
+    title: 'Summer Pop',
+    genre: 'pop',
+    credit: 'The_Mountain (Pixabay)',
+    file: 'music/pop-01-summer-pop.mp3',
+  },
+  {
+    id: 'cinematic-emotional-rise',
+    title: 'Cinematic Emotional Rise Score',
+    genre: 'cinematic',
+    credit: 'alex-morgan (Pixabay)',
+    file: 'music/cinematic-01-emotional-rise.mp3',
+  },
+  {
+    id: 'corporate-motivational-presentation',
+    title: 'Corporate Motivational Presentation Music',
+    genre: 'corporate',
+    credit: 'alex-morgan (Pixabay)',
+    file: 'music/corporate-01-presentation.mp3',
+  },
+]
