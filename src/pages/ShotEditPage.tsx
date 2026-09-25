@@ -222,6 +222,7 @@ export default function ShotEditPage() {
 
       <div className={styles.body}>
         <p className={styles.hint}>
+          {/* eslint-disable-next-line no-irregular-whitespace -- full-width space is intentional Japanese UI spacing */}
           タップ → 編集　長押し → 並び替え ({shots.length}ショット)
         </p>
 

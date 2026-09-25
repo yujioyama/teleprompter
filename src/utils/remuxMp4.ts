@@ -82,7 +82,11 @@ export async function remuxMp4(
       }
     }
     ff.on('log', durHandler)
-    try { await ff.exec(['-i', 'in.mp4', '-f', 'null', '-']) } catch {}
+    try {
+      await ff.exec(['-i', 'in.mp4', '-f', 'null', '-'])
+    } catch {
+      // duration probe only; a failed exec here is harmless
+    }
     ff.off('log', durHandler)
 
     console.log('[remuxMp4] blob:', blob.size, 'bytes | container duration:', containerDuration, 's')
