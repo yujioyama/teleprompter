@@ -4,7 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import { useRecorder } from '../hooks/useRecorder'
-import { saveShotVideo } from '../utils/shotVideoStore'
+import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
+import { processRecordedVideo, inferMimeType, type ShotTrimSettings } from '../utils/processRecordedVideo'
+import { resolveImportTargets } from '../utils/matchShotRecordings'
+import { Shot } from '../types'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
@@ -25,6 +28,8 @@ export default function RecordPage() {
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
   const [persistError, setPersistError] = useState<string | null>(null)
+  const [bulkImportError, setBulkImportError] = useState<string | null>(null)
+  const [bulkImportProgress, setBulkImportProgress] = useState<{ done: number; total: number } | null>(null)
 
   // Scroll the prompt text back to the top whenever we return to the idle
   // (reading) screen — after a retry, skip, save, or jumping to another shot.
@@ -140,15 +145,68 @@ export default function RecordPage() {
   }
 
   function handleImportFromCameraRoll(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // allow re-selecting the same file
-    if (!file) return
-    importFile(file, {
-      trimEnabled: effectiveTrimEnabled,
-      trimPaddingStart: effectiveTrimPaddingStart,
-      trimPaddingEnd: effectiveTrimPaddingEnd,
-      normalizeAudio: globalSettings.normalizeAudio,
-    })
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // allow re-selecting the same file(s)
+    if (files.length === 0) return
+
+    const resolution = resolveImportTargets(files, safeScript.shots)
+
+    if (resolution.kind === 'legacy') {
+      setBulkImportError(null)
+      importFile(resolution.file, {
+        trimEnabled: effectiveTrimEnabled,
+        trimPaddingStart: effectiveTrimPaddingStart,
+        trimPaddingEnd: effectiveTrimPaddingEnd,
+        normalizeAudio: globalSettings.normalizeAudio,
+      })
+      return
+    }
+
+    if (resolution.kind === 'error') {
+      setBulkImportError(`一致しないファイルがあります: ${resolution.unmatchedFilenames.join(', ')}`)
+      return
+    }
+
+    runBulkImport(resolution.targets)
+  }
+
+  async function runBulkImport(targets: { shot: Shot; file: File }[]) {
+    setBulkImportError(null)
+    setBulkImportProgress({ done: 0, total: targets.length })
+    const failedShotTexts: string[] = []
+
+    for (let i = 0; i < targets.length; i++) {
+      const { shot, file } = targets[i]
+      try {
+        const mimeType = inferMimeType(file)
+        const shotSettings: ShotTrimSettings = {
+          trimEnabled: shot.trimEnabled ?? globalSettings.trimEnabled,
+          trimPaddingStart: shot.trimPaddingStart ?? globalSettings.trimPaddingStart,
+          trimPaddingEnd: shot.trimPaddingEnd ?? globalSettings.trimPaddingEnd,
+          normalizeAudio: globalSettings.normalizeAudio,
+        }
+        const processed = await processRecordedVideo(file, mimeType, shotSettings)
+        if (!processed.ok) {
+          failedShotTexts.push(shot.text)
+          continue
+        }
+        await saveShotVideo(safeScript.id, shot.id, processed.blob)
+      } catch (err) {
+        console.error('Failed to import a recorded shot video', err)
+        failedShotTexts.push(shot.text)
+      }
+      setBulkImportProgress({ done: i + 1, total: targets.length })
+    }
+
+    setBulkImportProgress(null)
+    if (failedShotTexts.length > 0) {
+      setBulkImportError(`保存できなかったショットがあります: ${failedShotTexts.join(', ')}`)
+    }
+
+    const stored = await listShotVideos(safeScript.id)
+    const savedIds = new Set(stored.map(v => v.shotId))
+    const nextIndex = safeScript.shots.findIndex(s => !savedIds.has(s.id))
+    setShotIndex(nextIndex === -1 ? safeScript.shots.length : nextIndex)
   }
 
   function handleToggleOverride(enabled: boolean) {
@@ -335,9 +393,19 @@ export default function RecordPage() {
                 ref={importInputRef}
                 type="file"
                 accept="video/*"
+                multiple
+                aria-label="録画した動画をインポート"
                 onChange={handleImportFromCameraRoll}
                 className={styles.hiddenFileInput}
               />
+              {bulkImportProgress && (
+                <div className={styles.remuxing}>
+                  インポート中 ({bulkImportProgress.done}/{bulkImportProgress.total})...
+                </div>
+              )}
+              {bulkImportError && (
+                <p className={styles.persistError}>{bulkImportError}</p>
+              )}
             </>
           )}
 
