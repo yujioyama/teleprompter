@@ -45,7 +45,7 @@ export default function FinalizePage() {
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
-  // all transcription/translation work would be lost on back-navigation.
+  // all translation/subtitle work would be lost on back-navigation.
   const [subtitleState, setSubtitleState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [step, setStep] = useState<WizardStepId>('trim')
   const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([])
@@ -155,13 +155,16 @@ export default function FinalizePage() {
     // clearing the blobs is sufficient — no completedSteps update needed.
     setBurnedBlob(null)
     setMixedBlob(null)
-    // A re-combined video invalidates any transcription tied to the old one.
+    // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
       const normalized: Blob[] = []
+      const shotDurations: number[] = []
       for (const entry of availableEntries) {
-        const trimmed = await trimAndNormalizeShot(entry.blob!, entry.trimStart, entry.trimEnd || entry.duration)
+        const trimEnd = entry.trimEnd || entry.duration
+        const trimmed = await trimAndNormalizeShot(entry.blob!, entry.trimStart, trimEnd)
         normalized.push(trimmed)
+        shotDurations.push(trimEnd - entry.trimStart)
       }
       const combined = await concatVideos(normalized)
       if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
@@ -169,13 +172,11 @@ export default function FinalizePage() {
       combinedUrlRef.current = url
       setCombinedBlob(combined)
       setCombinedUrl(url)
-      // Same entries, same order, same trim values used just above to build
-      // `normalized` — keeps subtitle timing aligned with the actual output.
+      // Same entries, same order, same trim-end values used just above to
+      // build `normalized` — keeps subtitle timing aligned with the actual
+      // combined output by construction, not by keeping two formulas in sync.
       setShotCueInputs(
-        availableEntries.map(entry => ({
-          text: entry.text,
-          duration: (entry.trimEnd || entry.duration) - entry.trimStart,
-        }))
+        availableEntries.map((entry, i) => ({ text: entry.text, duration: shotDurations[i] }))
       )
       setCombineState('done')
     } catch (err) {

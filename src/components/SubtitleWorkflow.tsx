@@ -79,7 +79,12 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   }, [combinedBlob])
 
   function handleGenerate() {
-    patch({ cues: cuesFromShotEntries(shotCueInputs), stage: 'reviewing' })
+    const generated = cuesFromShotEntries(shotCueInputs)
+    if (generated.length === 0) {
+      setErrorMessage('字幕にできるテキストがありません。トリミング画面でスクリプトのテキストを確認してください。')
+      return
+    }
+    patch({ cues: generated, stage: 'reviewing' })
   }
 
   function handleEditEn(id: string, text: string) {
@@ -135,7 +140,7 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
 
       {stage === 'idle' && (
         <button className={styles.genBtn} onClick={handleGenerate}>
-          🎤 英語字幕を生成
+          📝 英語字幕を生成
         </button>
       )}
 

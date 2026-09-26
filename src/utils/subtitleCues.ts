@@ -63,6 +63,9 @@ export interface ShotCueInput {
   duration: number
 }
 
+// Cue timing follows the requested trim durations exactly; it does not
+// correct for the few-ms encoder/frame-rounding drift that can accumulate
+// across re-encoded clips — imperceptible for sentence-length cues.
 export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
   const cues: SubtitleCue[] = []
   let offset = 0

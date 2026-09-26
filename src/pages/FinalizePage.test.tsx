@@ -78,7 +78,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance without changing position
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -107,7 +107,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -147,7 +147,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance (produces a burnedBlob)
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -193,7 +193,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -205,12 +205,12 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('BGMなしで進む')
     fireEvent.click(screen.getByText('字幕'))
 
-    // The previously transcribed English cue text must still be visible —
+    // The previously generated English cue text must still be visible —
     // SubtitleWorkflow must NOT have reset to its initial idle
-    // "🎤 英語字幕を生成" state, which would mean the transcription and
-    // translation work was lost.
+    // "📝 英語字幕を生成" state, which would mean the generated cues and
+    // translation work were lost.
     expect(await screen.findByDisplayValue('ショット1')).toBeInTheDocument()
-    expect(screen.queryByText('🎤 英語字幕を生成')).not.toBeInTheDocument()
+    expect(screen.queryByText('📝 英語字幕を生成')).not.toBeInTheDocument()
 
     // The real regression check: the subtitle step must be completable again,
     // not stuck showing the disabled "焼き込み中..." burning state left over
@@ -244,7 +244,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, then kick off burn-in but don't resolve it yet.
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
