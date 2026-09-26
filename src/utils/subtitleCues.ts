@@ -57,3 +57,21 @@ export function parseJapanesePaste(text: string, cues: SubtitleCue[]): ParseSucc
     cues: cues.map((cue, i) => ({ ...cue, ja: map.get(i + 1)! })),
   }
 }
+
+export interface ShotCueInput {
+  text: string
+  duration: number
+}
+
+export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
+  const cues: SubtitleCue[] = []
+  let offset = 0
+  entries.forEach((entry, i) => {
+    const text = entry.text.trim()
+    if (text) {
+      cues.push({ id: `shot-${i}`, start: offset, end: offset + entry.duration, en: text, ja: null })
+    }
+    offset += entry.duration
+  })
+  return cues
+}
