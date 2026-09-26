@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { clampTrimRange } from '../utils/shotTrim'
 import styles from './ShotTrimmer.module.css'
 
@@ -29,6 +29,32 @@ export default function ShotTrimmer({
   const draggingRef = useRef<'start' | 'end' | null>(null)
   const [previewingTransition, setPreviewingTransition] = useState(false)
 
+  // Keep normal playback (native controls) confined to the trimmed range,
+  // so pressing play previews only the part of the clip that will be kept.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || previewingTransition) return
+
+    function onPlay() {
+      if (video!.currentTime < trimStart || video!.currentTime >= trimEnd) {
+        video!.currentTime = trimStart
+      }
+    }
+    function onTimeUpdate() {
+      if (video!.currentTime >= trimEnd) {
+        video!.pause()
+        video!.currentTime = trimEnd
+      }
+    }
+
+    video.addEventListener('play', onPlay)
+    video.addEventListener('timeupdate', onTimeUpdate)
+    return () => {
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('timeupdate', onTimeUpdate)
+    }
+  }, [trimStart, trimEnd, previewingTransition])
+
   function timeFromPointerX(clientX: number): number {
     const el = timelineRef.current
     if (!el || duration === 0) return 0
@@ -50,6 +76,14 @@ export default function ShotTrimmer({
         ? clampTrimRange(t, trimEnd, duration)
         : clampTrimRange(trimStart, t, duration)
     onChange(start, end)
+
+    // Seek the preview to the handle being dragged so the user can see
+    // which frame that trim point lands on.
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.currentTime = which === 'start' ? start : end
+    }
   }
 
   function handlePointerUp() {
