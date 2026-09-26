@@ -4,16 +4,27 @@
   gap: 12px;
 }
 
-.genreGroup {
+.genreRow {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
 }
 
-.genreLabel {
+.genreRowLabel {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.genreSelect {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
 }
 
 .trackRow {
