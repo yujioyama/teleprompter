@@ -2,18 +2,15 @@ import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
-import * as transcribeModule from '../utils/transcribeSpeech'
+import { ShotCueInput } from '../utils/subtitleCues'
 import * as burnModule from '../utils/burnSubtitles'
 
-vi.mock('../utils/transcribeSpeech')
 vi.mock('../utils/burnSubtitles')
 
 const BLOB = new Blob(['x'], { type: 'video/mp4' })
+const SHOT_CUE_INPUTS: ShotCueInput[] = [{ text: 'Hello', duration: 2 }]
 
-function seedOneTranslatedCue() {
-  vi.mocked(transcribeModule.transcribeSpeech).mockResolvedValue([
-    { id: 'c1', start: 0, end: 2, en: 'Hello', ja: null },
-  ])
+function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
@@ -22,15 +19,18 @@ function seedOneTranslatedCue() {
 // wizard back-navigation). This wrapper mirrors how FinalizePage drives it.
 function ControlledSubtitleWorkflow({
   combinedBlob,
+  shotCueInputs,
   onBurned,
 }: {
   combinedBlob: Blob
+  shotCueInputs: ShotCueInput[]
   onBurned: (blob: Blob) => void
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   return (
     <SubtitleWorkflow
       combinedBlob={combinedBlob}
+      shotCueInputs={shotCueInputs}
       state={state}
       onStateChange={setState}
       onBurned={onBurned}
@@ -40,9 +40,9 @@ function ControlledSubtitleWorkflow({
 
 describe('SubtitleWorkflow position controls', () => {
   it('defaults to the bottom preset and burns in with it when advancing', async () => {
-    seedOneTranslatedCue()
+    seedBurnMock()
     const onBurned = vi.fn()
-    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} onBurned={onBurned} />)
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
     fireEvent.click(screen.getByText('🎤 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
@@ -65,9 +65,9 @@ describe('SubtitleWorkflow position controls', () => {
   })
 
   it('reveals a percent slider when the fine-tune toggle is switched on, and burns in with its value', async () => {
-    seedOneTranslatedCue()
+    seedBurnMock()
     const onBurned = vi.fn()
-    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} onBurned={onBurned} />)
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
     fireEvent.click(screen.getByText('🎤 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
@@ -86,8 +86,8 @@ describe('SubtitleWorkflow position controls', () => {
   })
 
   it('does not render a save button', async () => {
-    seedOneTranslatedCue()
-    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} onBurned={vi.fn()} />)
+    seedBurnMock()
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
     fireEvent.click(screen.getByText('🎤 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
@@ -99,10 +99,10 @@ describe('SubtitleWorkflow position controls', () => {
   })
 
   it('shows an inline error and lets the user retry burn-in after a failure, without losing cues', async () => {
-    seedOneTranslatedCue()
+    seedBurnMock()
     vi.mocked(burnModule.burnSubtitles).mockRejectedValueOnce(new Error('boom'))
     const onBurned = vi.fn()
-    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} onBurned={onBurned} />)
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
     fireEvent.click(screen.getByText('🎤 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
@@ -124,5 +124,29 @@ describe('SubtitleWorkflow position controls', () => {
     // Retrying should succeed now that the mock no longer rejects.
     fireEvent.click(nextBtn)
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
+  })
+
+  it('generates a cue per shot from script text, timed by cumulative shot duration', async () => {
+    seedBurnMock()
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={[
+          { text: 'First shot line', duration: 3 },
+          { text: '   ', duration: 1 },
+          { text: 'Third shot line', duration: 2 },
+        ]}
+        onBurned={vi.fn()}
+      />
+    )
+
+    fireEvent.click(screen.getByText('🎤 英語字幕を生成'))
+    await screen.findByDisplayValue('First shot line')
+    // The blank-text second shot produced no cue, but its duration still
+    // shifted the third shot's cue forward (asserted via the editor input
+    // for the third cue existing at all — full offset math is covered by
+    // cuesFromShotEntries's own unit tests).
+    expect(screen.getByDisplayValue('Third shot line')).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue(/shot line/)).toHaveLength(2)
   })
 })

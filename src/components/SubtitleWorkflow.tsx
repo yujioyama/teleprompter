@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { SubtitleCue, buildClaudePrompt, parseJapanesePaste } from '../utils/subtitleCues'
-import { transcribeSpeech } from '../utils/transcribeSpeech'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste } from '../utils/subtitleCues'
 import { burnSubtitles } from '../utils/burnSubtitles'
 import {
   SubtitlePosition,
@@ -41,6 +40,7 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
 
 interface SubtitleWorkflowProps {
   combinedBlob: Blob
+  shotCueInputs: ShotCueInput[]
   state: SubtitleState
   onStateChange: (updater: SubtitleState | ((prev: SubtitleState) => SubtitleState)) => void
   onBurned?: (blob: Blob) => void
@@ -52,7 +52,7 @@ const PRESETS: { label: string; value: SubtitlePosition }[] = [
   { label: '下部', value: SUBTITLE_POSITION_BOTTOM },
 ]
 
-export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, onBurned }: SubtitleWorkflowProps) {
+export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, onBurned }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -78,16 +78,8 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
     }
   }, [combinedBlob])
 
-  async function handleGenerate() {
-    patch({ stage: 'transcribing' })
-    setErrorMessage(null)
-    try {
-      const generated = await transcribeSpeech(combinedBlob)
-      patch({ cues: generated, stage: 'reviewing' })
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err))
-      patch({ stage: 'idle' })
-    }
+  function handleGenerate() {
+    patch({ cues: cuesFromShotEntries(shotCueInputs), stage: 'reviewing' })
   }
 
   function handleEditEn(id: string, text: string) {
@@ -145,10 +137,6 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
         <button className={styles.genBtn} onClick={handleGenerate}>
           🎤 英語字幕を生成
         </button>
-      )}
-
-      {stage === 'transcribing' && (
-        <p className={styles.sectionTitle}>字幕を生成中...（初回はモデルのダウンロードが入ります）</p>
       )}
 
       {(stage === 'reviewing' || stage === 'burning') && cues.length > 0 && (
