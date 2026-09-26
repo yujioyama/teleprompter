@@ -53,12 +53,30 @@ async function probeDuration(ff: FFmpeg, filename: string): Promise<number> {
   return duration
 }
 
+// Serializes actual FFmpeg-touching mix executions: the shared FFmpeg
+// instance uses fixed filenames with no locking, so two mixMusic() calls
+// running concurrently could interleave writeFile/exec/readFile/deleteFile
+// on the same files and corrupt each other's input/output. Chaining every
+// call onto this promise guarantees at most one mixMusicInternal body runs
+// at a time, while each caller still gets its own promise settling with its
+// own result.
+let mixQueue: Promise<unknown> = Promise.resolve()
+
 /**
  * Mix a BGM track under a video's existing audio, looped/faded to match the
  * video's exact duration at the given volume (0-1). Video stream is copied;
  * only audio is re-encoded.
  */
-export async function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+  const run = mixQueue.then(() => mixMusicInternal(videoBlob, trackBlob, volume))
+  // Swallow rejection in the queue chain itself so one failed mix doesn't
+  // permanently wedge the queue for later calls; this call's own returned
+  // promise still rejects normally for its caller.
+  mixQueue = run.catch(() => {})
+  return run
+}
+
+async function mixMusicInternal(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
   await ff.writeFile('track.mp3', await fetchFile(trackBlob))
