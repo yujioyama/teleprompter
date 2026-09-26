@@ -5,16 +5,14 @@ let loaded: Promise<void> | null = null
 
 /**
  * Shared FFmpeg singleton used by every ffmpeg.wasm caller in the app.
- * @ffmpeg/core-mt (the multi-threaded core) spins up its own pthread worker
- * pool per FFmpeg instance. Previously each util module (trimAndNormalizeShot,
- * concatVideos, burnSubtitles, mixMusic, remuxMp4) kept its own private
- * FFmpeg singleton, so a flow like the finalize wizard's combine step —
- * trimAndNormalizeShot followed by concatVideos — ended up with two
- * multi-threaded pthread pools alive at once. On mobile Safari that starved
- * the second pool of threads and either hung indefinitely or surfaced as an
- * internal error from the vendored core. Routing every caller through one
- * shared, lazily-loaded instance guarantees at most one pthread pool is ever
- * alive.
+ * Originally split per-module, which was harmless on the single-threaded
+ * core but became a problem when a since-reverted attempt switched to the
+ * multi-threaded @ffmpeg/core-mt (each instance spins up its own pthread
+ * pool, and two alive at once — e.g. combine's trimAndNormalizeShot followed
+ * by concatVideos — starved Safari of threads). @ffmpeg/core-mt was reverted
+ * after it turned out to be broadly unreliable on Safari/iOS (a WASM
+ * `call_indirect` runtime crash, on top of the threading issue above), but
+ * one shared instance remains the right shape regardless of core.
  */
 export async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpeg) ffmpeg = new FFmpeg()
@@ -23,7 +21,6 @@ export async function getFFmpeg(): Promise<FFmpeg> {
     loaded = ffmpeg.load({
       coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
       wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
     }).then(() => undefined)
   }
   await loaded
