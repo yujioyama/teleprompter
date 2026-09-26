@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SubtitleCue, buildClaudePrompt, parseJapanesePaste } from '../utils/subtitleCues'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { burnSubtitles } from '../utils/burnSubtitles'
@@ -59,6 +59,8 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [copyToastVisible, setCopyToastVisible] = useState(false)
+  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function patch(changes: Partial<SubtitleState>) {
     onStateChange(prev => ({ ...prev, ...changes }))
@@ -100,6 +102,12 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
 
   async function handleCopyPrompt() {
     await navigator.clipboard.writeText(buildClaudePrompt(cues))
+    if (copyToastTimerRef.current !== null) clearTimeout(copyToastTimerRef.current)
+    setCopyToastVisible(true)
+    copyToastTimerRef.current = setTimeout(() => {
+      setCopyToastVisible(false)
+      copyToastTimerRef.current = null
+    }, 2000)
   }
 
   function handleApplyPaste() {
@@ -235,6 +243,10 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
             </div>
           )}
         </>
+      )}
+
+      {copyToastVisible && (
+        <div className={styles.copyToast}>コピーしました</div>
       )}
     </div>
   )
