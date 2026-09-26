@@ -128,4 +128,32 @@ describe('MusicMixer auto-mix', () => {
     expect(onMixed).toHaveBeenCalledTimes(1)
     expect(onMixed).toHaveBeenCalledWith(null)
   })
+
+  it('ignores an in-flight mix result after unmounting the component', async () => {
+    vi.mocked(mixModule.mixMusic).mockClear()
+    const onMixed = vi.fn()
+    let resolveMix: (blob: Blob) => void = () => {}
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(
+      () =>
+        new Promise<Blob>(resolve => {
+          resolveMix = resolve
+        })
+    )
+
+    const { unmount } = render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={onMixed} onNext={vi.fn()} />)
+
+    fireEvent.click(screen.getByText(MUSIC_TRACKS[0].title))
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1), { timeout: 1000 })
+
+    // Unmount the component before the mix resolves (e.g., user navigates away)
+    unmount()
+
+    // The mix resolves after unmount
+    resolveMix(new Blob(['late'], { type: 'video/mp4' }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // onMixed must never be called, since the component was unmounted before
+    // the mix completed — the unmount guard invalidates the in-flight request
+    expect(onMixed).not.toHaveBeenCalled()
+  })
 })

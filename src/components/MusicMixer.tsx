@@ -37,6 +37,7 @@ export default function MusicMixer({ videoBlob, onMixed, onNext }: MusicMixerPro
     return () => {
       if (mixedUrlRef.current) URL.revokeObjectURL(mixedUrlRef.current)
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      requestIdRef.current += 1
     }
   }, [])
 
