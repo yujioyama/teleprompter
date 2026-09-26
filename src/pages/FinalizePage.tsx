@@ -27,10 +27,6 @@ type CombineState = 'idle' | 'combining' | 'done' | 'error'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 
-// How long trims must sit still before background-encoding them, so dragging
-// a trim handle doesn't queue a full encode per intermediate position.
-const PREFETCH_DEBOUNCE_MS = 800
-
 export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -166,21 +162,6 @@ export default function FinalizePage() {
       if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
     }
   }, [])
-
-  // Encode each shot in the background as soon as its trim settles, so by
-  // the time the user presses 結合 most (often all) shots are already done
-  // and only the fast `-c copy` concat remains.
-  useEffect(() => {
-    if (step !== 'trim' || combineState === 'combining') return
-    const timer = setTimeout(() => {
-      const cache = getNormalizeCache()
-      for (const entry of entries) {
-        if (!entry.blob || entry.duration <= 0) continue
-        cache.prefetch(entry.shotId, entry.blob, entry.trimStart, entry.trimEnd || entry.duration)
-      }
-    }, PREFETCH_DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [entries, step, combineState])
 
   async function handleCombine() {
     setCombineState('combining')

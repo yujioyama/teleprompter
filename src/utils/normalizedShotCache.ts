@@ -20,10 +20,12 @@ function blobId(blob: Blob): number {
 }
 
 /**
- * Caches each shot's trimmed+normalized clip so the finalize screen can
- * encode shots in the background while the user is still adjusting trims,
- * leaving only the fast `-c copy` concat for the "結合" button — and so a
- * re-combine after tweaking one shot only re-encodes that one shot.
+ * Caches each shot's trimmed+normalized clip so a re-combine after tweaking
+ * one shot only re-encodes that one shot.
+ *
+ * FinalizePage deliberately does NOT call prefetch() while the trim step's
+ * <video> previews are on screen: a background encode's memory use made iOS
+ * drop every preview player (issue #12).
  *
  * Encodes run strictly one at a time (the app shares one single-threaded
  * ffmpeg.wasm instance). A queued background prefetch whose shot has since
