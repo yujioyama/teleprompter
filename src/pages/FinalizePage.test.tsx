@@ -229,6 +229,48 @@ describe('FinalizePage wizard', () => {
     expect(await screen.findByText('BGMなしで進む')).toBeInTheDocument()
   })
 
+  it('blocks wizard step navigation while a transcription is in flight', async () => {
+    let resolveTranscribe: (cues: Awaited<ReturnType<typeof transcribeModule.transcribeSpeech>>) => void = () => {}
+    vi.mocked(transcribeModule.transcribeSpeech).mockReturnValue(
+      new Promise(resolve => {
+        resolveTranscribe = resolve
+      })
+    )
+
+    renderFinalizePage('script-1')
+
+    // Step 1: trim/combine
+    await screen.findByText('1. ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Step 2: subtitle — kick off transcription, but don't resolve it yet.
+    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    await screen.findByText('字幕を生成中...（初回はモデルのダウンロードが入ります）')
+
+    // While pending, the wizard indicator's completed 'trim' step must be
+    // disabled, and clicking it must not navigate away.
+    const trimStep = screen.getByText('トリミング').closest('button')!
+    expect(trimStep).toBeDisabled()
+    fireEvent.click(trimStep)
+    expect(screen.queryByText('結合する')).not.toBeInTheDocument()
+    expect(screen.getByText('字幕を生成中...（初回はモデルのダウンロードが入ります）')).toBeInTheDocument()
+
+    // The page's own back button should also be disabled while processing.
+    expect(screen.getByText('‹ 戻る')).toBeDisabled()
+
+    // Resolve the transcription and confirm the flow completes normally,
+    // with navigation re-enabled afterwards.
+    resolveTranscribe([{ id: 'c1', start: 0, end: 2, en: 'Hello', ja: null }])
+    await screen.findByDisplayValue('Hello')
+    expect(screen.getByText('トリミング').closest('button')).not.toBeDisabled()
+    expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
+  })
+
   it('shows the wizard progress indicator with 4 steps', async () => {
     renderFinalizePage('script-1')
     await screen.findByText('1. ショット1')

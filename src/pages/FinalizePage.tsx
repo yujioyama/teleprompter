@@ -112,6 +112,13 @@ export default function FinalizePage() {
     setStep(target)
   }
 
+  // Block back-navigation via the wizard indicator (and the page's own back
+  // button) while a transcription or burn-in is in flight: both update lifted
+  // subtitle state after their await resolves, and navigating away mid-flight
+  // (especially re-combining, which resets that lifted state) can leave the
+  // eventual resolution merging onto a state it no longer matches.
+  const subtitleProcessing = subtitleState.stage === 'transcribing' || subtitleState.stage === 'burning'
+
   const availableEntries = entries.filter(e => e.blob)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
@@ -183,7 +190,11 @@ export default function FinalizePage() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <button className={styles.backBtn} onClick={() => navigate(`/scripts/${script.id}/shots`)}>
+        <button
+          className={styles.backBtn}
+          onClick={() => navigate(`/scripts/${script.id}/shots`)}
+          disabled={subtitleProcessing}
+        >
           ‹ 戻る
         </button>
         <h1 className={styles.heading}>動画を仕上げる</h1>
@@ -195,7 +206,7 @@ export default function FinalizePage() {
         <p className={styles.missing}>{loadError}</p>
       ) : (
         <>
-          <WizardSteps current={step} completed={completedSteps} onSelect={goToStep} />
+          <WizardSteps current={step} completed={completedSteps} onSelect={goToStep} disabled={subtitleProcessing} />
 
           {step === 'trim' && (
             <div className={styles.stepBody}>

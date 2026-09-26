@@ -23,4 +23,19 @@ describe('WizardSteps', () => {
     fireEvent.click(screen.getByText('書き出し'))
     expect(onSelect).not.toHaveBeenCalled()
   })
+
+  it('disables every step, including completed ones, when disabled is true', () => {
+    const onSelect = vi.fn()
+    render(
+      <WizardSteps current="bgm" completed={['trim', 'subtitle']} onSelect={onSelect} disabled />
+    )
+    const trimStep = screen.getByText('トリミング').closest('button')!
+    const subtitleStep = screen.getByText('字幕').closest('button')!
+    expect(trimStep).toBeDisabled()
+    expect(subtitleStep).toBeDisabled()
+
+    fireEvent.click(trimStep)
+    fireEvent.click(subtitleStep)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
 })
