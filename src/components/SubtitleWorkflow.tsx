@@ -15,7 +15,7 @@ import styles from './SubtitleWorkflow.module.css'
 // on before attempting it ('idle' or 'reviewing' respectively), with the
 // failure surfaced via `errorMessage` instead, so the review/position UI
 // (and the ability to retry) is never fully replaced by an error screen.
-export type SubtitleStage = 'idle' | 'transcribing' | 'reviewing' | 'burning'
+export type SubtitleStage = 'idle' | 'reviewing' | 'burning'
 
 /**
  * Subtitle work lifted up to the parent (FinalizePage) so it survives

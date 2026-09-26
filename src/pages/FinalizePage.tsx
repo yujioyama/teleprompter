@@ -7,6 +7,7 @@ import { concatVideos } from '../utils/concatVideos'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
+import { ShotCueInput } from '../utils/subtitleCues'
 import MusicMixer from '../components/MusicMixer'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import styles from './FinalizePage.module.css'
@@ -38,6 +39,7 @@ export default function FinalizePage() {
   const [combineError, setCombineError] = useState<string | null>(null)
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
+  const [shotCueInputs, setShotCueInputs] = useState<ShotCueInput[]>([])
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixedBlob, setMixedBlob] = useState<Blob | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
@@ -113,11 +115,11 @@ export default function FinalizePage() {
   }
 
   // Block back-navigation via the wizard indicator (and the page's own back
-  // button) while a transcription or burn-in is in flight: both update lifted
-  // subtitle state after their await resolves, and navigating away mid-flight
-  // (especially re-combining, which resets that lifted state) can leave the
-  // eventual resolution merging onto a state it no longer matches.
-  const subtitleProcessing = subtitleState.stage === 'transcribing' || subtitleState.stage === 'burning'
+  // button) while a burn-in is in flight: it updates lifted subtitle state
+  // after its await resolves, and navigating away mid-flight (especially
+  // re-combining, which resets that lifted state) can leave the eventual
+  // resolution merging onto a state it no longer matches.
+  const subtitleProcessing = subtitleState.stage === 'burning'
 
   const availableEntries = entries.filter(e => e.blob)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
@@ -167,6 +169,14 @@ export default function FinalizePage() {
       combinedUrlRef.current = url
       setCombinedBlob(combined)
       setCombinedUrl(url)
+      // Same entries, same order, same trim values used just above to build
+      // `normalized` — keeps subtitle timing aligned with the actual output.
+      setShotCueInputs(
+        availableEntries.map(entry => ({
+          text: entry.text,
+          duration: (entry.trimEnd || entry.duration) - entry.trimStart,
+        }))
+      )
       setCombineState('done')
     } catch (err) {
       setCombineError(err instanceof Error ? err.message : String(err))
@@ -266,6 +276,7 @@ export default function FinalizePage() {
               <SubtitleWorkflow
                 key={combinedUrl}
                 combinedBlob={combinedBlob}
+                shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
                 onBurned={burned => {
