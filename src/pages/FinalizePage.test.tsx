@@ -8,6 +8,7 @@ import { saveShotVideo } from '../utils/shotVideoStore'
 import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
+import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -61,6 +62,24 @@ beforeEach(async () => {
 })
 
 describe('FinalizePage wizard', () => {
+  it('encodes shots in the background once trims settle, so combine reuses them', async () => {
+    renderFinalizePage('script-1')
+
+    await screen.findByText('1. ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+
+    // No button press yet — the debounced background prefetch does the encode.
+    await waitFor(() => expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1), {
+      timeout: 2000,
+    })
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1)
+  })
+
   it('walks trim → combine → subtitle → BGM skip → export, with a single save button at the end', async () => {
     renderFinalizePage('script-1')
 

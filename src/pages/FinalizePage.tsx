@@ -4,6 +4,7 @@ import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
+import { NormalizedShotCache } from '../utils/normalizedShotCache'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
@@ -25,6 +26,10 @@ interface ShotEntry {
 type CombineState = 'idle' | 'combining' | 'done' | 'error'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
+
+// How long trims must sit still before background-encoding them, so dragging
+// a trim handle doesn't queue a full encode per intermediate position.
+const PREFETCH_DEBOUNCE_MS = 800
 
 export default function FinalizePage() {
   const navigate = useNavigate()
@@ -54,6 +59,21 @@ export default function FinalizePage() {
   const combinedUrlRef = useRef<string | null>(null)
   const finalUrlRef = useRef<string | null>(null)
   const [finalUrl, setFinalUrl] = useState<string | null>(null)
+  const normalizeCacheRef = useRef<NormalizedShotCache | null>(null)
+
+  function getNormalizeCache(): NormalizedShotCache {
+    if (!normalizeCacheRef.current) {
+      normalizeCacheRef.current = new NormalizedShotCache(trimAndNormalizeShot)
+    }
+    return normalizeCacheRef.current
+  }
+
+  useEffect(() => {
+    return () => {
+      normalizeCacheRef.current?.dispose()
+      normalizeCacheRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!script) return
@@ -147,6 +167,21 @@ export default function FinalizePage() {
     }
   }, [])
 
+  // Encode each shot in the background as soon as its trim settles, so by
+  // the time the user presses 結合 most (often all) shots are already done
+  // and only the fast `-c copy` concat remains.
+  useEffect(() => {
+    if (step !== 'trim' || combineState === 'combining') return
+    const timer = setTimeout(() => {
+      const cache = getNormalizeCache()
+      for (const entry of entries) {
+        if (!entry.blob || entry.duration <= 0) continue
+        cache.prefetch(entry.shotId, entry.blob, entry.trimStart, entry.trimEnd || entry.duration)
+      }
+    }, PREFETCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [entries, step, combineState])
+
   async function handleCombine() {
     setCombineState('combining')
     setCombineError(null)
@@ -160,16 +195,40 @@ export default function FinalizePage() {
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
-      const normalized: Blob[] = []
-      const shotDurations: number[] = []
+      const cache = getNormalizeCache()
       const total = availableEntries.length
-      for (const [i, entry] of availableEntries.entries()) {
-        const trimEnd = entry.trimEnd || entry.duration
-        const trimmed = await trimAndNormalizeShot(entry.blob!, entry.trimStart, trimEnd, (ratio) =>
-          setCombineProgress((i + ratio) / total)
+      const shotDurations = availableEntries.map(e => (e.trimEnd || e.duration) - e.trimStart)
+      const keys = availableEntries.map(e =>
+        cache.keyFor(e.shotId, e.blob!, e.trimStart, e.trimEnd || e.duration),
+      )
+      // Per-shot completion ratio; shots already encoded in the background
+      // jump straight to 1 as soon as their cached promise resolves.
+      const ratios = new Map(keys.map(k => [k, 0]))
+      const report = () => {
+        let sum = 0
+        ratios.forEach(r => (sum += r))
+        setCombineProgress(sum / total)
+      }
+      cache.onProgress = (key, ratio) => {
+        if (!ratios.has(key)) return
+        ratios.set(key, ratio)
+        report()
+      }
+      let normalized: Blob[]
+      try {
+        normalized = await Promise.all(
+          availableEntries.map((entry, i) =>
+            cache
+              .get(entry.shotId, entry.blob!, entry.trimStart, entry.trimEnd || entry.duration)
+              .then(blob => {
+                ratios.set(keys[i], 1)
+                report()
+                return blob
+              }),
+          ),
         )
-        normalized.push(trimmed)
-        shotDurations.push(trimEnd - entry.trimStart)
+      } finally {
+        cache.onProgress = null
       }
       setCombineProgress(1)
       const combined = await concatVideos(normalized)

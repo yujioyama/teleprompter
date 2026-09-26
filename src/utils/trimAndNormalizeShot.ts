@@ -11,12 +11,17 @@ import { getFFmpeg } from './ffmpegClient'
  * browser recording or camera-roll import, which may differ in these, and
  * a mismatch breaks the concat demuxer's fast (-c copy) path silently.
  */
-export function buildTrimAndNormalizeArgs(start: number, end: number): string[] {
+export function buildTrimAndNormalizeArgs(
+  start: number,
+  end: number,
+  inputName = 'in.mp4',
+  outputName = 'out.mp4',
+): string[] {
   const args: string[] = []
   if (start > 0.001) {
     args.push('-ss', start.toFixed(3))
   }
-  args.push('-i', 'in.mp4')
+  args.push('-i', inputName)
   args.push('-t', (end - start).toFixed(3))
   args.push(
     '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2',
@@ -30,10 +35,12 @@ export function buildTrimAndNormalizeArgs(start: number, end: number): string[] 
     '-c:a', 'aac',
     '-b:a', '128k',
     '-movflags', '+faststart',
-    'out.mp4',
+    outputName,
   )
   return args
 }
+
+let callSeq = 0
 
 export async function trimAndNormalizeShot(
   blob: Blob,
@@ -42,6 +49,14 @@ export async function trimAndNormalizeShot(
   onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
   const ff = await getFFmpeg()
+  // Per-call file names: FinalizePage runs this in the background (see
+  // normalizedShotCache.ts), so it can overlap with other callers of the
+  // shared FFmpeg instance that use the fixed in.mp4/out.mp4 names. The
+  // worker serializes exec() itself, but a writeFile from one caller could
+  // otherwise clobber another's input between its writeFile and exec.
+  const seq = ++callSeq
+  const inputName = `norm${seq}-in.mp4`
+  const outputName = `norm${seq}-out.mp4`
   // Kept only to surface ffmpeg's own stderr in the thrown error on failure —
   // the vendored core's `ff.exec()` rejection carries no detail beyond a
   // generic "Aborted"/FS error (see execFFmpeg.ts), so without this a failed
@@ -57,11 +72,9 @@ export async function trimAndNormalizeShot(
   ff.on('log', handleLog)
   if (handleProgress) ff.on('progress', handleProgress)
   try {
-    await ff.writeFile('in.mp4', await fetchFile(blob))
-    await execFFmpeg(ff, buildTrimAndNormalizeArgs(start, end))
-    const data = await ff.readFile('out.mp4')
-    ff.deleteFile('in.mp4')
-    ff.deleteFile('out.mp4')
+    await ff.writeFile(inputName, await fetchFile(blob))
+    await execFFmpeg(ff, buildTrimAndNormalizeArgs(start, end, inputName, outputName))
+    const data = await ff.readFile(outputName)
     // A real encode failure can still leave a small/truncated out.mp4 behind
     // (e.g. ffmpeg exits before muxing the moov atom), which readFile above
     // doesn't catch — it only throws when nothing was written at all. execFFmpeg
@@ -79,6 +92,10 @@ export async function trimAndNormalizeShot(
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`trimAndNormalizeShot failed: ${msg}\n--- ffmpeg log tail ---\n${logs.slice(-15).join('\n')}`)
   } finally {
+    // Always clean up — a failed encode would otherwise leave the input
+    // (and any partial output) in MEMFS for the rest of the session.
+    await ff.deleteFile(inputName).catch(() => undefined)
+    await ff.deleteFile(outputName).catch(() => undefined)
     ff.off('log', handleLog)
     if (handleProgress) ff.off('progress', handleProgress)
   }
