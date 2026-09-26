@@ -119,7 +119,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('日本語を反映'))
     fireEvent.click(screen.getByText('次へ'))
 
-    // Now on the BGM step
+    // Now on the BGM step, with 'trim' and 'subtitle' both marked completed.
     await screen.findByText('BGMなしで進む')
 
     // Navigate back to the (now completed) trim step via the indicator.
@@ -128,16 +128,14 @@ describe('FinalizePage wizard', () => {
     // We're back on the trim step: the shot list and combine button reappear.
     expect(await screen.findByText('結合する')).toBeInTheDocument()
 
-    // Subtitle/BGM completion was invalidated: re-advancing forward requires
-    // going through subtitle generation again (SubtitleWorkflow was reset to
-    // its initial 'idle' stage instead of showing the previously burned blob).
-    const shotVideoAgain = document.querySelector('video') as HTMLVideoElement
-    Object.defineProperty(shotVideoAgain, 'duration', { value: 5, configurable: true })
-    fireEvent(shotVideoAgain, new Event('loadedmetadata'))
-    fireEvent.click(screen.getByText('結合する'))
-    fireEvent.click(await screen.findByText('次へ'))
-
-    expect(await screen.findByText('🎤 英語字幕を生成')).toBeInTheDocument()
+    // The real assertion: goToStep must have truncated completedSteps so
+    // that 'subtitle' is no longer completed. WizardSteps disables a step's
+    // button unless it's in `completed`, so the 字幕 step button must now be
+    // disabled. This is false (test fails) if goToStep were gutted to a
+    // no-op `setStep(target)`, since 'subtitle' would remain in the old
+    // completedSteps and the button would stay enabled.
+    expect(screen.getByText('字幕').closest('button')).toBeDisabled()
+    expect(screen.getByText('BGM').closest('button')).toBeDisabled()
   })
 
   it('shows the wizard progress indicator with 4 steps', async () => {
