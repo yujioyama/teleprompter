@@ -12,12 +12,15 @@ describe('execFFmpeg', () => {
     await expect(execFFmpeg(ff, ['-version'])).resolves.toBeUndefined()
   })
 
-  it('swallows the @ffmpeg/core-mt Safari/WebKit exit-unwind TypeError', async () => {
-    // Exact message WebKit produces when @ffmpeg/core-mt's own internal
-    // `!e.message.startsWith('Aborted')` guard runs against an unwind value
-    // that has no `.message` property (see execFFmpeg.ts for the full story).
+  it('swallows the @ffmpeg/core-mt Safari/WebKit exit-unwind error', async () => {
+    // @ffmpeg/ffmpeg's worker catches whatever @ffmpeg/core-mt's own internal
+    // `!e.message.startsWith('Aborted')` guard throws (a TypeError on
+    // Safari/WebKit, since the unwind value has no `.message` there) and
+    // posts it back as a plain string via `e.toString()` — so `ff.exec`
+    // rejects with that exact string, never an Error instance (see
+    // execFFmpeg.ts for the full story).
     const ff = fakeFFmpeg(async () => {
-      throw new TypeError("undefined is not an object (evaluating 'e.message.startsWith')")
+      throw "TypeError: undefined is not an object (evaluating 'e.message.startsWith')"
     })
     await expect(execFFmpeg(ff, ['-version'])).resolves.toBeUndefined()
   })
@@ -29,10 +32,10 @@ describe('execFFmpeg', () => {
     await expect(execFFmpeg(ff, ['-version'])).rejects.toThrow('out of memory')
   })
 
-  it('rethrows an unrelated TypeError unchanged', async () => {
+  it('rethrows an unrelated string rejection unchanged', async () => {
     const ff = fakeFFmpeg(async () => {
-      throw new TypeError('some other bug')
+      throw 'TypeError: some other bug'
     })
-    await expect(execFFmpeg(ff, ['-version'])).rejects.toThrow('some other bug')
+    await expect(execFFmpeg(ff, ['-version'])).rejects.toBe('TypeError: some other bug')
   })
 })
