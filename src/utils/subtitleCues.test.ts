@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, cuesFromShotEntries, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -69,5 +69,37 @@ describe('parseJapanesePaste', () => {
     if (result.ok) {
       expect(result.cues[0].ja).toBe('こんにちは')
     }
+  })
+})
+
+describe('cuesFromShotEntries', () => {
+  it('builds one cue per entry, offsetting start/end by cumulative duration', () => {
+    const cues = cuesFromShotEntries([
+      { text: 'Hello there', duration: 3 },
+      { text: 'This is a test', duration: 2 },
+    ])
+    expect(cues).toEqual([
+      { id: 'shot-0', start: 0, end: 3, en: 'Hello there', ja: null },
+      { id: 'shot-1', start: 3, end: 5, en: 'This is a test', ja: null },
+    ])
+  })
+
+  it('skips entries with blank text but still advances the offset', () => {
+    const cues = cuesFromShotEntries([
+      { text: '   ', duration: 3 },
+      { text: 'Second shot', duration: 2 },
+    ])
+    expect(cues).toEqual([
+      { id: 'shot-1', start: 3, end: 5, en: 'Second shot', ja: null },
+    ])
+  })
+
+  it('trims surrounding whitespace from the shot text', () => {
+    const cues = cuesFromShotEntries([{ text: '  padded  ', duration: 1 }])
+    expect(cues[0].en).toBe('padded')
+  })
+
+  it('returns an empty array for no entries', () => {
+    expect(cuesFromShotEntries([])).toEqual([])
   })
 })
