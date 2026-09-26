@@ -42,9 +42,19 @@ export async function trimAndNormalizeShot(
   onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
   const ff = await getFFmpeg()
+  // Kept only to surface ffmpeg's own stderr in the thrown error on failure —
+  // the vendored core's `ff.exec()` rejection carries no detail beyond a
+  // generic "Aborted"/FS error (see execFFmpeg.ts), so without this a failed
+  // encode is nearly undiagnosable from the caller's side.
+  const logs: string[] = []
+  const handleLog = ({ message }: { message: string }) => {
+    logs.push(message)
+    if (logs.length > 40) logs.shift()
+  }
   const handleProgress = onProgress
     ? ({ progress }: { progress: number }) => onProgress(Math.min(Math.max(progress, 0), 1))
     : undefined
+  ff.on('log', handleLog)
   if (handleProgress) ff.on('progress', handleProgress)
   try {
     await ff.writeFile('in.mp4', await fetchFile(blob))
@@ -53,7 +63,11 @@ export async function trimAndNormalizeShot(
     ff.deleteFile('in.mp4')
     ff.deleteFile('out.mp4')
     return new Blob([data as Uint8Array], { type: 'video/mp4' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`trimAndNormalizeShot failed: ${msg}\n--- ffmpeg log tail ---\n${logs.slice(-15).join('\n')}`)
   } finally {
+    ff.off('log', handleLog)
     if (handleProgress) ff.off('progress', handleProgress)
   }
 }
