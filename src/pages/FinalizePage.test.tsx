@@ -9,6 +9,7 @@ import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
 import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
+import { probeVideoDuration } from '../utils/probeVideoDuration'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -17,6 +18,11 @@ vi.mock('../utils/concatVideos', () => ({
 }))
 vi.mock('../utils/trimAndNormalizeShot', () => ({
   trimAndNormalizeShot: vi.fn(async (blob: Blob) => blob),
+}))
+// jsdom never loads media; by default the probe never answers, so tests
+// drive durations through ShotTrimmer's own loadedmetadata as before.
+vi.mock('../utils/probeVideoDuration', () => ({
+  probeVideoDuration: vi.fn(() => new Promise<number>(() => {})),
 }))
 vi.mock('../utils/shareOrDownload', () => ({
   shareOrDownload: vi.fn(async () => true),
@@ -62,6 +68,31 @@ beforeEach(async () => {
 })
 
 describe('FinalizePage wizard', () => {
+  it('enables 結合 from probed durations, without any shot player reporting one (issue #12)', async () => {
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    renderFinalizePage('script-1')
+
+    await screen.findByText('1. ショット1')
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
+  })
+
+  it('ignores a second duration report, so a player remounting after scrolling never resets the trim', async () => {
+    renderFinalizePage('script-1')
+
+    await screen.findByText('1. ショット1')
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: 5, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+    await screen.findByText('終了 5.0秒')
+
+    // Any later report (a remount, or the probe finishing late) must not
+    // re-initialize trimEnd, which would wipe out the user's trim.
+    Object.defineProperty(video, 'duration', { value: 7, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+    expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
+  })
+
   it('does not encode in the background while the trim previews are showing (issue #12)', async () => {
     renderFinalizePage('script-1')
 

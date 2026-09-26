@@ -5,6 +5,7 @@ import { listShotVideos } from '../utils/shotVideoStore'
 import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { NormalizedShotCache } from '../utils/normalizedShotCache'
+import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
@@ -86,6 +87,19 @@ export default function FinalizePage() {
       })
       setEntries(next)
       setLoading(false)
+
+      // ShotTrimmer only keeps a live <video> for shots near the viewport
+      // (issue #12), so shots never scrolled to would otherwise never report
+      // a duration — which combining needs. Probe them one at a time.
+      ;(async () => {
+        for (const entry of next) {
+          if (cancelled) return
+          if (!entry.blob) continue
+          const duration = await probeVideoDuration(entry.blob)
+          if (cancelled) return
+          if (duration > 0) setDurationOnce(entry.shotId, duration)
+        }
+      })()
     }).catch(err => {
       if (cancelled) return
       console.error('Failed to load stored shot videos', err)
@@ -111,6 +125,14 @@ export default function FinalizePage() {
       if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
     }
   }, [])
+
+  // A duration can arrive twice — from the probe and from a ShotTrimmer's
+  // player (re-)mounting — so only the first one initializes the trim range.
+  function setDurationOnce(shotId: string, duration: number) {
+    setEntries(prev =>
+      prev.map(e => (e.shotId === shotId && e.duration === 0 ? { ...e, duration, trimEnd: duration } : e)),
+    )
+  }
 
   function updateEntry(shotId: string, changes: Partial<ShotEntry>) {
     setEntries(prev => prev.map(e => (e.shotId === shotId ? { ...e, ...changes } : e)))
@@ -280,7 +302,7 @@ export default function FinalizePage() {
                           duration={entry.duration}
                           trimStart={entry.trimStart}
                           trimEnd={entry.trimEnd || entry.duration}
-                          onDurationKnown={duration => updateEntry(entry.shotId, { duration, trimEnd: duration })}
+                          onDurationKnown={duration => setDurationOnce(entry.shotId, duration)}
                           onChange={(trimStart, trimEnd) => updateEntry(entry.shotId, { trimStart, trimEnd })}
                         />
                       ) : (

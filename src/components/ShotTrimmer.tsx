@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { clampTrimRange } from '../utils/shotTrim'
 import styles from './ShotTrimmer.module.css'
 
@@ -14,6 +15,10 @@ interface ShotTrimmerProps {
 
 const TRANSITION_WINDOW = 1.5 // seconds shown from each side of the cut
 
+// How far outside the viewport a shot still keeps its <video> mounted, so a
+// preview is usually ready by the time it scrolls into view.
+const IN_VIEW_MARGIN = '200px 0px'
+
 export default function ShotTrimmer({
   url,
   nextUrl,
@@ -27,7 +32,31 @@ export default function ShotTrimmer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const nextVideoRef = useRef<HTMLVideoElement>(null)
   const draggingRef = useRef<'start' | 'end' | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [previewingTransition, setPreviewingTransition] = useState(false)
+  // Only shots near the viewport get a live <video>: every mounted player
+  // holds a decoder and frame buffers, and ~20+ of them at once made iOS
+  // drop them all, showing the "can't play" icon on every shot (issue #12).
+  // Without IntersectionObserver (e.g. jsdom), always mount.
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined')
+  const [aspectRatio, setAspectRatio] = useState('9 / 16')
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setInView(entry.isIntersecting)
+        // A remounted player starts fresh, so a stale error shouldn't linger.
+        if (!entry.isIntersecting) setMediaError(null)
+      },
+      { rootMargin: IN_VIEW_MARGIN },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // Keep normal playback (native controls) confined to the trimmed range,
   // so pressing play previews only the part of the clip that will be kept.
@@ -53,7 +82,7 @@ export default function ShotTrimmer({
       video.removeEventListener('play', onPlay)
       video.removeEventListener('timeupdate', onTimeUpdate)
     }
-  }, [trimStart, trimEnd, previewingTransition])
+  }, [trimStart, trimEnd, previewingTransition, inView, reloadKey])
 
   function timeFromPointerX(clientX: number): number {
     const el = timelineRef.current
@@ -91,11 +120,16 @@ export default function ShotTrimmer({
   }
 
   function playTransitionPreview() {
+    if (!videoRef.current || !nextUrl) return
+    // The next shot's hidden player is only mounted while previewing, so
+    // render it synchronously — play() must still run inside this tap.
+    flushSync(() => setPreviewingTransition(true))
     const a = videoRef.current
     const b = nextVideoRef.current
-    if (!a || !b || !nextUrl) return
-
-    setPreviewingTransition(true)
+    if (!a || !b) {
+      setPreviewingTransition(false)
+      return
+    }
 
     function finish() {
       a!.removeEventListener('timeupdate', stopAtEnd)
@@ -145,15 +179,44 @@ export default function ShotTrimmer({
   const endPct = duration ? (trimEnd / duration) * 100 : 100
 
   return (
-    <div className={styles.wrapper}>
-      <video
-        ref={videoRef}
-        className={styles.video}
-        src={url}
-        controls
-        playsInline
-        onLoadedMetadata={e => onDurationKnown(e.currentTarget.duration)}
-      />
+    <div ref={wrapperRef} className={styles.wrapper}>
+      {inView ? (
+        <video
+          key={reloadKey}
+          ref={videoRef}
+          className={styles.video}
+          src={url}
+          controls
+          playsInline
+          onLoadedMetadata={e => {
+            const v = e.currentTarget
+            if (v.videoWidth && v.videoHeight) setAspectRatio(`${v.videoWidth} / ${v.videoHeight}`)
+            onDurationKnown(v.duration)
+          }}
+          onError={e => {
+            const err = e.currentTarget.error
+            setMediaError(err ? `code ${err.code}${err.message ? `: ${err.message}` : ''}` : 'unknown')
+          }}
+        />
+      ) : (
+        <div className={styles.placeholder} style={{ aspectRatio }} />
+      )}
+
+      {mediaError && (
+        <div className={styles.mediaError}>
+          <span>この動画を再生できません（{mediaError}）</span>
+          <button
+            type="button"
+            className={styles.transitionBtn}
+            onClick={() => {
+              setMediaError(null)
+              setReloadKey(k => k + 1)
+            }}
+          >
+            再読み込み
+          </button>
+        </div>
+      )}
 
       <div
         ref={timelineRef}
@@ -183,7 +246,7 @@ export default function ShotTrimmer({
         <span>終了 {trimEnd.toFixed(1)}秒</span>
       </div>
 
-      {nextUrl && (
+      {nextUrl && inView && (
         <>
           <button
             type="button"
@@ -194,7 +257,9 @@ export default function ShotTrimmer({
             {previewingTransition ? '再生中...' : '▶ 次のショットとのつなぎ目を確認'}
           </button>
           {/* Hidden second player used only to play the next clip's opening frames */}
-          <video ref={nextVideoRef} src={nextUrl} playsInline style={{ display: 'none' }} />
+          {previewingTransition && (
+            <video ref={nextVideoRef} src={nextUrl} playsInline style={{ display: 'none' }} />
+          )}
         </>
       )}
     </div>
