@@ -1,39 +1,40 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { SubtitleCue, buildClaudePrompt, parseJapanesePaste } from '../utils/subtitleCues'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { burnSubtitles } from '../utils/burnSubtitles'
-import { SubtitlePosition } from '../utils/subtitlePosition'
-import { shareOrDownload } from '../utils/shareOrDownload'
+import {
+  SubtitlePosition,
+  SUBTITLE_POSITION_TOP,
+  SUBTITLE_POSITION_CENTER,
+  SUBTITLE_POSITION_BOTTOM,
+} from '../utils/subtitlePosition'
 import SubtitleEditor from './SubtitleEditor'
+import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import styles from './SubtitleWorkflow.module.css'
 
 interface SubtitleWorkflowProps {
   combinedBlob: Blob
-  filenameBase: string
   onBurned?: (blob: Blob) => void
 }
 
-type Stage = 'idle' | 'transcribing' | 'reviewing' | 'burning' | 'done' | 'error'
+type Stage = 'idle' | 'transcribing' | 'reviewing' | 'burning' | 'error'
 
-export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned }: SubtitleWorkflowProps) {
+const PRESETS: { label: string; value: SubtitlePosition }[] = [
+  { label: '上部', value: SUBTITLE_POSITION_TOP },
+  { label: '中央', value: SUBTITLE_POSITION_CENTER },
+  { label: '下部', value: SUBTITLE_POSITION_BOTTOM },
+]
+
+export default function SubtitleWorkflow({ combinedBlob, onBurned }: SubtitleWorkflowProps) {
   const [stage, setStage] = useState<Stage>('idle')
   const [cues, setCues] = useState<SubtitleCue[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [pasteText, setPasteText] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
-  const [position, setPosition] = useState<SubtitlePosition>('bottom')
-  const [burnedUrl, setBurnedUrl] = useState<string | null>(null)
-  const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
-  const burnedUrlRef = useRef<string | null>(null)
-
-  // Revoke the burned-video preview object URL whenever it changes or on unmount
-  useEffect(() => {
-    return () => {
-      if (burnedUrlRef.current) {
-        URL.revokeObjectURL(burnedUrlRef.current)
-      }
-    }
-  }, [])
+  const [position, setPosition] = useState<SubtitlePosition>(SUBTITLE_POSITION_BOTTOM)
+  const [fineTune, setFineTune] = useState(false)
+  const [previewTime, setPreviewTime] = useState(0)
+  const previewUrl = URL.createObjectURL(combinedBlob)
 
   async function handleGenerate() {
     setStage('transcribing')
@@ -75,24 +76,11 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned 
     setErrorMessage(null)
     try {
       const burned = await burnSubtitles(combinedBlob, cues, position)
-      if (burnedUrlRef.current) {
-        URL.revokeObjectURL(burnedUrlRef.current)
-      }
-      const url = URL.createObjectURL(burned)
-      burnedUrlRef.current = url
-      setBurnedBlob(burned)
-      setBurnedUrl(url)
-      setStage('done')
       onBurned?.(burned)
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }
-
-  async function handleSaveBurned() {
-    if (!burnedBlob) return
-    await shareOrDownload(burnedBlob, `${filenameBase}-subtitled`)
   }
 
   const hasAnyJapanese = cues.some(c => c.ja !== null)
@@ -110,7 +98,7 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned 
         <p className={styles.sectionTitle}>字幕を生成中...（初回はモデルのダウンロードが入ります）</p>
       )}
 
-      {(stage === 'reviewing' || stage === 'burning' || stage === 'done') && cues.length > 0 && (
+      {(stage === 'reviewing' || stage === 'burning') && cues.length > 0 && (
         <>
           <div className={styles.section}>
             <p className={styles.sectionTitle}>英語字幕（必要なら修正してください）</p>
@@ -138,24 +126,58 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned 
 
           {hasAnyJapanese && (
             <div className={styles.section}>
+              <p className={styles.sectionTitle}>プレビュー</p>
+              <div className={styles.previewWrapper}>
+                <video
+                  className={styles.preview}
+                  src={previewUrl}
+                  controls
+                  playsInline
+                  onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
+                />
+                <SubtitleOverlayPreview cues={cues} position={position} currentTime={previewTime} />
+              </div>
+
               <p className={styles.sectionTitle}>字幕の位置</p>
               <div className={styles.positionRow}>
-                {(['top', 'center', 'bottom'] as const).map(p => (
+                {PRESETS.map(p => (
                   <button
-                    key={p}
-                    className={`${styles.positionBtn} ${position === p ? styles.positionBtnActive : ''}`}
-                    onClick={() => setPosition(p)}
+                    key={p.label}
+                    className={`${styles.positionBtn} ${position === p.value ? styles.positionBtnActive : ''}`}
+                    aria-pressed={position === p.value}
+                    onClick={() => setPosition(p.value)}
                   >
-                    {p === 'top' ? '上部' : p === 'center' ? '中央' : '下部'}
+                    {p.label}
                   </button>
                 ))}
               </div>
+
+              <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
+                細かく調整
+              </button>
+
+              {fineTune && (
+                <div className={styles.fineTuneRow}>
+                  <label htmlFor="subtitle-position-slider">字幕の上下位置</label>
+                  <input
+                    id="subtitle-position-slider"
+                    aria-label="字幕の上下位置"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={position}
+                    onChange={e => setPosition(Number(e.target.value))}
+                  />
+                </div>
+              )}
+
               <button
                 className={styles.genBtn}
                 onClick={handleBurnIn}
                 disabled={!allTranslated || stage === 'burning'}
               >
-                {stage === 'burning' ? '焼き込み中...' : '字幕を焼き込む'}
+                {stage === 'burning' ? '焼き込み中...' : '次へ'}
               </button>
             </div>
           )}
@@ -164,16 +186,6 @@ export default function SubtitleWorkflow({ combinedBlob, filenameBase, onBurned 
 
       {stage === 'error' && errorMessage && (
         <p className={styles.error}>エラーが発生しました: {errorMessage}</p>
-      )}
-
-      {stage === 'done' && burnedUrl && (
-        <div className={styles.section}>
-          <p className={styles.sectionTitle}>字幕付き動画</p>
-          <video className={styles.preview} src={burnedUrl} controls playsInline />
-          <button className={styles.genBtn} onClick={handleSaveBurned}>
-            保存する
-          </button>
-        </div>
       )}
     </div>
   )

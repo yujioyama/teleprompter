@@ -82,3 +82,19 @@
   border-radius: 8px;
   background: #000;
 }
+
+.previewWrapper {
+  position: relative;
+}
+
+.fineTuneRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.fineTuneRow input[type='range'] {
+  width: 100%;
+}
