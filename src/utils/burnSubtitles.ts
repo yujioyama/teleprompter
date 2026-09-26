@@ -70,7 +70,7 @@ function fitFontSize(
 }
 
 /**
- * Render one cue's bilingual subtitle (Japanese bold/larger above, English
+ * Render one cue's bilingual subtitle (English bold/larger above, Japanese
  * smaller below, on a semi-transparent rounded background) as a transparent
  * PNG sized to the video width.
  */
@@ -97,15 +97,15 @@ export async function renderCueImage(cue: SubtitleCue, videoWidth: number): Prom
   ctx.fillStyle = '#ffffff'
 
   const textWidth = videoWidth - padding * 4
-  const jaText = cue.ja ?? ''
-  const jaFontSize = fitFontSize(ctx, jaText, textWidth, 52, 24, 'bold')
-  ctx.font = `bold ${jaFontSize}px sans-serif`
-  ctx.fillText(jaText, videoWidth / 2, boxTop + 70)
+  const enFontSize = fitFontSize(ctx, cue.en, textWidth, 52, 24, 'bold')
+  ctx.font = `bold ${enFontSize}px sans-serif`
+  ctx.fillText(cue.en, videoWidth / 2, boxTop + 70)
 
-  const enFontSize = fitFontSize(ctx, cue.en, textWidth, 34, 18, '')
-  ctx.font = `${enFontSize}px sans-serif`
+  const jaText = cue.ja ?? ''
+  const jaFontSize = fitFontSize(ctx, jaText, textWidth, 34, 18, '')
+  ctx.font = `${jaFontSize}px sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
-  ctx.fillText(cue.en, videoWidth / 2, boxTop + 130)
+  ctx.fillText(jaText, videoWidth / 2, boxTop + 130)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => {
