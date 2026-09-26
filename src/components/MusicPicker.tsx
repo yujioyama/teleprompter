@@ -5,7 +5,7 @@ import styles from './MusicPicker.module.css'
 interface MusicPickerProps {
   tracks: MusicTrack[]
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   volume: number
   onVolumeChange: (volume: number) => void
 }
@@ -14,6 +14,9 @@ const GENRE_ORDER: MusicGenre[] = ['lofi', 'pop', 'cinematic', 'corporate']
 
 export default function MusicPicker({ tracks, selectedId, onSelect, volume, onVolumeChange }: MusicPickerProps) {
   const [previewingId, setPreviewingId] = useState<string | null>(null)
+  const [genre, setGenre] = useState<MusicGenre>(
+    () => GENRE_ORDER.find(g => tracks.some(t => t.genre === g)) ?? GENRE_ORDER[0]
+  )
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   function handlePreview(track: MusicTrack) {
@@ -31,30 +34,44 @@ export default function MusicPicker({ tracks, selectedId, onSelect, volume, onVo
     setPreviewingId(track.id)
   }
 
+  function handleGenreChange(next: MusicGenre) {
+    setGenre(next)
+    onSelect(null)
+  }
+
+  const genreTracks = tracks.filter(t => t.genre === genre)
+
   return (
     <div className={styles.wrapper}>
-      {GENRE_ORDER.map(genre => {
-        const genreTracks = tracks.filter(t => t.genre === genre)
-        if (genreTracks.length === 0) return null
-        return (
-          <div key={genre} className={styles.genreGroup}>
-            <p className={styles.genreLabel}>{GENRE_LABELS[genre]}</p>
-            {genreTracks.map(track => (
-              <div
-                key={track.id}
-                className={`${styles.trackRow} ${selectedId === track.id ? styles.trackRowSelected : ''}`}
-              >
-                <button className={styles.trackTitle} onClick={() => onSelect(track.id)}>
-                  {track.title}
-                </button>
-                <button className={styles.previewBtn} onClick={() => handlePreview(track)}>
-                  {previewingId === track.id ? '■ 停止' : '▶ 試聴'}
-                </button>
-              </div>
-            ))}
-          </div>
-        )
-      })}
+      <label className={styles.genreRow}>
+        <span className={styles.genreRowLabel}>ジャンル</span>
+        <select
+          aria-label="ジャンル"
+          className={styles.genreSelect}
+          value={genre}
+          onChange={e => handleGenreChange(e.target.value as MusicGenre)}
+        >
+          {GENRE_ORDER.filter(g => tracks.some(t => t.genre === g)).map(g => (
+            <option key={g} value={g}>
+              {GENRE_LABELS[g]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {genreTracks.map(track => (
+        <div
+          key={track.id}
+          className={`${styles.trackRow} ${selectedId === track.id ? styles.trackRowSelected : ''}`}
+        >
+          <button className={styles.trackTitle} onClick={() => onSelect(track.id)}>
+            {track.title}
+          </button>
+          <button className={styles.previewBtn} onClick={() => handlePreview(track)}>
+            {previewingId === track.id ? '■ 停止' : '▶ 試聴'}
+          </button>
+        </div>
+      ))}
 
       <div className={styles.volumeRow}>
         <span className={styles.volumeLabel}>音量 {Math.round(volume * 100)}%</span>

@@ -67,3 +67,9 @@
 .finalizeBtn:disabled {
   opacity: 0.5;
 }
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

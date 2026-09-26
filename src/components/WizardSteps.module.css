@@ -1,0 +1,56 @@
+.wrapper {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  padding: 4px;
+  opacity: 0.5;
+}
+
+.step:disabled {
+  cursor: default;
+}
+
+.stepDone {
+  opacity: 0.8;
+}
+
+.stepCurrent {
+  opacity: 1;
+}
+
+.dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface2);
+  color: #fff;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepCurrent .dot,
+.stepDone .dot {
+  background: var(--accent);
+}
+
+.label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.stepCurrent .label {
+  color: var(--text);
+  font-weight: 700;
+}
