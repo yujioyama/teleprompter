@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
@@ -8,6 +8,7 @@ import { saveShotVideo } from '../utils/shotVideoStore'
 import * as transcribeModule from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
+import { MUSIC_TRACKS } from '../data/musicTracks'
 
 vi.mock('../utils/transcribeSpeech')
 vi.mock('../utils/burnSubtitles')
@@ -136,6 +137,85 @@ describe('FinalizePage wizard', () => {
     // completedSteps and the button would stay enabled.
     expect(screen.getByText('字幕').closest('button')).toBeDisabled()
     expect(screen.getByText('BGM').closest('button')).toBeDisabled()
+  })
+
+  it('never feeds MusicMixer its own previously-mixed output (no BGM stacking)', async () => {
+    renderFinalizePage('script-1')
+
+    // Step 1: trim/combine
+    await screen.findByText('1. ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Step 2: subtitle — generate, translate, advance (produces a burnedBlob)
+    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+
+    const burnedBlob = await vi.mocked(burnModule.burnSubtitles).mock.results[0].value
+
+    // Step 3: BGM — select a track, then change the volume to trigger a
+    // second (re-)mix. Each call resolves to a distinguishable blob so we
+    // can assert on the *arguments* of the second call directly.
+    vi.mocked(mixModule.mixMusic)
+      .mockResolvedValueOnce(new Blob(['mixed-1'], { type: 'video/mp4' }))
+      .mockResolvedValueOnce(new Blob(['mixed-2'], { type: 'video/mp4' }))
+
+    fireEvent.click(await screen.findByText(MUSIC_TRACKS[0].title))
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1), { timeout: 1000 })
+
+    const slider = screen.getByRole('slider')
+    fireEvent.change(slider, { target: { value: '0.7' } })
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2), { timeout: 1000 })
+
+    // Both calls must be fed the pre-BGM (burned) blob...
+    expect(vi.mocked(mixModule.mixMusic).mock.calls[0][0]).toBe(burnedBlob)
+    expect(vi.mocked(mixModule.mixMusic).mock.calls[1][0]).toBe(burnedBlob)
+    // ...and critically, the second call must NOT have been fed the first
+    // call's resolved (already-mixed) output.
+    const firstMixOutput = await vi.mocked(mixModule.mixMusic).mock.results[0].value
+    expect(vi.mocked(mixModule.mixMusic).mock.calls[1][0]).not.toBe(firstMixOutput)
+  })
+
+  it('preserves subtitle work (cues) when navigating back from BGM to subtitle', async () => {
+    renderFinalizePage('script-1')
+
+    // Step 1: trim/combine
+    await screen.findByText('1. ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Step 2: subtitle — generate, translate, advance
+    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Now on the BGM step. Navigate back to subtitle via the wizard indicator.
+    await screen.findByText('BGMなしで進む')
+    fireEvent.click(screen.getByText('字幕'))
+
+    // The previously transcribed English cue text must still be visible —
+    // SubtitleWorkflow must NOT have reset to its initial idle
+    // "🎤 英語字幕を生成" state, which would mean the transcription and
+    // translation work was lost.
+    expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
+    expect(screen.queryByText('🎤 英語字幕を生成')).not.toBeInTheDocument()
   })
 
   it('shows the wizard progress indicator with 4 steps', async () => {

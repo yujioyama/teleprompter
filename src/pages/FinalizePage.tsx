@@ -6,7 +6,7 @@ import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
-import SubtitleWorkflow from '../components/SubtitleWorkflow'
+import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
 import MusicMixer from '../components/MusicMixer'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import styles from './FinalizePage.module.css'
@@ -40,6 +40,11 @@ export default function FinalizePage() {
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixedBlob, setMixedBlob] = useState<Blob | null>(null)
+  // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
+  // survive the component unmounting when the wizard leaves the subtitle
+  // step and remounting when it comes back (e.g. via goToStep) — otherwise
+  // all transcription/translation work would be lost on back-navigation.
+  const [subtitleState, setSubtitleState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [step, setStep] = useState<WizardStepId>('trim')
   const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([])
   const urlsRef = useRef<string[]>([])
@@ -141,6 +146,8 @@ export default function FinalizePage() {
     // clearing the blobs is sufficient — no completedSteps update needed.
     setBurnedBlob(null)
     setMixedBlob(null)
+    // A re-combined video invalidates any transcription tied to the old one.
+    setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
       const normalized: Blob[] = []
       for (const entry of availableEntries) {
@@ -248,6 +255,8 @@ export default function FinalizePage() {
               <SubtitleWorkflow
                 key={combinedUrl}
                 combinedBlob={combinedBlob}
+                state={subtitleState}
+                onStateChange={setSubtitleState}
                 onBurned={burned => {
                   setBurnedBlob(burned)
                   markStepDone('subtitle', 'bgm')
@@ -256,10 +265,14 @@ export default function FinalizePage() {
             </div>
           )}
 
-          {step === 'bgm' && finalBlob && (
+          {step === 'bgm' && (burnedBlob ?? combinedBlob) && (
             <div className={styles.stepBody}>
               <MusicMixer
-                videoBlob={finalBlob}
+                // Deliberately NOT `finalBlob`: MusicMixer must always mix onto
+                // the video from before any BGM was ever added, otherwise a
+                // track/volume change re-mixes onto its own previous mixed
+                // output and BGM layers stack indefinitely.
+                videoBlob={(burnedBlob ?? combinedBlob) as Blob}
                 onMixed={setMixedBlob}
                 onNext={() => markStepDone('bgm', 'export')}
               />
