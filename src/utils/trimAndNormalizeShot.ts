@@ -1,22 +1,6 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
-
-let ffmpeg: FFmpeg | null = null
-let loaded = false
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) ffmpeg = new FFmpeg()
-  if (!loaded) {
-    const origin = window.location.origin
-    await ffmpeg.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
-    })
-    loaded = true
-  }
-  return ffmpeg
-}
+import { execFFmpeg } from './execFFmpeg'
+import { getFFmpeg } from './ffmpegClient'
 
 /**
  * Build the FFmpeg args that trim [start, end] out of in.mp4 and re-encode
@@ -64,7 +48,7 @@ export async function trimAndNormalizeShot(
   if (handleProgress) ff.on('progress', handleProgress)
   try {
     await ff.writeFile('in.mp4', await fetchFile(blob))
-    await ff.exec(buildTrimAndNormalizeArgs(start, end))
+    await execFFmpeg(ff, buildTrimAndNormalizeArgs(start, end))
     const data = await ff.readFile('out.mp4')
     ff.deleteFile('in.mp4')
     ff.deleteFile('out.mp4')

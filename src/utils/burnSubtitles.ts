@@ -1,24 +1,8 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
+import { execFFmpeg } from './execFFmpeg'
+import { getFFmpeg } from './ffmpegClient'
 import { SubtitleCue } from './subtitleCues'
 import { SubtitlePosition, subtitleY } from './subtitlePosition'
-
-let ffmpeg: FFmpeg | null = null
-let loaded = false
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) ffmpeg = new FFmpeg()
-  if (!loaded) {
-    const origin = window.location.origin
-    await ffmpeg.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
-    })
-    loaded = true
-  }
-  return ffmpeg
-}
 
 /**
  * Build the chained overlay filtergraph for `cueCount` subtitle image inputs
@@ -192,7 +176,7 @@ export async function burnSubtitles(
     'out.mp4',
   )
 
-  await ff.exec(args)
+  await execFFmpeg(ff, args)
   const data = await ff.readFile('out.mp4')
 
   ff.deleteFile('in.mp4')

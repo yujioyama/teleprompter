@@ -1,26 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
-
-// Singleton — load once, reuse across recordings
-let ffmpeg: FFmpeg | null = null
-let loaded = false
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) {
-    ffmpeg = new FFmpeg()
-  }
-  if (!loaded) {
-    // Serve core files from same origin to avoid CORS issues in iOS Safari PWA
-    const origin = window.location.origin
-    await ffmpeg.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
-    })
-    loaded = true
-  }
-  return ffmpeg
-}
+import { execFFmpeg } from './execFFmpeg'
+import { getFFmpeg } from './ffmpegClient'
 
 interface RemuxOptions {
   /** Trim bounds in seconds. When provided, clips the output to [start, end]. */
@@ -153,7 +134,7 @@ export async function remuxMp4(
 
     console.log('[remuxMp4] exec args:', args.join(' '))
 
-    await ff.exec(args)
+    await execFFmpeg(ff, args)
     const data = await ff.readFile('out.mp4')
     ff.deleteFile('in.mp4')
     ff.deleteFile('out.mp4')

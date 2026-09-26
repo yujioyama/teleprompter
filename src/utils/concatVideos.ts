@@ -1,22 +1,6 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
-
-let ffmpeg: FFmpeg | null = null
-let loaded = false
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) ffmpeg = new FFmpeg()
-  if (!loaded) {
-    const origin = window.location.origin
-    await ffmpeg.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
-    })
-    loaded = true
-  }
-  return ffmpeg
-}
+import { execFFmpeg } from './execFFmpeg'
+import { getFFmpeg } from './ffmpegClient'
 
 /** Build the concat-demuxer list file content FFmpeg's `-f concat` expects. */
 export function buildConcatListFile(filenames: string[]): string {
@@ -39,7 +23,7 @@ export async function concatVideos(blobs: Blob[]): Promise<Blob> {
   )
 
   await ff.writeFile('list.txt', buildConcatListFile(filenames))
-  await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'out.mp4'])
+  await execFFmpeg(ff, ['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'out.mp4'])
   const data = await ff.readFile('out.mp4')
 
   await Promise.all(filenames.map(name => ff.deleteFile(name)))

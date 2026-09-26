@@ -1,22 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
-
-let ffmpeg: FFmpeg | null = null
-let loaded = false
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) ffmpeg = new FFmpeg()
-  if (!loaded) {
-    const origin = window.location.origin
-    await ffmpeg.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
-    })
-    loaded = true
-  }
-  return ffmpeg
-}
+import { execFFmpeg } from './execFFmpeg'
+import { getFFmpeg } from './ffmpegClient'
 
 /**
  * Build the filter_complex that loops/trims the BGM track (input 1) to the
@@ -85,7 +70,7 @@ async function mixMusicInternal(videoBlob: Blob, trackBlob: Blob, volume: number
   const duration = await probeDuration(ff, 'in.mp4')
   const filterComplex = buildMixFilterComplex(duration, volume)
 
-  await ff.exec([
+  await execFFmpeg(ff, [
     '-i', 'in.mp4',
     '-i', 'track.mp3',
     '-filter_complex', filterComplex,
