@@ -5,6 +5,7 @@ import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import { useRecorder } from '../hooks/useRecorder'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
+import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType, type ShotTrimSettings } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { Shot } from '../types'
@@ -203,6 +204,8 @@ export default function RecordPage() {
       setBulkImportProgress({ done: i + 1, total: targets.length })
     }
 
+    // Free ffmpeg.wasm's grown heap before the user moves on to finalize.
+    releaseFFmpeg()
     setBulkImportProgress(null)
 
     const messages: string[] = []

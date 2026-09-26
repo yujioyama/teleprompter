@@ -26,3 +26,20 @@ export async function getFFmpeg(): Promise<FFmpeg> {
   await loaded
   return ffmpeg
 }
+
+/**
+ * Terminate the shared instance so its worker — and the WASM heap with it —
+ * is freed; the next getFFmpeg() starts a fresh one. ffmpeg-core's memory
+ * grows (up to 2 GB) to fit the largest file it has handled and never
+ * shrinks, so after an import the tab otherwise keeps that whole heap alive.
+ * On iOS that left too little memory for the finalize screen's <video>
+ * previews to load until the app was restarted (issue #12).
+ *
+ * Only call this when no ffmpeg work is in flight — it aborts it.
+ */
+export function releaseFFmpeg(): void {
+  if (!ffmpeg) return
+  ffmpeg.terminate()
+  ffmpeg = null
+  loaded = null
+}

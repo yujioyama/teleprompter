@@ -6,6 +6,7 @@ import {
   isRemuxableContainer,
   type ShotTrimSettings,
 } from '../utils/processRecordedVideo'
+import { releaseFFmpeg } from '../utils/ffmpegClient'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
@@ -87,6 +88,8 @@ export function useRecorder(): UseRecorderResult {
     }
 
     const result = await processRecordedVideo(raw, mimeType, shotSettings)
+    // Free ffmpeg.wasm's grown heap before the user moves on to finalize.
+    if (remuxable) releaseFFmpeg()
     blobRef.current = result.blob
     if (remuxable) {
       // remuxMp4's output is always video/mp4, regardless of the input container.

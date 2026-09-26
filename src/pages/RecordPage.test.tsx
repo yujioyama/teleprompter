@@ -6,6 +6,9 @@ import RecordPage from './RecordPage'
 import { Script } from '../types'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { processRecordedVideo } from '../utils/processRecordedVideo'
+import { releaseFFmpeg } from '../utils/ffmpegClient'
+
+vi.mock('../utils/ffmpegClient', () => ({ getFFmpeg: vi.fn(), releaseFFmpeg: vi.fn() }))
 
 vi.mock('../utils/processRecordedVideo', async () => {
   const actual = await vi.importActual<typeof import('../utils/processRecordedVideo')>(
@@ -79,6 +82,22 @@ describe('RecordPage bulk import from teleprompter-cam', () => {
 
     expect(await screen.findByText('撮影完了！')).toBeInTheDocument()
     expect(screen.getByText('🎬 動画を仕上げる')).toBeInTheDocument()
+  })
+
+  it('releases the ffmpeg.wasm instance once the bulk import finishes (issue #12)', async () => {
+    const script = seedScript()
+    renderRecordPage(script.id)
+
+    const input = screen.getByLabelText('録画した動画をインポート') as HTMLInputElement
+    selectFiles(input, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      videoFile(`TeleprompterCam-abc-shot2of3-${SHOT_2}.mov`),
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText('3 / 3 ≡')).toBeInTheDocument()
+    })
+    expect(releaseFFmpeg).toHaveBeenCalledTimes(1)
   })
 
   it('imports the matching subset and lands on the next shot missing a video', async () => {
