@@ -8,6 +8,7 @@ import { shareOrDownload } from '../utils/shareOrDownload'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow from '../components/SubtitleWorkflow'
 import MusicMixer from '../components/MusicMixer'
+import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import styles from './FinalizePage.module.css'
 
 interface ShotEntry {
@@ -22,6 +23,8 @@ interface ShotEntry {
 
 type CombineState = 'idle' | 'combining' | 'done' | 'error'
 
+const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
+
 export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -35,7 +38,10 @@ export default function FinalizePage() {
   const [combineError, setCombineError] = useState<string | null>(null)
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
-  const [subtitledBlob, setSubtitledBlob] = useState<Blob | null>(null)
+  const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
+  const [mixedBlob, setMixedBlob] = useState<Blob | null>(null)
+  const [step, setStep] = useState<WizardStepId>('trim')
+  const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([])
   const urlsRef = useRef<string[]>([])
   const combinedUrlRef = useRef<string | null>(null)
 
@@ -49,18 +55,8 @@ export default function FinalizePage() {
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
         const url = blob ? URL.createObjectURL(blob) : null
-        if (url) {
-          urlsRef.current.push(url)
-        }
-        return {
-          shotId: shot.id,
-          text: shot.text,
-          blob,
-          url,
-          duration: 0,
-          trimStart: 0,
-          trimEnd: 0,
-        }
+        if (url) urlsRef.current.push(url)
+        return { shotId: shot.id, text: shot.text, blob, url, duration: 0, trimStart: 0, trimEnd: 0 }
       })
       setEntries(next)
       setLoading(false)
@@ -77,7 +73,6 @@ export default function FinalizePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [script?.id])
 
-  // Revoke shot object URLs on unmount to avoid leaking memory
   useEffect(() => {
     const urls = urlsRef.current
     return () => {
@@ -85,12 +80,9 @@ export default function FinalizePage() {
     }
   }, [])
 
-  // Revoke the combined-preview object URL whenever it changes or on unmount
   useEffect(() => {
     return () => {
-      if (combinedUrlRef.current) {
-        URL.revokeObjectURL(combinedUrlRef.current)
-      }
+      if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
     }
   }, [])
 
@@ -98,18 +90,34 @@ export default function FinalizePage() {
     setEntries(prev => prev.map(e => (e.shotId === shotId ? { ...e, ...changes } : e)))
   }
 
+  function markStepDone(done: WizardStepId, next: WizardStepId) {
+    setCompletedSteps(prev => (prev.includes(done) ? prev : [...prev, done]))
+    setStep(next)
+  }
+
+  function goToStep(target: WizardStepId) {
+    // Going back to an earlier step invalidates every step after it, since
+    // its input may change (e.g. re-combining after adjusting a trim).
+    const targetIndex = STEP_ORDER.indexOf(target)
+    setCompletedSteps(prev => prev.filter(s => STEP_ORDER.indexOf(s) < targetIndex))
+    if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurnedBlob(null)
+    if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixedBlob(null)
+    setStep(target)
+  }
+
   const availableEntries = entries.filter(e => e.blob)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
-  const finalBlob = subtitledBlob ?? combinedBlob
+  const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
   async function handleCombine() {
     setCombineState('combining')
     setCombineError(null)
-    // A fresh combine invalidates any previously burned/mixed downstream output
-    // (SubtitleWorkflow's burned video, this page's subtitledBlob) even before
-    // the new combine finishes, so nothing stale is shown or fed to MusicMixer
-    // in the meantime.
-    setSubtitledBlob(null)
+    // Re-combining invalidates any later step's output. `completedSteps`
+    // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
+    // back here is goToStep, which already truncates completedSteps), so
+    // clearing the blobs is sufficient — no completedSteps update needed.
+    setBurnedBlob(null)
+    setMixedBlob(null)
     try {
       const normalized: Blob[] = []
       for (const entry of availableEntries) {
@@ -117,9 +125,7 @@ export default function FinalizePage() {
         normalized.push(trimmed)
       }
       const combined = await concatVideos(normalized)
-      if (combinedUrlRef.current) {
-        URL.revokeObjectURL(combinedUrlRef.current)
-      }
+      if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
       const url = URL.createObjectURL(combined)
       combinedUrlRef.current = url
       setCombinedBlob(combined)
@@ -131,9 +137,9 @@ export default function FinalizePage() {
     }
   }
 
-  async function handleSaveCombined() {
-    if (!combinedBlob || !script) return
-    await shareOrDownload(combinedBlob, `${script.title}-combined`)
+  async function handleSaveFinal() {
+    if (!finalBlob || !script) return
+    await shareOrDownload(finalBlob, `${script.title}-final`)
   }
 
   if (!script) {
@@ -159,66 +165,91 @@ export default function FinalizePage() {
         <p className={styles.missing}>{loadError}</p>
       ) : (
         <>
-          <div className={styles.shotList}>
-            {entries.map((entry, i) => {
-              const next = entries[i + 1]
-              return (
-                <div key={entry.shotId} className={styles.shotEntry}>
-                  <p className={styles.shotEntryText}>{i + 1}. {entry.text}</p>
-                  {entry.url ? (
-                    <ShotTrimmer
-                      url={entry.url}
-                      nextUrl={next?.url ?? null}
-                      duration={entry.duration}
-                      trimStart={entry.trimStart}
-                      trimEnd={entry.trimEnd || entry.duration}
-                      onDurationKnown={duration =>
-                        updateEntry(entry.shotId, { duration, trimEnd: duration })
-                      }
-                      onChange={(trimStart, trimEnd) => updateEntry(entry.shotId, { trimStart, trimEnd })}
-                    />
-                  ) : (
-                    <p className={styles.missing}>このショットは保存された動画がありません</p>
-                  )}
+          <WizardSteps current={step} completed={completedSteps} onSelect={goToStep} />
+
+          {step === 'trim' && (
+            <div className={styles.stepBody}>
+              <div className={styles.shotList}>
+                {entries.map((entry, i) => {
+                  const next = entries[i + 1]
+                  return (
+                    <div key={entry.shotId} className={styles.shotEntry}>
+                      <p className={styles.shotEntryText}>{i + 1}. {entry.text}</p>
+                      {entry.url ? (
+                        <ShotTrimmer
+                          url={entry.url}
+                          nextUrl={next?.url ?? null}
+                          duration={entry.duration}
+                          trimStart={entry.trimStart}
+                          trimEnd={entry.trimEnd || entry.duration}
+                          onDurationKnown={duration => updateEntry(entry.shotId, { duration, trimEnd: duration })}
+                          onChange={(trimStart, trimEnd) => updateEntry(entry.shotId, { trimStart, trimEnd })}
+                        />
+                      ) : (
+                        <p className={styles.missing}>このショットは保存された動画がありません</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <button
+                className={styles.finalizeBtn}
+                onClick={handleCombine}
+                disabled={!canCombine || combineState === 'combining'}
+              >
+                {combineState === 'combining' ? '結合中...' : '結合する'}
+              </button>
+
+              {combineState === 'error' && (
+                <p className={styles.missing}>結合に失敗しました: {combineError}</p>
+              )}
+
+              {combineState === 'done' && combinedUrl && (
+                <div className={styles.shotEntry}>
+                  <p className={styles.shotEntryText}>結合結果</p>
+                  <video className={styles.preview} src={combinedUrl} controls playsInline />
+                  <button
+                    className={styles.finalizeBtn}
+                    onClick={() => markStepDone('trim', 'subtitle')}
+                  >
+                    次へ
+                  </button>
                 </div>
-              )
-            })}
-          </div>
-
-          <button
-            className={styles.finalizeBtn}
-            onClick={handleCombine}
-            disabled={!canCombine || combineState === 'combining'}
-          >
-            {combineState === 'combining' ? '結合中...' : '結合する'}
-          </button>
-
-          {combineState === 'error' && (
-            <p className={styles.missing}>結合に失敗しました: {combineError}</p>
+              )}
+            </div>
           )}
 
-          {combineState === 'done' && combinedUrl && (
-            <div className={styles.shotEntry}>
-              <p className={styles.shotEntryText}>結合結果</p>
-              <video className={styles.preview} src={combinedUrl} controls playsInline />
-              <button className={styles.finalizeBtn} onClick={handleSaveCombined}>
+          {step === 'subtitle' && combinedBlob && (
+            <div className={styles.stepBody}>
+              <SubtitleWorkflow
+                key={combinedUrl}
+                combinedBlob={combinedBlob}
+                onBurned={burned => {
+                  setBurnedBlob(burned)
+                  markStepDone('subtitle', 'bgm')
+                }}
+              />
+            </div>
+          )}
+
+          {step === 'bgm' && finalBlob && (
+            <div className={styles.stepBody}>
+              <MusicMixer
+                videoBlob={finalBlob}
+                onMixed={setMixedBlob}
+                onNext={() => markStepDone('bgm', 'export')}
+              />
+            </div>
+          )}
+
+          {step === 'export' && finalBlob && (
+            <div className={styles.stepBody}>
+              <p className={styles.shotEntryText}>完成した動画</p>
+              <video className={styles.preview} src={URL.createObjectURL(finalBlob)} controls playsInline />
+              <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
                 保存する
               </button>
-              {combinedBlob && (
-                <SubtitleWorkflow
-                  // Key on the combined video's own object URL so React unmounts
-                  // and remounts SubtitleWorkflow whenever a fresh combine
-                  // completes, resetting its internal stage/cues/burnedBlob
-                  // state rather than leaving it pointing at the old video.
-                  key={combinedUrl}
-                  combinedBlob={combinedBlob}
-                  filenameBase={`${script.title}-combined`}
-                  onBurned={setSubtitledBlob}
-                />
-              )}
-              {finalBlob && (
-                <MusicMixer videoBlob={finalBlob} filenameBase={`${script.title}-final`} />
-              )}
             </div>
           )}
         </>
