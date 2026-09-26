@@ -98,6 +98,48 @@ describe('FinalizePage wizard', () => {
     expect(screen.queryAllByText('保存する')).toHaveLength(1)
   })
 
+  it('clicking a completed step in the indicator invalidates later steps', async () => {
+    renderFinalizePage('script-1')
+
+    // Step 1: trim/combine
+    await screen.findByText('1. ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Step 2: subtitle — generate, translate, advance
+    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+
+    // Now on the BGM step
+    await screen.findByText('BGMなしで進む')
+
+    // Navigate back to the (now completed) trim step via the indicator.
+    fireEvent.click(screen.getByText('トリミング'))
+
+    // We're back on the trim step: the shot list and combine button reappear.
+    expect(await screen.findByText('結合する')).toBeInTheDocument()
+
+    // Subtitle/BGM completion was invalidated: re-advancing forward requires
+    // going through subtitle generation again (SubtitleWorkflow was reset to
+    // its initial 'idle' stage instead of showing the previously burned blob).
+    const shotVideoAgain = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideoAgain, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideoAgain, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+
+    expect(await screen.findByText('🎤 英語字幕を生成')).toBeInTheDocument()
+  })
+
   it('shows the wizard progress indicator with 4 steps', async () => {
     renderFinalizePage('script-1')
     await screen.findByText('1. ショット1')

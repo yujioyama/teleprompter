@@ -44,6 +44,8 @@ export default function FinalizePage() {
   const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([])
   const urlsRef = useRef<string[]>([])
   const combinedUrlRef = useRef<string | null>(null)
+  const finalUrlRef = useRef<string | null>(null)
+  const [finalUrl, setFinalUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!script) return
@@ -108,6 +110,27 @@ export default function FinalizePage() {
   const availableEntries = entries.filter(e => e.blob)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
+
+  useEffect(() => {
+    if (!finalBlob) {
+      if (finalUrlRef.current) {
+        URL.revokeObjectURL(finalUrlRef.current)
+        finalUrlRef.current = null
+      }
+      setFinalUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(finalBlob)
+    if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
+    finalUrlRef.current = url
+    setFinalUrl(url)
+  }, [finalBlob])
+
+  useEffect(() => {
+    return () => {
+      if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
+    }
+  }, [])
 
   async function handleCombine() {
     setCombineState('combining')
@@ -243,10 +266,10 @@ export default function FinalizePage() {
             </div>
           )}
 
-          {step === 'export' && finalBlob && (
+          {step === 'export' && finalBlob && finalUrl && (
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
-              <video className={styles.preview} src={URL.createObjectURL(finalBlob)} controls playsInline />
+              <video className={styles.preview} src={finalUrl} controls playsInline />
               <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
                 保存する
               </button>
