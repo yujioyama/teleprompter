@@ -11,6 +11,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
     await ffmpeg.load({
       coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
       wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
+      workerURL: `${origin}/ffmpeg/ffmpeg-core.worker.js`,
     })
     loaded = true
   }
@@ -50,12 +51,25 @@ export function buildTrimAndNormalizeArgs(start: number, end: number): string[] 
   return args
 }
 
-export async function trimAndNormalizeShot(blob: Blob, start: number, end: number): Promise<Blob> {
+export async function trimAndNormalizeShot(
+  blob: Blob,
+  start: number,
+  end: number,
+  onProgress?: (ratio: number) => void,
+): Promise<Blob> {
   const ff = await getFFmpeg()
-  await ff.writeFile('in.mp4', await fetchFile(blob))
-  await ff.exec(buildTrimAndNormalizeArgs(start, end))
-  const data = await ff.readFile('out.mp4')
-  ff.deleteFile('in.mp4')
-  ff.deleteFile('out.mp4')
-  return new Blob([data as Uint8Array], { type: 'video/mp4' })
+  const handleProgress = onProgress
+    ? ({ progress }: { progress: number }) => onProgress(Math.min(Math.max(progress, 0), 1))
+    : undefined
+  if (handleProgress) ff.on('progress', handleProgress)
+  try {
+    await ff.writeFile('in.mp4', await fetchFile(blob))
+    await ff.exec(buildTrimAndNormalizeArgs(start, end))
+    const data = await ff.readFile('out.mp4')
+    ff.deleteFile('in.mp4')
+    ff.deleteFile('out.mp4')
+    return new Blob([data as Uint8Array], { type: 'video/mp4' })
+  } finally {
+    if (handleProgress) ff.off('progress', handleProgress)
+  }
 }

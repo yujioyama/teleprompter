@@ -37,6 +37,7 @@ export default function FinalizePage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [combineState, setCombineState] = useState<CombineState>('idle')
   const [combineError, setCombineError] = useState<string | null>(null)
+  const [combineProgress, setCombineProgress] = useState(0)
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
   const [shotCueInputs, setShotCueInputs] = useState<ShotCueInput[]>([])
@@ -149,6 +150,7 @@ export default function FinalizePage() {
   async function handleCombine() {
     setCombineState('combining')
     setCombineError(null)
+    setCombineProgress(0)
     // Re-combining invalidates any later step's output. `completedSteps`
     // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
     // back here is goToStep, which already truncates completedSteps), so
@@ -160,12 +162,16 @@ export default function FinalizePage() {
     try {
       const normalized: Blob[] = []
       const shotDurations: number[] = []
-      for (const entry of availableEntries) {
+      const total = availableEntries.length
+      for (const [i, entry] of availableEntries.entries()) {
         const trimEnd = entry.trimEnd || entry.duration
-        const trimmed = await trimAndNormalizeShot(entry.blob!, entry.trimStart, trimEnd)
+        const trimmed = await trimAndNormalizeShot(entry.blob!, entry.trimStart, trimEnd, (ratio) =>
+          setCombineProgress((i + ratio) / total)
+        )
         normalized.push(trimmed)
         shotDurations.push(trimEnd - entry.trimStart)
       }
+      setCombineProgress(1)
       const combined = await concatVideos(normalized)
       if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
       const url = URL.createObjectURL(combined)
@@ -250,7 +256,9 @@ export default function FinalizePage() {
                 onClick={handleCombine}
                 disabled={!canCombine || combineState === 'combining'}
               >
-                {combineState === 'combining' ? '結合中...' : '結合する'}
+                {combineState === 'combining'
+                  ? `結合中... ${Math.round(combineProgress * 100)}%`
+                  : '結合する'}
               </button>
 
               {combineState === 'error' && (
