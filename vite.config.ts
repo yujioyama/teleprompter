@@ -11,6 +11,20 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
+  // Mirror vercel.json's production headers so a COEP-related regression
+  // (e.g. a module Worker script missing Cross-Origin-Resource-Policy) is
+  // caught locally instead of only in production. Cross-Origin-Embedder-Policy:
+  // require-corp blocks loading a module Worker's script — even a same-origin
+  // one, per Chromium's implementation — unless that response also carries
+  // Cross-Origin-Resource-Policy; both the ffmpeg.wasm worker and the Whisper
+  // transcription worker (src/workers/whisperWorker.ts) hit this.
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
