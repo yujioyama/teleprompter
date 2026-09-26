@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { SubtitleCue, buildClaudePrompt, parseJapanesePaste } from '../utils/subtitleCues'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { burnSubtitles } from '../utils/burnSubtitles'
@@ -34,7 +34,13 @@ export default function SubtitleWorkflow({ combinedBlob, onBurned }: SubtitleWor
   const [position, setPosition] = useState<SubtitlePosition>(SUBTITLE_POSITION_BOTTOM)
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
-  const previewUrl = URL.createObjectURL(combinedBlob)
+  const previewUrl = useMemo(() => URL.createObjectURL(combinedBlob), [combinedBlob])
+
+  useEffect(() => {
+    return () => {
+      URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   async function handleGenerate() {
     setStage('transcribing')
