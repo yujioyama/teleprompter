@@ -61,9 +61,8 @@ export default function MusicMixer({ videoBlob, onMixed, onNext }: MusicMixerPro
       setStage('done')
       onMixed(mixed)
     } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : `「${track.title}」の合成に失敗しました: ${String(err)}`
-      )
+      const detail = err instanceof Error ? err.message : String(err)
+      setErrorMessage(`「${track.title}」の合成に失敗しました: ${detail}`)
       setStage('error')
     }
   }
