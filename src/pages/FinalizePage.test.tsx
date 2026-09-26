@@ -5,12 +5,10 @@ import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
 import { Script } from '../types'
 import { saveShotVideo } from '../utils/shotVideoStore'
-import * as transcribeModule from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
 
-vi.mock('../utils/transcribeSpeech')
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
 vi.mock('../utils/concatVideos', () => ({
@@ -54,9 +52,6 @@ beforeEach(async () => {
   const script = seedScript()
   await saveShotVideo(script.id, SHOT_1, new Blob(['shot'], { type: 'video/mp4' }))
 
-  vi.mocked(transcribeModule.transcribeSpeech).mockResolvedValue([
-    { id: 'c1', start: 0, end: 2, en: 'Hello', ja: null },
-  ])
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['burned'], { type: 'video/mp4' }))
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
   global.fetch = vi.fn().mockResolvedValue({
@@ -83,8 +78,8 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance without changing position
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
-    await screen.findByDisplayValue('Hello')
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
     })
@@ -112,8 +107,8 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
-    await screen.findByDisplayValue('Hello')
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
     })
@@ -152,8 +147,8 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance (produces a burnedBlob)
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
-    await screen.findByDisplayValue('Hello')
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
     })
@@ -198,8 +193,8 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
-    await screen.findByDisplayValue('Hello')
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
     })
@@ -210,12 +205,12 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('BGMなしで進む')
     fireEvent.click(screen.getByText('字幕'))
 
-    // The previously transcribed English cue text must still be visible —
+    // The previously generated English cue text must still be visible —
     // SubtitleWorkflow must NOT have reset to its initial idle
-    // "🎤 英語字幕を生成" state, which would mean the transcription and
-    // translation work was lost.
-    expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
-    expect(screen.queryByText('🎤 英語字幕を生成')).not.toBeInTheDocument()
+    // "📝 英語字幕を生成" state, which would mean the generated cues and
+    // translation work were lost.
+    expect(await screen.findByDisplayValue('ショット1')).toBeInTheDocument()
+    expect(screen.queryByText('📝 英語字幕を生成')).not.toBeInTheDocument()
 
     // The real regression check: the subtitle step must be completable again,
     // not stuck showing the disabled "焼き込み中..." burning state left over
@@ -229,11 +224,11 @@ describe('FinalizePage wizard', () => {
     expect(await screen.findByText('BGMなしで進む')).toBeInTheDocument()
   })
 
-  it('blocks wizard step navigation while a transcription is in flight', async () => {
-    let resolveTranscribe: (cues: Awaited<ReturnType<typeof transcribeModule.transcribeSpeech>>) => void = () => {}
-    vi.mocked(transcribeModule.transcribeSpeech).mockReturnValue(
+  it('blocks wizard step navigation while a burn-in is in flight', async () => {
+    let resolveBurn: (blob: Blob) => void = () => {}
+    vi.mocked(burnModule.burnSubtitles).mockReturnValue(
       new Promise(resolve => {
-        resolveTranscribe = resolve
+        resolveBurn = resolve
       })
     )
 
@@ -248,9 +243,15 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('次へ')
     fireEvent.click(screen.getByText('次へ'))
 
-    // Step 2: subtitle — kick off transcription, but don't resolve it yet.
-    fireEvent.click(await screen.findByText('🎤 英語字幕を生成'))
-    await screen.findByText('字幕を生成中...（初回はモデルのダウンロードが入ります）')
+    // Step 2: subtitle — generate, translate, then kick off burn-in but don't resolve it yet.
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('焼き込み中...')
 
     // While pending, the wizard indicator's completed 'trim' step must be
     // disabled, and clicking it must not navigate away.
@@ -258,15 +259,15 @@ describe('FinalizePage wizard', () => {
     expect(trimStep).toBeDisabled()
     fireEvent.click(trimStep)
     expect(screen.queryByText('結合する')).not.toBeInTheDocument()
-    expect(screen.getByText('字幕を生成中...（初回はモデルのダウンロードが入ります）')).toBeInTheDocument()
+    expect(screen.getByText('焼き込み中...')).toBeInTheDocument()
 
     // The page's own back button should also be disabled while processing.
     expect(screen.getByText('‹ 戻る')).toBeDisabled()
 
-    // Resolve the transcription and confirm the flow completes normally,
-    // with navigation re-enabled afterwards.
-    resolveTranscribe([{ id: 'c1', start: 0, end: 2, en: 'Hello', ja: null }])
-    await screen.findByDisplayValue('Hello')
+    // Resolve the burn-in and confirm the flow completes normally, with
+    // navigation re-enabled afterwards.
+    resolveBurn(new Blob(['burned'], { type: 'video/mp4' }))
+    await screen.findByText('BGMなしで進む')
     expect(screen.getByText('トリミング').closest('button')).not.toBeDisabled()
     expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
   })

@@ -57,3 +57,24 @@ export function parseJapanesePaste(text: string, cues: SubtitleCue[]): ParseSucc
     cues: cues.map((cue, i) => ({ ...cue, ja: map.get(i + 1)! })),
   }
 }
+
+export interface ShotCueInput {
+  text: string
+  duration: number
+}
+
+// Cue timing follows the requested trim durations exactly; it does not
+// correct for the few-ms encoder/frame-rounding drift that can accumulate
+// across re-encoded clips — imperceptible for sentence-length cues.
+export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
+  const cues: SubtitleCue[] = []
+  let offset = 0
+  entries.forEach((entry, i) => {
+    const text = entry.text.trim()
+    if (text) {
+      cues.push({ id: `shot-${i}`, start: offset, end: offset + entry.duration, en: text, ja: null })
+    }
+    offset += entry.duration
+  })
+  return cues
+}
