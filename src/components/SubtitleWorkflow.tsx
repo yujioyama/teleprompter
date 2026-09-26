@@ -42,7 +42,7 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
 interface SubtitleWorkflowProps {
   combinedBlob: Blob
   state: SubtitleState
-  onStateChange: (state: SubtitleState) => void
+  onStateChange: (updater: SubtitleState | ((prev: SubtitleState) => SubtitleState)) => void
   onBurned?: (blob: Blob) => void
 }
 
@@ -61,7 +61,7 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   function patch(changes: Partial<SubtitleState>) {
-    onStateChange({ ...state, ...changes })
+    onStateChange(prev => ({ ...prev, ...changes }))
   }
 
   // Create the preview object URL inside the effect (not via useMemo) and
@@ -117,6 +117,11 @@ export default function SubtitleWorkflow({ combinedBlob, state, onStateChange, o
     setErrorMessage(null)
     try {
       const burned = await burnSubtitles(combinedBlob, cues, position)
+      // Reset to 'reviewing' on success too: this state is lifted to the
+      // parent and survives unmount, so without this the stage would stay
+      // stuck on 'burning' (disabled button, "焼き込み中...") if the user
+      // ever navigates back to this step after completing it.
+      patch({ stage: 'reviewing' })
       onBurned?.(burned)
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err))

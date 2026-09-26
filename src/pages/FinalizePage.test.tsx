@@ -216,6 +216,17 @@ describe('FinalizePage wizard', () => {
     // translation work was lost.
     expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
     expect(screen.queryByText('🎤 英語字幕を生成')).not.toBeInTheDocument()
+
+    // The real regression check: the subtitle step must be completable again,
+    // not stuck showing the disabled "焼き込み中..." burning state left over
+    // from the first successful burn-in (stage lifted to the parent survives
+    // unmount, so a stale 'burning' stage would never reset on its own).
+    const nextButton = screen.getByText('次へ')
+    expect(nextButton).not.toBeDisabled()
+    fireEvent.click(nextButton)
+
+    // Advancing past 'subtitle' a second time must reach the BGM step again.
+    expect(await screen.findByText('BGMなしで進む')).toBeInTheDocument()
   })
 
   it('shows the wizard progress indicator with 4 steps', async () => {
