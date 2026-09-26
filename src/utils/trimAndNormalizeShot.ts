@@ -62,6 +62,18 @@ export async function trimAndNormalizeShot(
     const data = await ff.readFile('out.mp4')
     ff.deleteFile('in.mp4')
     ff.deleteFile('out.mp4')
+    // A real encode failure can still leave a small/truncated out.mp4 behind
+    // (e.g. ffmpeg exits before muxing the moov atom), which readFile above
+    // doesn't catch — it only throws when nothing was written at all. execFFmpeg
+    // also can't distinguish a genuine failure from the harmless Safari/WebKit
+    // exit-unwind bug it swallows (see execFFmpeg.ts), so a failed encode would
+    // otherwise pass through silently as a corrupt "successful" clip. A valid
+    // 1080x1920 H.264/AAC clip is always far larger than this floor.
+    if (!(data instanceof Uint8Array) || data.length < 1000) {
+      throw new Error(
+        `ffmpeg produced a suspiciously small output (${data instanceof Uint8Array ? data.length : typeof data} bytes) — the encode likely failed`,
+      )
+    }
     return new Blob([data as Uint8Array], { type: 'video/mp4' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
