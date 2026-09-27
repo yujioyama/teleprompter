@@ -13,6 +13,8 @@ import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeechBounds } from '../utils/detectSpeechBounds'
+import { canUseWebCodecs } from '../utils/webcodecs/support'
+import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -37,6 +39,15 @@ vi.mock('../utils/normalizeLoudness', () => ({
 }))
 vi.mock('../utils/detectSpeechBounds', () => ({
   detectSpeechBounds: vi.fn(async () => null),
+}))
+// Off by default (as in jsdom itself): background encoding and per-shot
+// burn-in only happen on the hardware path.
+vi.mock('../utils/webcodecs/support', () => ({
+  canUseWebCodecs: vi.fn(async () => false),
+  disableWebCodecs: vi.fn(),
+}))
+vi.mock('../utils/webcodecs/concatClips', () => ({
+  concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs, { type: 'video/mp4' })),
 }))
 
 const LOUDNESS_NORMALIZED = new Blob(['loudness-normalized'], { type: 'video/mp4' })
@@ -75,6 +86,7 @@ beforeEach(async () => {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['burned'], { type: 'video/mp4' }))
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
   vi.mocked(normalizeLoudness).mockResolvedValue(LOUDNESS_NORMALIZED)
+  vi.mocked(canUseWebCodecs).mockResolvedValue(false)
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
     blob: () => Promise.resolve(new Blob(['track'], { type: 'audio/mpeg' })),
@@ -291,7 +303,7 @@ describe('FinalizePage wizard', () => {
     expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
   })
 
-  it('does not encode in the background while the trim previews are showing (issue #12)', async () => {
+  it('does not encode in the background when only ffmpeg.wasm is available (issue #12)', async () => {
     renderFinalizePage('script-1')
 
     await screen.findByText('ショット1')
@@ -299,14 +311,66 @@ describe('FinalizePage wizard', () => {
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
 
-    // A background encode's memory use made iOS drop the <video> previews,
-    // so encoding must wait for the 結合 press.
+    // ffmpeg.wasm's memory use made iOS drop the <video> previews, so on
+    // that path encoding must wait for the 結合 press.
     await new Promise(resolve => setTimeout(resolve, 1200))
     expect(vi.mocked(trimAndNormalizeShot)).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByText('結合する'))
     await screen.findByText('次へ')
     expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1)
+  })
+
+  it('encodes shots in the background once the trims settle, and 結合 reuses them', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+
+    await waitFor(() => expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    const [, start, end] = vi.mocked(trimAndNormalizeShot).mock.calls[0]
+    expect([start, end]).toEqual([0, 5])
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1)
+  })
+
+  it('burns subtitles shot by shot in the background, and 次へ just joins them', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    const burnedShot = new Blob(['burned-shot'], { type: 'video/mp4' })
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(burnedShot)
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    // Started before 次へ, while the preview is up.
+    await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    const [, start, end, cues] = vi.mocked(burnModule.burnShotSubtitles).mock.calls[0]
+    expect([start, end]).toEqual([0, 5])
+    expect(cues).toEqual([expect.objectContaining({ start: 0, end: 5, en: 'ショット1', ja: 'こんにちは' })])
+
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('BGMなしで進む')
+    expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1)
+    expect(concatClipsWebCodecs).toHaveBeenCalledWith([burnedShot])
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
   })
 
   it('walks trim → combine → subtitle → BGM skip → export, with a single save button at the end', async () => {
@@ -403,6 +467,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('日本語を反映'))
     fireEvent.click(screen.getByText('次へ'))
 
+    await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
     const burnedBlob = await vi.mocked(burnModule.burnSubtitles).mock.results[0].value
 
     // Step 3: BGM — select a track, then change the volume to trigger a
@@ -499,7 +564,7 @@ describe('FinalizePage wizard', () => {
     })
     fireEvent.click(screen.getByText('日本語を反映'))
     fireEvent.click(screen.getByText('次へ'))
-    await screen.findByText('焼き込み中...')
+    await screen.findByText(/^焼き込み中\.\.\./)
 
     // While pending, the wizard indicator's completed 'trim' step must be
     // disabled, and clicking it must not navigate away.
@@ -507,7 +572,7 @@ describe('FinalizePage wizard', () => {
     expect(trimStep).toBeDisabled()
     fireEvent.click(trimStep)
     expect(screen.queryByText('結合する')).not.toBeInTheDocument()
-    expect(screen.getByText('焼き込み中...')).toBeInTheDocument()
+    expect(screen.getByText(/^焼き込み中\.\.\./)).toBeInTheDocument()
 
     // The page's own back button should also be disabled while processing.
     expect(screen.getByText('‹ 戻る')).toBeDisabled()

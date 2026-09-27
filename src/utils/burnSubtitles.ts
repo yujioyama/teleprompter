@@ -5,6 +5,8 @@ import { SubtitleCue } from './subtitleCues'
 import { SubtitlePosition, subtitleY } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
+import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
+import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   EN_STYLE,
   JA_STYLE,
@@ -99,10 +101,36 @@ export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; h
 const VIDEO_HEIGHT = 1920
 
 /**
+ * Render each cue that has a `ja` translation to its PNG and place it:
+ * shown over [start, start + duration), centered on the chosen position but
+ * kept fully on screen. Cues without a translation aren't burned in.
+ */
+export async function renderSubtitleOverlays(
+  cues: SubtitleCue[],
+  position: SubtitlePosition,
+): Promise<SubtitleOverlay[]> {
+  const overlays: SubtitleOverlay[] = []
+  for (const cue of cues) {
+    if (cue.ja === null) continue
+    const { image, height } = await renderCueImage(cue)
+    overlays.push({
+      start: cue.start,
+      end: cue.start + cueDuration(cue),
+      image,
+      y: Math.min(Math.max(subtitleY(position, VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height),
+    })
+  }
+  return overlays
+}
+
+/**
  * Burn bilingual subtitles into the video: render one PNG per cue with a
  * `ja` translation and composite each over its time window. Uses the
  * hardware encoder via WebCodecs when available (issue #10), otherwise
  * ffmpeg.wasm's overlay filtergraph.
+ *
+ * Re-encodes the whole joined video, so FinalizePage only falls back to it
+ * when burning shot by shot (burnShotSubtitles) isn't possible.
  */
 export async function burnSubtitles(
   videoBlob: Blob,
@@ -114,32 +142,41 @@ export async function burnSubtitles(
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }
-
-  const images: Blob[] = []
-  const ys: number[] = []
-  for (const cue of translated) {
-    const { image, height } = await renderCueImage(cue)
-    images.push(image)
-    // Centered on the chosen position, but kept fully on screen.
-    ys.push(Math.min(Math.max(subtitleY(position, VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height))
-  }
+  const overlays = await renderSubtitleOverlays(translated, position)
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(
-        videoBlob,
-        translated.map((cue, i) => ({
-          start: cue.start,
-          end: cue.start + cueDuration(cue),
-          image: images[i],
-          y: ys[i],
-        })),
-      )
+      return await burnSubtitlesWebCodecs(videoBlob, overlays)
     } catch (err) {
       disableWebCodecs(err)
     }
   }
-  return burnSubtitlesFFmpeg(videoBlob, translated, images, ys)
+  return burnSubtitlesFFmpeg(
+    videoBlob,
+    translated,
+    overlays.map(o => o.image),
+    overlays.map(o => o.y),
+  )
+}
+
+/**
+ * Trim and normalize one shot with its subtitles composited in the same
+ * hardware encode (see normalizeShotWebCodecs). `cues` are in the trimmed
+ * shot's own timeline (see cuesForShot). WebCodecs only — throws when it's
+ * unavailable, so the caller can fall back to burnSubtitles on the joined
+ * video.
+ */
+export async function burnShotSubtitles(
+  blob: Blob,
+  start: number,
+  end: number,
+  cues: SubtitleCue[],
+  position: SubtitlePosition,
+  onProgress?: (ratio: number) => void,
+): Promise<Blob> {
+  if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
+  const overlays = await renderSubtitleOverlays(cues, position)
+  return normalizeShotWebCodecs(blob, start, end, onProgress, overlays)
 }
 
 function cueDuration(cue: SubtitleCue): number {

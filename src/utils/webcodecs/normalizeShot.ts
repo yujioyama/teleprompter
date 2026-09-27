@@ -16,6 +16,7 @@ import {
   OUTPUT_SAMPLE_RATE,
   OUTPUT_WIDTH,
 } from './support'
+import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
 
 /**
  * WebCodecs counterpart of the ffmpeg trim+normalize pass: cut [start, end]
@@ -28,6 +29,12 @@ import {
  * clip ends up with identical, unrotated track headers. Only the primary
  * video/audio tracks are used — the camera's `mebx` metadata track is dropped.
  *
+ * `overlays` (in the trimmed clip's own timeline, 0 = `start`) are
+ * composited into the same encode, so a shot with burned-in subtitles costs
+ * one encode rather than a normalize followed by a second full re-encode.
+ * The encoder settings don't change with or without them, so both kinds of
+ * clip join by packet copy.
+ *
  * Mediabunny decodes and encodes one frame at a time and closes each
  * VideoFrame itself, and the decoder/encoder are released when the
  * conversion ends, so nothing outlives this call (see issue #12).
@@ -37,8 +44,10 @@ export async function normalizeShotWebCodecs(
   start: number,
   end: number,
   onProgress?: (ratio: number) => void,
+  overlays: SubtitleOverlay[] = [],
 ): Promise<Blob> {
   const audioDelay = await aacEncoderDelay()
+  const overlay = overlays.length > 0 ? await createOverlayProcess(overlays) : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
     const output = new Output({
@@ -59,6 +68,7 @@ export async function normalizeShotWebCodecs(
         quality: new Quality('high'),
         allowTransformationMetadata: false,
         forceTranscode: true,
+        ...(overlay && { process: overlay.process }),
       },
       audio: {
         codec: 'aac',
@@ -85,6 +95,7 @@ export async function normalizeShotWebCodecs(
     return new Blob([buffer], { type: 'video/mp4' })
   } finally {
     input.dispose()
+    overlay?.dispose()
   }
 }
 

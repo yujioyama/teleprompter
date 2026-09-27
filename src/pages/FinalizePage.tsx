@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
-import {
-  normalizedBackendOf,
-  trimAndNormalizeShot,
-  trimAndNormalizeShotFFmpeg,
-} from '../utils/trimAndNormalizeShot'
+import { normalizedBackendOf, trimAndNormalizeShotFFmpeg } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
-import { NormalizedShotCache } from '../utils/normalizedShotCache'
+import { ShotEncodeCache } from '../utils/shotEncodeCache'
+import {
+  burnSubtitlesByShot,
+  encodeAll,
+  normalizeRequest,
+  shotBurnRequests,
+  type ShotClip,
+} from '../utils/shotEncoding'
+import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeechBounds, type SpeechBounds } from '../utils/detectSpeechBounds'
 import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
@@ -41,6 +45,15 @@ type CombineState = 'idle' | 'combining' | 'done' | 'error'
 type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
+
+// How long trims or subtitles must stay unchanged before their shots start
+// encoding in the background, so a drag or a burst of typing doesn't queue
+// an encode per intermediate value.
+const BACKGROUND_ENCODE_DELAY_MS = 800
+
+function clipOf(entry: ShotEntry): ShotClip {
+  return { shotId: entry.shotId, blob: entry.blob!, start: entry.trimStart, end: entry.trimEnd || entry.duration }
+}
 
 function shotMeta(entry: ShotEntry): string {
   if (!entry.url) return '動画なし'
@@ -80,6 +93,9 @@ export default function FinalizePage() {
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
   const [shotCueInputs, setShotCueInputs] = useState<ShotCueInput[]>([])
+  // The shots exactly as they went into `combinedBlob`, for burning
+  // subtitles shot by shot (trims may change afterwards without re-combining).
+  const [combinedClips, setCombinedClips] = useState<ShotClip[]>([])
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixedBlob, setMixedBlob] = useState<Blob | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
@@ -97,19 +113,21 @@ export default function FinalizePage() {
   // brought to the platforms' level, or `finalBlob` itself if that's off.
   const [exportBlob, setExportBlob] = useState<Blob | null>(null)
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
-  const normalizeCacheRef = useRef<NormalizedShotCache | null>(null)
+  const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
 
-  function getNormalizeCache(): NormalizedShotCache {
-    if (!normalizeCacheRef.current) {
-      normalizeCacheRef.current = new NormalizedShotCache(trimAndNormalizeShot)
+  // Encodes run in the background only on the hardware (WebCodecs) path:
+  // ffmpeg.wasm's memory use made iOS drop the on-screen previews (issue #12).
+  function getEncodeCache(): ShotEncodeCache {
+    if (!encodeCacheRef.current) {
+      encodeCacheRef.current = new ShotEncodeCache(canUseWebCodecs)
     }
-    return normalizeCacheRef.current
+    return encodeCacheRef.current
   }
 
   useEffect(() => {
     return () => {
-      normalizeCacheRef.current?.dispose()
-      normalizeCacheRef.current = null
+      encodeCacheRef.current?.dispose()
+      encodeCacheRef.current = null
     }
   }, [])
 
@@ -251,6 +269,41 @@ export default function FinalizePage() {
     availableEntries.length > 0 && availableEntries.every(e => e.duration > 0) && detectingCount === 0
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
+  // Encode shots ahead while the user is still trimming, so 結合 only has
+  // to join them. Waits for speech detection to finish (it decodes every
+  // shot too) and for the trims to settle; a shot re-trimmed later is
+  // re-queued and its stale queued encode skipped (see ShotEncodeCache).
+  const trimSignature = availableEntries
+    .map(e => `${e.shotId}:${e.trimStart}:${e.trimEnd || e.duration}`)
+    .join('|')
+  useEffect(() => {
+    if (step !== 'trim' || !canCombine || combineState === 'combining') return
+    const timer = setTimeout(() => {
+      const cache = getEncodeCache()
+      for (const entry of availableEntries) cache.prefetch(normalizeRequest(clipOf(entry)))
+    }, BACKGROUND_ENCODE_DELAY_MS)
+    return () => clearTimeout(timer)
+    // availableEntries is captured through trimSignature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, canCombine, combineState, trimSignature])
+
+  // Likewise burn subtitles into each shot once every cue is translated,
+  // while the user checks the preview and position, so 次へ only has to
+  // join them. Editing a cue or moving the subtitles re-queues just the
+  // shots that changed.
+  const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
+  useEffect(() => {
+    if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
+    if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
+    const timer = setTimeout(() => {
+      const cache = getEncodeCache()
+      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition)) {
+        cache.prefetch(request)
+      }
+    }, BACKGROUND_ENCODE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips])
+
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
   // final audio can be brought to the level Instagram/TikTok play back at.
@@ -321,41 +374,8 @@ export default function FinalizePage() {
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
-      const cache = getNormalizeCache()
-      const total = availableEntries.length
-      const shotDurations = availableEntries.map(e => (e.trimEnd || e.duration) - e.trimStart)
-      const keys = availableEntries.map(e =>
-        cache.keyFor(e.shotId, e.blob!, e.trimStart, e.trimEnd || e.duration),
-      )
-      // Per-shot completion ratio; shots already encoded in the background
-      // jump straight to 1 as soon as their cached promise resolves.
-      const ratios = new Map(keys.map(k => [k, 0]))
-      const report = () => {
-        let sum = 0
-        ratios.forEach(r => (sum += r))
-        setCombineProgress(sum / total)
-      }
-      cache.onProgress = (key, ratio) => {
-        if (!ratios.has(key)) return
-        ratios.set(key, ratio)
-        report()
-      }
-      let normalized: Blob[]
-      try {
-        normalized = await Promise.all(
-          availableEntries.map((entry, i) =>
-            cache
-              .get(entry.shotId, entry.blob!, entry.trimStart, entry.trimEnd || entry.duration)
-              .then(blob => {
-                ratios.set(keys[i], 1)
-                report()
-                return blob
-              }),
-          ),
-        )
-      } finally {
-        cache.onProgress = null
-      }
+      const clips = availableEntries.map(clipOf)
+      const normalized = await encodeAll(getEncodeCache(), clips.map(normalizeRequest), setCombineProgress)
       // If WebCodecs broke down partway (see trimAndNormalizeShot), some
       // clips came from the hardware encoder and some from ffmpeg; their
       // H.264 headers differ and can't be joined by packet copy, so bring
@@ -363,10 +383,7 @@ export default function FinalizePage() {
       if (new Set(normalized.map(normalizedBackendOf)).size > 1) {
         for (let i = 0; i < normalized.length; i++) {
           if (normalizedBackendOf(normalized[i]) === 'ffmpeg') continue
-          const entry = availableEntries[i]
-          normalized[i] = await trimAndNormalizeShotFFmpeg(
-            entry.blob!, entry.trimStart, entry.trimEnd || entry.duration,
-          )
+          normalized[i] = await trimAndNormalizeShotFFmpeg(clips[i].blob, clips[i].start, clips[i].end)
         }
       }
       setCombineProgress(1)
@@ -376,11 +393,12 @@ export default function FinalizePage() {
       combinedUrlRef.current = url
       setCombinedBlob(combined)
       setCombinedUrl(url)
-      // Same entries, same order, same trim-end values used just above to
-      // build `normalized` — keeps subtitle timing aligned with the actual
+      // Same clips, same order, same trim values used just above to build
+      // `normalized` — keeps subtitle timing aligned with the actual
       // combined output by construction, not by keeping two formulas in sync.
+      setCombinedClips(clips)
       setShotCueInputs(
-        availableEntries.map((entry, i) => ({ text: entry.text, duration: shotDurations[i] }))
+        availableEntries.map((entry, i) => ({ text: entry.text, duration: clips[i].end - clips[i].start }))
       )
       setCombineState('done')
     } catch (err) {
@@ -523,6 +541,9 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
+                burn={(cues, position, onProgress) =>
+                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress)
+                }
                 onBurned={burned => {
                   setBurnedBlob(burned)
                   markStepDone('subtitle', 'bgm')
