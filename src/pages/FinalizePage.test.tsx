@@ -364,6 +364,40 @@ describe('FinalizePage wizard', () => {
     expect(await screen.findByText('仕上げ中...')).toBeDisabled()
   })
 
+  it('lets a stuck 結合 be cancelled and retried with the same trims (issue #34)', async () => {
+    vi.mocked(trimAndNormalizeShot).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText(/^結合中\.\.\./)
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.queryByText('中断する')).not.toBeInTheDocument()
+    const combineBtn = screen.getByText('結合する')
+    expect(combineBtn).not.toBeDisabled()
+
+    fireEvent.click(combineBtn)
+    await screen.findByText('次へ')
+    const [first, retry] = vi.mocked(trimAndNormalizeShot).mock.calls
+    expect(retry.slice(1, 3)).toEqual(first.slice(1, 3))
+  })
+
+  it('lets 結合 be cancelled while the shots are being joined (issue #34)', async () => {
+    vi.mocked(concatVideos).mockReturnValueOnce(new Promise<Blob>(() => {}))
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('仕上げ中...')
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(vi.mocked(concatVideos).mock.calls[0][1]).toBeInstanceOf(AbortSignal)
+    expect(vi.mocked(concatVideos).mock.calls[0][1]?.aborted).toBe(true)
+  })
+
   it('encodes shots in the background once the trims settle, and 結合 reuses them', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     renderFinalizePage('script-1')
