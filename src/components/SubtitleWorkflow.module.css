@@ -117,3 +117,8 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: 100;
 }
+
+.notice {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}

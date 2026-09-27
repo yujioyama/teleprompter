@@ -596,8 +596,8 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
-                burn={(cues, position, onProgress) =>
-                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress)
+                burn={(cues, position, onProgress, signal) =>
+                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress, signal)
                 }
                 onBurned={burned => {
                   setBurnedBlob(burned)

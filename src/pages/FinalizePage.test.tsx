@@ -662,6 +662,39 @@ describe('FinalizePage wizard', () => {
     expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
   })
 
+  it('unlocks navigation when a stuck burn-in is cancelled (issue #34)', async () => {
+    vi.mocked(burnModule.burnSubtitles).mockReturnValue(new Promise(() => {}))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText(/^焼き込み中\.\.\./)
+    expect(screen.getByText('‹ 戻る')).toBeDisabled()
+
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
+    expect(screen.getByText('トリミング').closest('button')).not.toBeDisabled()
+    expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
+    const burnCall = vi.mocked(burnModule.burnSubtitles).mock.calls[0]
+    expect(burnCall[4]).toBeInstanceOf(AbortSignal)
+    expect(burnCall[4]?.aborted).toBe(true)
+  })
+
   it('shows the wizard progress indicator with 4 steps', async () => {
     renderFinalizePage('script-1')
     await screen.findByText('ショット1')
