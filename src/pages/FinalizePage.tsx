@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
-import { normalizedBackendOf, trimAndNormalizeShotFFmpeg } from '../utils/trimAndNormalizeShot'
+import { unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { ShotEncodeCache } from '../utils/shotEncodeCache'
 import {
@@ -42,6 +42,10 @@ interface ShotEntry {
 }
 
 type CombineState = 'idle' | 'combining' | 'done' | 'error'
+// What 結合 is busy with, so the button never sits at 100% while work
+// remains (issue #31): encoding each shot, re-encoding some onto one
+// encoder after WebCodecs broke down partway, then joining them.
+type CombinePhase = 'encoding' | 'unifying' | 'joining'
 type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
@@ -53,6 +57,14 @@ const BACKGROUND_ENCODE_DELAY_MS = 800
 
 function clipOf(entry: ShotEntry): ShotClip {
   return { shotId: entry.shotId, blob: entry.blob!, start: entry.trimStart, end: entry.trimEnd || entry.duration }
+}
+
+function combineLabel(phase: CombinePhase, progress: number): string {
+  // Rounded down, so 100% only shows once that phase's work is really done.
+  const percent = Math.floor(progress * 100)
+  if (phase === 'joining') return '仕上げ中...'
+  if (phase === 'unifying') return `再変換中... ${percent}%`
+  return `結合中... ${percent}%`
 }
 
 function shotMeta(entry: ShotEntry): string {
@@ -90,6 +102,7 @@ export default function FinalizePage() {
   const [combineState, setCombineState] = useState<CombineState>('idle')
   const [combineError, setCombineError] = useState<string | null>(null)
   const [combineProgress, setCombineProgress] = useState(0)
+  const [combinePhase, setCombinePhase] = useState<CombinePhase>('encoding')
   const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
   const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
   const [shotCueInputs, setShotCueInputs] = useState<ShotCueInput[]>([])
@@ -364,6 +377,7 @@ export default function FinalizePage() {
   async function handleCombine() {
     setCombineState('combining')
     setCombineError(null)
+    setCombinePhase('encoding')
     setCombineProgress(0)
     // Re-combining invalidates any later step's output. `completedSteps`
     // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
@@ -375,18 +389,16 @@ export default function FinalizePage() {
     setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
       const clips = availableEntries.map(clipOf)
-      const normalized = await encodeAll(getEncodeCache(), clips.map(normalizeRequest), setCombineProgress)
+      const encoded = await encodeAll(getEncodeCache(), clips.map(normalizeRequest), setCombineProgress)
       // If WebCodecs broke down partway (see trimAndNormalizeShot), some
       // clips came from the hardware encoder and some from ffmpeg; their
-      // H.264 headers differ and can't be joined by packet copy, so bring
-      // the stragglers onto the ffmpeg profile too.
-      if (new Set(normalized.map(normalizedBackendOf)).size > 1) {
-        for (let i = 0; i < normalized.length; i++) {
-          if (normalizedBackendOf(normalized[i]) === 'ffmpeg') continue
-          normalized[i] = await trimAndNormalizeShotFFmpeg(clips[i].blob, clips[i].start, clips[i].end)
-        }
-      }
-      setCombineProgress(1)
+      // H.264 headers differ and can't be joined by packet copy, so some
+      // have to be re-encoded onto the other's profile.
+      const normalized = await unifyNormalizeBackends(clips, encoded, ratio => {
+        setCombinePhase('unifying')
+        setCombineProgress(ratio)
+      })
+      setCombinePhase('joining')
       const combined = await concatVideos(normalized)
       if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
       const url = URL.createObjectURL(combined)
@@ -508,7 +520,7 @@ export default function FinalizePage() {
                 disabled={!canCombine || combineState === 'combining'}
               >
                 {combineState === 'combining'
-                  ? `結合中... ${Math.round(combineProgress * 100)}%`
+                  ? combineLabel(combinePhase, combineProgress)
                   : detectingCount > 0
                     ? `前後の無音を検出中... (残り${detectingCount})`
                     : '結合する'}
