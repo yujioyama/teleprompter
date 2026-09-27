@@ -128,7 +128,7 @@ describe('burnSubtitlesByShot', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50)
 
     expect(burnModule.burnShotSubtitles).not.toHaveBeenCalled()
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
   })
 
   it('disables WebCodecs and burns the whole video when a per-shot burn fails', async () => {
@@ -137,7 +137,21 @@ describe('burnSubtitlesByShot', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50)
 
     expect(disableWebCodecs).toHaveBeenCalledWith(err)
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
+  })
+
+  // Issue #33: the fallback re-encodes the whole video and can take minutes
+  // on a phone; without progress the button sat at "0%" the whole time.
+  it('reports the whole-video fallback\'s progress', async () => {
+    vi.mocked(burnModule.burnShotSubtitles).mockRejectedValueOnce(new Error('encoder died'))
+    vi.mocked(burnModule.burnSubtitles).mockImplementation(async (_blob, _cues, _position, onProgress) => {
+      onProgress?.(0.37)
+      return new Blob(['whole-video-burn'])
+    })
+    const onProgress = vi.fn()
+    await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, onProgress)
+
+    expect(onProgress).toHaveBeenLastCalledWith(0.37)
   })
 
   it('burns the whole video, keeping WebCodecs on, when the burned shots can\'t be packet-joined', async () => {
@@ -147,6 +161,6 @@ describe('burnSubtitlesByShot', () => {
     warn.mockRestore()
 
     expect(disableWebCodecs).not.toHaveBeenCalled()
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
   })
 })

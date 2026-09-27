@@ -161,6 +161,44 @@ describe('SubtitleWorkflow position controls', () => {
     await act(async () => finish(BLOB))
   })
 
+  // Issue #33: a preview left playing competes with the burn's hardware
+  // decode/encode on iOS, which can make it fail over to the much slower
+  // ffmpeg.wasm path.
+  it('pauses the preview and hides its controls while burning in', async () => {
+    let finish!: (blob: Blob) => void
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    function PauseWorkflow() {
+      const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+      return (
+        <SubtitleWorkflow
+          combinedBlob={BLOB}
+          shotCueInputs={SHOT_CUE_INPUTS}
+          state={state}
+          onStateChange={setState}
+          burn={() => new Promise(resolve => (finish = resolve))}
+        />
+      )
+    }
+    const { container } = render(<PauseWorkflow />)
+
+    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    const video = container.querySelector('video')!
+    expect(video).toHaveAttribute('controls')
+    fireEvent.click(screen.getByText('次へ'))
+
+    expect(pause).toHaveBeenCalled()
+    await screen.findByText('焼き込み中... 0%')
+    expect(video).not.toHaveAttribute('controls')
+    await act(async () => finish(BLOB))
+    expect(video).toHaveAttribute('controls')
+    pause.mockRestore()
+  })
+
   it('generates a cue per shot from script text, timed by cumulative shot duration', async () => {
     seedBurnMock()
     render(
