@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput } from '../utils/subtitleCues'
 import * as burnModule from '../utils/burnSubtitles'
@@ -33,6 +33,7 @@ function ControlledSubtitleWorkflow({
       shotCueInputs={shotCueInputs}
       state={state}
       onStateChange={setState}
+      burn={(cues, position) => burnModule.burnSubtitles(combinedBlob, cues, position)}
       onBurned={onBurned}
     />
   )
@@ -124,6 +125,40 @@ describe('SubtitleWorkflow position controls', () => {
     // Retrying should succeed now that the mock no longer rejects.
     fireEvent.click(nextBtn)
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
+  })
+
+  it('shows the burn-in progress on the button while it runs', async () => {
+    let report!: (ratio: number) => void
+    let finish!: (blob: Blob) => void
+    function ProgressWorkflow() {
+      const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+      return (
+        <SubtitleWorkflow
+          combinedBlob={BLOB}
+          shotCueInputs={SHOT_CUE_INPUTS}
+          state={state}
+          onStateChange={setState}
+          burn={(_cues, _position, onProgress) => {
+            report = onProgress
+            return new Promise(resolve => (finish = resolve))
+          }}
+        />
+      )
+    }
+    render(<ProgressWorkflow />)
+
+    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+
+    expect(await screen.findByText('焼き込み中... 0%')).toBeDisabled()
+    act(() => report(0.42))
+    expect(screen.getByText('焼き込み中... 42%')).toBeInTheDocument()
+    await act(async () => finish(BLOB))
   })
 
   it('generates a cue per shot from script text, timed by cumulative shot duration', async () => {

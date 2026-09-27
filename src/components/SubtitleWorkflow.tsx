@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste } from '../utils/subtitleCues'
-import { burnSubtitles } from '../utils/burnSubtitles'
 import {
   SubtitlePosition,
   SUBTITLE_POSITION_TOP,
@@ -43,6 +42,8 @@ interface SubtitleWorkflowProps {
   shotCueInputs: ShotCueInput[]
   state: SubtitleState
   onStateChange: (updater: SubtitleState | ((prev: SubtitleState) => SubtitleState)) => void
+  /** Burn `cues` into the combined video, reporting progress 0–1. */
+  burn: (cues: SubtitleCue[], position: SubtitlePosition, onProgress: (ratio: number) => void) => Promise<Blob>
   onBurned?: (blob: Blob) => void
 }
 
@@ -52,13 +53,14 @@ const PRESETS: { label: string; value: SubtitlePosition }[] = [
   { label: '下部', value: SUBTITLE_POSITION_BOTTOM },
 ]
 
-export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, onBurned }: SubtitleWorkflowProps) {
+export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, burn, onBurned }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [burnProgress, setBurnProgress] = useState(0)
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -120,8 +122,9 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   async function handleBurnIn() {
     patch({ stage: 'burning' })
     setErrorMessage(null)
+    setBurnProgress(0)
     try {
-      const burned = await burnSubtitles(combinedBlob, cues, position)
+      const burned = await burn(cues, position, setBurnProgress)
       // Reset to 'reviewing' on success too: this state is lifted to the
       // parent and survives unmount, so without this the stage would stay
       // stuck on 'burning' (disabled button, "焼き込み中...") if the user
@@ -231,7 +234,7 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
                 onClick={handleBurnIn}
                 disabled={!allTranslated || stage === 'burning'}
               >
-                {stage === 'burning' ? '焼き込み中...' : '次へ'}
+                {stage === 'burning' ? `焼き込み中... ${Math.round(burnProgress * 100)}%` : '次へ'}
               </button>
             </div>
           )}

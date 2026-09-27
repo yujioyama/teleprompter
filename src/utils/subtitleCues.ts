@@ -78,3 +78,22 @@ export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
   })
   return cues
 }
+
+/**
+ * The cues that fall within one shot of the joined video, moved into that
+ * shot's own timeline (0 = its first frame) and clipped to its length, for
+ * burning subtitles into each shot separately. `shotStart` is where the
+ * shot begins in the joined video. Cues touching the shot by less than a
+ * rounding error are left out.
+ */
+export function cuesForShot(cues: SubtitleCue[], shotStart: number, shotDuration: number): SubtitleCue[] {
+  const shotEnd = shotStart + shotDuration
+  const out: SubtitleCue[] = []
+  for (const cue of cues) {
+    const start = Math.max(cue.start, shotStart)
+    const end = Math.min(cue.end, shotEnd)
+    if (end - start <= 1e-6) continue
+    out.push({ ...cue, start: start - shotStart, end: end - shotStart })
+  }
+  return out
+}

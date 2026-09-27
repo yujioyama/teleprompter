@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, cuesFromShotEntries, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, cuesFromShotEntries, cuesForShot, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -101,5 +101,38 @@ describe('cuesFromShotEntries', () => {
 
   it('returns an empty array for no entries', () => {
     expect(cuesFromShotEntries([])).toEqual([])
+  })
+})
+
+describe('cuesForShot', () => {
+  const cue = (id: string, start: number, end: number): SubtitleCue => ({ id, start, end, en: id, ja: `${id}-ja` })
+
+  it('moves the shot\'s own cue into the shot\'s timeline', () => {
+    const cues = cuesFromShotEntries([
+      { text: 'one', duration: 1.3 },
+      { text: 'two', duration: 2.1 },
+      { text: 'three', duration: 0.7 },
+    ])
+    const [only] = cuesForShot(cues, 1.3, 2.1)
+    expect(only.en).toBe('two')
+    expect(only.start).toBeCloseTo(0)
+    expect(only.end).toBeCloseTo(2.1)
+  })
+
+  it('leaves out neighbouring cues that only touch the shot\'s edges', () => {
+    const cues = cuesFromShotEntries([
+      { text: 'a', duration: 0.1 + 0.2 },
+      { text: 'b', duration: 1 },
+      { text: 'c', duration: 1 },
+    ])
+    expect(cuesForShot(cues, 0.1 + 0.2, 1).map(c => c.en)).toEqual(['b'])
+  })
+
+  it('clips a cue that spans a shot boundary', () => {
+    expect(cuesForShot([cue('x', 0.5, 3)], 1, 1)).toEqual([{ ...cue('x', 0, 1) }])
+  })
+
+  it('returns nothing for a shot without a cue', () => {
+    expect(cuesForShot([cue('x', 0, 1), cue('y', 2, 3)], 1, 1)).toEqual([])
   })
 })
