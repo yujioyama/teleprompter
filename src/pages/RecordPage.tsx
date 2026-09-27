@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import { useRecorder } from '../hooks/useRecorder'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
-import { processRecordedVideo, inferMimeType, type ShotTrimSettings } from '../utils/processRecordedVideo'
+import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { Shot } from '../types'
 import VideoReviewModal from '../components/VideoReviewModal'
@@ -155,7 +155,7 @@ export default function RecordPage() {
 
     if (resolution.kind === 'legacy') {
       setBulkImportError(null)
-      importFile(resolution.file, effectiveShotTrimSettings(currentShot))
+      importFile(resolution.file, { normalizeAudio: globalSettings.normalizeAudio })
       return
     }
 
@@ -171,15 +171,6 @@ export default function RecordPage() {
     })
   }
 
-  function effectiveShotTrimSettings(shot: Shot | undefined): ShotTrimSettings {
-    return {
-      trimEnabled: shot?.trimEnabled ?? globalSettings.trimEnabled,
-      trimPaddingStart: shot?.trimPaddingStart ?? globalSettings.trimPaddingStart,
-      trimPaddingEnd: shot?.trimPaddingEnd ?? globalSettings.trimPaddingEnd,
-      normalizeAudio: globalSettings.normalizeAudio,
-    }
-  }
-
   async function runBulkImport(targets: { shot: Shot; file: File }[]) {
     setBulkImportError(null)
     setBulkImportProgress({ done: 0, total: targets.length })
@@ -190,7 +181,7 @@ export default function RecordPage() {
       const { shot, file } = targets[i]
       try {
         const mimeType = inferMimeType(file)
-        const processed = await processRecordedVideo(file, mimeType, effectiveShotTrimSettings(shot))
+        const processed = await processRecordedVideo(file, mimeType, { normalizeAudio: globalSettings.normalizeAudio })
         // remuxMp4 always falls back to the original blob on failure, so this
         // is still worth saving — just flagged as degraded rather than dropped.
         await saveShotVideo(safeScript.id, shot.id, processed.blob)

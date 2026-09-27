@@ -11,8 +11,8 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toEqual({
       trimEnabled: true,
-      trimPaddingStart: 0.5,
-      trimPaddingEnd: 0.8,
+      trimPaddingStart: 0.3,
+      trimPaddingEnd: 0.4,
       normalizeAudio: true,
     })
   })
@@ -23,8 +23,8 @@ describe('useSettings', () => {
       result.current[1]({ trimEnabled: false })
     })
     expect(result.current[0].trimEnabled).toBe(false)
-    expect(result.current[0].trimPaddingStart).toBe(0.5) // unchanged
-    expect(result.current[0].trimPaddingEnd).toBe(0.8) // unchanged
+    expect(result.current[0].trimPaddingStart).toBe(0.3) // unchanged
+    expect(result.current[0].trimPaddingEnd).toBe(0.4) // unchanged
   })
 
   it('updates trimPaddingStart', () => {
@@ -64,8 +64,8 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toEqual({
       trimEnabled: true,
-      trimPaddingStart: 0.5,
-      trimPaddingEnd: 0.8,
+      trimPaddingStart: 0.3,
+      trimPaddingEnd: 0.4,
       normalizeAudio: true,
     })
   })
@@ -75,8 +75,8 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     // trimEnabled is preserved from old data; new fields fall back to DEFAULTS
     expect(result.current[0].trimEnabled).toBe(false)
-    expect(result.current[0].trimPaddingStart).toBe(0.5)
-    expect(result.current[0].trimPaddingEnd).toBe(0.8)
+    expect(result.current[0].trimPaddingStart).toBe(0.3)
+    expect(result.current[0].trimPaddingEnd).toBe(0.4)
   })
 
   it('normalizeAudio defaults to true', () => {

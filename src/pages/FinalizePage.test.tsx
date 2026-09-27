@@ -12,6 +12,7 @@ import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { shareOrDownload } from '../utils/shareOrDownload'
+import { detectSpeechBounds } from '../utils/detectSpeechBounds'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -33,6 +34,9 @@ vi.mock('../utils/shareOrDownload', () => ({
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
   normalizeLoudness: vi.fn(),
+}))
+vi.mock('../utils/detectSpeechBounds', () => ({
+  detectSpeechBounds: vi.fn(async () => null),
 }))
 
 const LOUDNESS_NORMALIZED = new Blob(['loudness-normalized'], { type: 'video/mp4' })
@@ -168,6 +172,96 @@ describe('FinalizePage trim step: one player for the selected shot', () => {
 
     await waitFor(() => expect(screen.getByRole('option', { name: /ショット2/ })).toHaveTextContent('8.0秒'))
     expect(screen.getByRole('option', { name: /ショット1/ })).toHaveTextContent('5.0秒')
+  })
+})
+
+describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () => {
+  // jsdom has no layout, so give the trim bar a width the handles can be dragged across.
+  function dragEndHandleTo(clientX: number) {
+    const timeline = document.querySelector('[class*="timeline"]') as HTMLElement
+    timeline.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect
+    const endHandle = document.querySelectorAll('[class*="handle"]')[1]
+    fireEvent.pointerDown(endHandle)
+    // jsdom has no PointerEvent, and fireEvent.pointerMove would drop clientX.
+    fireEvent(timeline, new MouseEvent('pointermove', { bubbles: true, clientX }))
+    fireEvent.pointerUp(timeline)
+  }
+
+  it('opens each shot already trimmed to its speech, and combines that cut', async () => {
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeechBounds).mockResolvedValueOnce({ start: 0.7, end: 3.4 })
+    renderFinalizePage('script-1')
+
+    await screen.findByText('開始 0.7秒')
+    expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
+    expect(detectSpeechBounds).toHaveBeenCalledWith(expect.anything(), 0.3, 0.4)
+
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    fireEvent.click(screen.getByText('結合する'))
+    await waitFor(() => expect(trimAndNormalizeShot).toHaveBeenCalled())
+    const [, start, end] = vi.mocked(trimAndNormalizeShot).mock.calls[0]
+    expect(start).toBeCloseTo(0.7)
+    expect(end).toBeCloseTo(3.4)
+  })
+
+  it('uses a shot\'s own padding, and skips detection when its auto-trim is off', async () => {
+    const SHOT_2 = '22222222-2222-2222-2222-222222222222'
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1', trimPaddingStart: 1, trimPaddingEnd: 1.5 },
+      { id: SHOT_2, text: 'ショット2', trimEnabled: false },
+    ]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(detectSpeechBounds).toHaveBeenCalledTimes(1))
+    expect(detectSpeechBounds).toHaveBeenCalledWith(expect.anything(), 1, 1.5)
+  })
+
+  it('holds 結合 until every shot has been checked for speech', async () => {
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    let finish!: (b: null) => void
+    vi.mocked(detectSpeechBounds).mockReturnValueOnce(new Promise(r => (finish = r)))
+    renderFinalizePage('script-1')
+
+    const button = await screen.findByText(/前後の無音を検出中/)
+    expect(button).toBeDisabled()
+
+    finish(null)
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    expect(screen.getByText('開始 0.0秒')).toBeInTheDocument()
+    expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
+  })
+
+  it('lets a hand-adjusted cut go back to the detected one', async () => {
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeechBounds).mockResolvedValueOnce({ start: 0.7, end: 3.4 })
+    renderFinalizePage('script-1')
+    await screen.findByText('終了 3.4秒')
+    expect(screen.queryByText('自動カットに戻す')).not.toBeInTheDocument()
+
+    dragEndHandleTo(90)
+    expect(screen.getByText('終了 4.5秒')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('自動カットに戻す'))
+    expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
+    expect(screen.queryByText('自動カットに戻す')).not.toBeInTheDocument()
+  })
+
+  it('never moves a handle the user already dragged when detection finishes late', async () => {
+    let finish!: (b: { start: number; end: number }) => void
+    vi.mocked(detectSpeechBounds).mockReturnValueOnce(new Promise(r => (finish = r)))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    renderFinalizePage('script-1')
+    await screen.findByText('終了 5.0秒')
+
+    dragEndHandleTo(80)
+    expect(screen.getByText('終了 4.0秒')).toBeInTheDocument()
+
+    finish({ start: 0.7, end: 3.4 })
+    await screen.findByText('自動カットに戻す')
+    expect(screen.getByText('終了 4.0秒')).toBeInTheDocument()
   })
 })
 
