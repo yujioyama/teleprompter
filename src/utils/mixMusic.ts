@@ -31,7 +31,10 @@ async function probeDuration(ff: FFmpeg, filename: string): Promise<number> {
   }
   ff.on('log', handler)
   try {
-    await ff.exec(['-i', filename, '-f', 'null', '-'])
+    // Input only, no output: ffmpeg prints the input's header (Duration
+    // included) and exits with "At least one output file must be specified".
+    // A `-f null -` output would instead decode every frame of the video.
+    await ff.exec(['-i', filename])
   } catch {
     // ffmpeg exits non-zero for this probe-only invocation; the log listener
     // above already captured Duration before that, so this is expected.
