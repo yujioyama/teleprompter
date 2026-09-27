@@ -1,10 +1,6 @@
 import { remuxMp4 } from './remuxMp4'
-import { detectSpeechBounds } from './detectSpeechBounds'
 
-export interface ShotTrimSettings {
-  trimEnabled: boolean
-  trimPaddingStart: number
-  trimPaddingEnd: number
+export interface ProcessOptions {
   normalizeAudio: boolean
 }
 
@@ -29,24 +25,17 @@ export function inferMimeType(file: File): string {
 }
 
 // Remux to move the moov atom to the front (faststart) for editor compatibility.
-// Also detects and trims leading/trailing silence in the same FFmpeg pass.
+// The whole take is kept: the silence around the speech is only cut in the
+// finalize step, where the auto-detected cut can still be adjusted (issue #21).
 export async function processRecordedVideo(
   raw: Blob,
   mimeType: string,
-  shotSettings: ShotTrimSettings,
+  options: ProcessOptions,
 ): Promise<ProcessedVideo> {
   if (!isRemuxableContainer(mimeType)) {
-    // webm: trimming not supported, silently ignored
     return { blob: raw, ok: true, error: null }
   }
 
-  let trim = null
-  if (shotSettings.trimEnabled) {
-    trim = await detectSpeechBounds(raw, shotSettings.trimPaddingStart, shotSettings.trimPaddingEnd)
-  }
-  const result = await remuxMp4(raw, {
-    trim: trim ?? undefined,
-    normalize: shotSettings.normalizeAudio,
-  })
+  const result = await remuxMp4(raw, { normalize: options.normalizeAudio })
   return { blob: result.blob, ok: result.ok, error: result.error ?? null }
 }

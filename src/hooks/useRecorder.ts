@@ -4,21 +4,19 @@ import {
   processRecordedVideo,
   inferMimeType,
   isRemuxableContainer,
-  type ShotTrimSettings,
+  type ProcessOptions,
 } from '../utils/processRecordedVideo'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 
 export type RecordState = 'idle' | 'recording' | 'stopped' | 'remuxing'
 
-export type { ShotTrimSettings }
-
 interface UseRecorderResult {
   state: RecordState
   remuxOk: boolean | null
   remuxError: string | null
-  startRecording: (stream: MediaStream, shotSettings: ShotTrimSettings) => void
+  startRecording: (stream: MediaStream, options: ProcessOptions) => void
   stopRecording: () => void
-  importFile: (file: File, shotSettings: ShotTrimSettings) => Promise<void>
+  importFile: (file: File, options: ProcessOptions) => Promise<void>
   shareOrDownload: (filename: string) => Promise<boolean>
   reset: () => void
   blobRef: Readonly<RefObject<Blob | null>>
@@ -38,7 +36,7 @@ export function useRecorder(): UseRecorderResult {
   const blobRef = useRef<Blob | null>(null)
   const mimeTypeRef = useRef<string>('')
 
-  function startRecording(stream: MediaStream, shotSettings: ShotTrimSettings) {
+  function startRecording(stream: MediaStream, options: ProcessOptions) {
     const mimeType = getSupportedMimeType()
     mimeTypeRef.current = mimeType
     chunksRef.current = []
@@ -64,7 +62,7 @@ export function useRecorder(): UseRecorderResult {
       const raw = new Blob(chunksRef.current, {
         type: mimeType || 'video/webm',
       })
-      await processFinishedBlob(raw, mimeType, shotSettings)
+      await processFinishedBlob(raw, mimeType, options)
     }
 
     // Flush data every second — prevents the iOS video encoder's internal buffer from
@@ -80,14 +78,14 @@ export function useRecorder(): UseRecorderResult {
   }
 
   // Shared by both a just-finished MediaRecorder take and an imported camera-roll file,
-  // so trim/normalize/remux behave identically regardless of where the video came from.
-  async function processFinishedBlob(raw: Blob, mimeType: string, shotSettings: ShotTrimSettings) {
+  // so normalize/remux behave identically regardless of where the video came from.
+  async function processFinishedBlob(raw: Blob, mimeType: string, options: ProcessOptions) {
     const remuxable = isRemuxableContainer(mimeType)
     if (remuxable) {
       setState('remuxing')
     }
 
-    const result = await processRecordedVideo(raw, mimeType, shotSettings)
+    const result = await processRecordedVideo(raw, mimeType, options)
     // Free ffmpeg.wasm's grown heap before the user moves on to finalize.
     if (remuxable) releaseFFmpeg()
     blobRef.current = result.blob
@@ -101,7 +99,7 @@ export function useRecorder(): UseRecorderResult {
     setState('stopped')
   }
 
-  async function importFile(file: File, shotSettings: ShotTrimSettings) {
+  async function importFile(file: File, options: ProcessOptions) {
     if (state !== 'idle') return
     const mimeType = inferMimeType(file)
     mimeTypeRef.current = mimeType
@@ -109,7 +107,7 @@ export function useRecorder(): UseRecorderResult {
     blobRef.current = null
     setRemuxOk(null)
     setRemuxError(null)
-    await processFinishedBlob(file, mimeType, shotSettings)
+    await processFinishedBlob(file, mimeType, options)
   }
 
   async function shareOrDownload(filename: string): Promise<boolean> {

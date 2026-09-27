@@ -10,6 +10,8 @@ import {
 import { concatVideos } from '../utils/concatVideos'
 import { NormalizedShotCache } from '../utils/normalizedShotCache'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
+import { detectSpeechBounds, type SpeechBounds } from '../utils/detectSpeechBounds'
+import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { useSettings } from '../hooks/useSettings'
@@ -28,6 +30,11 @@ interface ShotEntry {
   duration: number
   trimStart: number
   trimEnd: number
+  // The cut found around the speech (issue #21); null when there's none.
+  autoTrim: SpeechBounds | null
+  autoTrimPending: boolean
+  // Once the user drags a handle, a late detection result must not move it.
+  trimEdited: boolean
 }
 
 type CombineState = 'idle' | 'combining' | 'done' | 'error'
@@ -41,6 +48,13 @@ function shotMeta(entry: ShotEntry): string {
   return `${((entry.trimEnd || entry.duration) - entry.trimStart).toFixed(1)}秒`
 }
 
+// The detected cut fitted to the shot's duration, or the whole shot.
+function autoTrimRange(entry: ShotEntry): Pick<ShotEntry, 'trimStart' | 'trimEnd'> {
+  if (!entry.autoTrim) return { trimStart: 0, trimEnd: entry.duration }
+  const { start, end } = clampTrimRange(entry.autoTrim.start, entry.autoTrim.end, entry.duration)
+  return { trimStart: start, trimEnd: end }
+}
+
 function findLastIndexBefore(entries: ShotEntry[], index: number): number {
   for (let i = index - 1; i >= 0; i--) {
     if (entries[i].url) return i
@@ -52,7 +66,8 @@ export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { getScript } = useScripts()
-  const [{ normalizeAudio }] = useSettings()
+  const [settings] = useSettings()
+  const { normalizeAudio } = settings
   const script = id ? getScript(id) : undefined
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
@@ -109,7 +124,10 @@ export default function FinalizePage() {
         const blob = byShotId.get(shot.id) ?? null
         const url = blob ? URL.createObjectURL(blob) : null
         if (url) urlsRef.current.push(url)
-        return { shotId: shot.id, text: shot.text, blob, url, duration: 0, trimStart: 0, trimEnd: 0 }
+        return {
+          shotId: shot.id, text: shot.text, blob, url, duration: 0, trimStart: 0, trimEnd: 0,
+          autoTrim: null, autoTrimPending: blob !== null, trimEdited: false,
+        }
       })
       setEntries(next)
       setLoading(false)
@@ -124,6 +142,23 @@ export default function FinalizePage() {
           const duration = await probeVideoDuration(entry.blob)
           if (cancelled) return
           if (duration > 0) setDurationOnce(entry.shotId, duration)
+        }
+      })()
+
+      // Find where each shot's speech starts and ends, so it opens already
+      // cut past the record-button press and the pause before stopping.
+      // One at a time: each decodes the shot's whole audio track.
+      ;(async () => {
+        for (const entry of next) {
+          if (cancelled) return
+          if (!entry.blob) continue
+          const shot = script.shots.find(s => s.id === entry.shotId)
+          const trim = resolveShotTrimSettings(shot, settings)
+          const bounds = trim.trimEnabled
+            ? await detectSpeechBounds(entry.blob, trim.trimPaddingStart, trim.trimPaddingEnd)
+            : null
+          if (cancelled) return
+          setAutoTrim(entry.shotId, bounds)
         }
       })()
     }).catch(err => {
@@ -156,7 +191,21 @@ export default function FinalizePage() {
   // player loading that shot — so only the first one initializes the trim range.
   function setDurationOnce(shotId: string, duration: number) {
     setEntries(prev =>
-      prev.map(e => (e.shotId === shotId && e.duration === 0 ? { ...e, duration, trimEnd: duration } : e)),
+      prev.map(e => {
+        if (e.shotId !== shotId || e.duration !== 0) return e
+        const withDuration = { ...e, duration }
+        return { ...withDuration, ...autoTrimRange(withDuration) }
+      }),
+    )
+  }
+
+  function setAutoTrim(shotId: string, autoTrim: SpeechBounds | null) {
+    setEntries(prev =>
+      prev.map(e => {
+        if (e.shotId !== shotId) return e
+        const next = { ...e, autoTrim, autoTrimPending: false }
+        return next.duration > 0 && !next.trimEdited ? { ...next, ...autoTrimRange(next) } : next
+      }),
     )
   }
 
@@ -197,7 +246,9 @@ export default function FinalizePage() {
   // with prev/next for the usual one-after-another trimming pass.
   const prevIndex = findLastIndexBefore(entries, selectedIndex)
   const nextIndex = entries.findIndex((e, i) => i > selectedIndex && e.url)
-  const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
+  const detectingCount = availableEntries.filter(e => e.autoTrimPending).length
+  const canCombine =
+    availableEntries.length > 0 && availableEntries.every(e => e.duration > 0) && detectingCount === 0
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
@@ -419,7 +470,14 @@ export default function FinalizePage() {
                     trimStart={selected.trimStart}
                     trimEnd={selected.trimEnd || selected.duration}
                     onDurationKnown={duration => setDurationOnce(selected.shotId, duration)}
-                    onChange={(trimStart, trimEnd) => updateEntry(selected.shotId, { trimStart, trimEnd })}
+                    onChange={(trimStart, trimEnd) =>
+                      updateEntry(selected.shotId, { trimStart, trimEnd, trimEdited: true })
+                    }
+                    onResetToAuto={
+                      selected.autoTrim && selected.trimEdited
+                        ? () => updateEntry(selected.shotId, { ...autoTrimRange(selected), trimEdited: false })
+                        : undefined
+                    }
                   />
                 </div>
               ) : (
@@ -433,7 +491,9 @@ export default function FinalizePage() {
               >
                 {combineState === 'combining'
                   ? `結合中... ${Math.round(combineProgress * 100)}%`
-                  : '結合する'}
+                  : detectingCount > 0
+                    ? `前後の無音を検出中... (残り${detectingCount})`
+                    : '結合する'}
               </button>
 
               {combineState === 'error' && (

@@ -12,6 +12,7 @@ interface ShotTrimmerProps {
   onChange: (start: number, end: number) => void
   onDurationKnown: (duration: number) => void
   duration: number // 0 until onDurationKnown has fired
+  onResetToAuto?: () => void // shown once the auto-detected cut has been changed
 }
 
 const TRANSITION_WINDOW = 1.5 // seconds shown from each side of the cut
@@ -28,6 +29,7 @@ export default function ShotTrimmer({
   onChange,
   onDurationKnown,
   duration,
+  onResetToAuto,
 }: ShotTrimmerProps) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -242,6 +244,12 @@ export default function ShotTrimmer({
         <span>開始 {trimStart.toFixed(1)}秒</span>
         <span>終了 {trimEnd.toFixed(1)}秒</span>
       </div>
+
+      {onResetToAuto && (
+        <button type="button" className={styles.transitionBtn} onClick={onResetToAuto}>
+          自動カットに戻す
+        </button>
+      )}
 
       {nextUrl && (
         <>

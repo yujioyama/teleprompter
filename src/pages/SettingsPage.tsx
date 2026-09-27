@@ -38,7 +38,7 @@ export default function SettingsPage() {
         <div className={styles.row}>
           <div>
             <div className={styles.rowLabel}>無音部分を自動カット</div>
-            <div className={styles.rowSub}>録画後に前後の無音を除去します</div>
+            <div className={styles.rowSub}>仕上げで前後の無音を自動カットします（あとから調整可）</div>
           </div>
           <label className={styles.toggle}>
             <input
