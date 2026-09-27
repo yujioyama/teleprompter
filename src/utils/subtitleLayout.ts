@@ -6,7 +6,7 @@ import { SubtitleCue } from './subtitleCues'
  * preview's own width so it matches what gets burned in.
  */
 export const SUBTITLE_REFERENCE_WIDTH = 1080
-export const SUBTITLE_BOX_MARGIN_X = 40
+export const SUBTITLE_BOX_MARGIN_X = 90
 export const SUBTITLE_BOX_PADDING_X = 40
 export const SUBTITLE_BOX_PADDING_Y = 28
 export const SUBTITLE_BOX_RADIUS = 24
