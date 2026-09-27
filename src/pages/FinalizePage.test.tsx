@@ -91,11 +91,15 @@ describe('FinalizePage trim step: one player for the selected shot', () => {
     await seedTwoShots()
     renderFinalizePage('script-1')
 
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     expect(document.querySelectorAll('video')).toHaveLength(1)
   })
 
-  it('switches the player to a shot tapped in the list, keeping each shot\'s own trim', async () => {
+  function shotSelect() {
+    return screen.getByRole('combobox', { name: 'ショットを選ぶ' }) as HTMLSelectElement
+  }
+
+  it('switches the player to a shot picked in the select, keeping each shot\'s own trim', async () => {
     await seedTwoShots()
     let n = 0
     const urlSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:shot-${++n}`)
@@ -103,25 +107,59 @@ describe('FinalizePage trim step: one player for the selected shot', () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(8)
     renderFinalizePage('script-1')
 
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     await screen.findByText('終了 5.0秒')
     const firstSrc = document.querySelector('video')!.getAttribute('src')
 
-    fireEvent.click(screen.getByRole('button', { name: /ショット2/ }))
+    fireEvent.change(shotSelect(), { target: { value: SHOT_2 } })
 
-    expect(screen.getByText('2. ショット2')).toBeInTheDocument()
+    expect(shotSelect().value).toBe(SHOT_2)
+    expect(screen.getByText('ショット2')).toBeInTheDocument()
     expect(screen.getByText('終了 8.0秒')).toBeInTheDocument()
     expect(document.querySelectorAll('video')).toHaveLength(1)
     expect(document.querySelector('video')!.getAttribute('src')).not.toBe(firstSrc)
   })
 
-  it('shows each shot\'s kept length in the list', async () => {
+  it('steps through shots with the prev/next buttons (issue #18)', async () => {
+    await seedTwoShots()
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const prev = screen.getByRole('button', { name: '前のショット' })
+    const next = screen.getByRole('button', { name: '次のショット' })
+    expect(prev).toBeDisabled()
+
+    fireEvent.click(next)
+    expect(shotSelect().value).toBe(SHOT_2)
+    expect(next).toBeDisabled()
+
+    fireEvent.click(prev)
+    expect(shotSelect().value).toBe(SHOT_1)
+  })
+
+  it('skips shots without a saved video', async () => {
+    const SHOT_3 = '33333333-3333-3333-3333-333333333333'
+    await seedTwoShots()
+    const script = JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0] as Script
+    script.shots = [script.shots[0], { id: SHOT_3, text: 'ショット3' }, script.shots[1]]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    expect(screen.getByRole('option', { name: /ショット3/ })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /ショット3/ })).toHaveTextContent('動画なし')
+
+    fireEvent.click(screen.getByRole('button', { name: '次のショット' }))
+    expect(shotSelect().value).toBe(SHOT_2)
+  })
+
+  it('shows each shot\'s kept length in the select', async () => {
     await seedTwoShots()
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(8)
     renderFinalizePage('script-1')
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /ショット2/ })).toHaveTextContent('8.0秒'))
-    expect(screen.getByRole('button', { name: /ショット1/ })).toHaveTextContent('5.0秒')
+    await waitFor(() => expect(screen.getByRole('option', { name: /ショット2/ })).toHaveTextContent('8.0秒'))
+    expect(screen.getByRole('option', { name: /ショット1/ })).toHaveTextContent('5.0秒')
   })
 })
 
@@ -130,7 +168,7 @@ describe('FinalizePage wizard', () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     renderFinalizePage('script-1')
 
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
     expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
   })
@@ -138,7 +176,7 @@ describe('FinalizePage wizard', () => {
   it('ignores a second duration report, so a player remounting after scrolling never resets the trim', async () => {
     renderFinalizePage('script-1')
 
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const video = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(video, 'duration', { value: 5, configurable: true })
     fireEvent(video, new Event('loadedmetadata'))
@@ -154,7 +192,7 @@ describe('FinalizePage wizard', () => {
   it('does not encode in the background while the trim previews are showing (issue #12)', async () => {
     renderFinalizePage('script-1')
 
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const shotVideo = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
@@ -173,7 +211,7 @@ describe('FinalizePage wizard', () => {
     renderFinalizePage('script-1')
 
     // Step 1: trim/combine
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     // jsdom never loads real media, so ShotTrimmer's <video onLoadedMetadata>
     // never fires on its own; without a known duration, canCombine stays
     // false and 結合する stays disabled. Stub the one shot's duration and
@@ -206,7 +244,7 @@ describe('FinalizePage wizard', () => {
     renderFinalizePage('script-1')
 
     // Step 1: trim/combine
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const shotVideo = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
@@ -246,7 +284,7 @@ describe('FinalizePage wizard', () => {
     renderFinalizePage('script-1')
 
     // Step 1: trim/combine
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const shotVideo = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
@@ -292,7 +330,7 @@ describe('FinalizePage wizard', () => {
     renderFinalizePage('script-1')
 
     // Step 1: trim/combine
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const shotVideo = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
@@ -343,7 +381,7 @@ describe('FinalizePage wizard', () => {
     renderFinalizePage('script-1')
 
     // Step 1: trim/combine
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     const shotVideo = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
     fireEvent(shotVideo, new Event('loadedmetadata'))
@@ -382,7 +420,7 @@ describe('FinalizePage wizard', () => {
 
   it('shows the wizard progress indicator with 4 steps', async () => {
     renderFinalizePage('script-1')
-    await screen.findByText('1. ショット1')
+    await screen.findByText('ショット1')
     expect(screen.getByText('トリミング')).toBeInTheDocument()
     expect(screen.getByText('字幕')).toBeInTheDocument()
     expect(screen.getByText('BGM')).toBeInTheDocument()

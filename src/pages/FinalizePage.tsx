@@ -32,6 +32,19 @@ type CombineState = 'idle' | 'combining' | 'done' | 'error'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 
+function shotMeta(entry: ShotEntry): string {
+  if (!entry.url) return '動画なし'
+  if (entry.duration === 0) return '…'
+  return `${((entry.trimEnd || entry.duration) - entry.trimStart).toFixed(1)}秒`
+}
+
+function findLastIndexBefore(entries: ShotEntry[], index: number): number {
+  for (let i = index - 1; i >= 0; i--) {
+    if (entries[i].url) return i
+  }
+  return -1
+}
+
 export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -171,6 +184,11 @@ export default function FinalizePage() {
   const pickedIndex = entries.findIndex(e => e.url && e.shotId === selectedShotId)
   const selectedIndex = pickedIndex >= 0 ? pickedIndex : entries.findIndex(e => e.url)
   const selected = selectedIndex >= 0 ? entries[selectedIndex] : undefined
+  // A long script makes a list of every shot a long scroll away from the
+  // player (issue #18), so shots are picked from a select above it instead,
+  // with prev/next for the usual one-after-another trimming pass.
+  const prevIndex = findLastIndexBefore(entries, selectedIndex)
+  const nextIndex = entries.findIndex((e, i) => i > selectedIndex && e.url)
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
@@ -314,7 +332,42 @@ export default function FinalizePage() {
             <div className={styles.stepBody}>
               {selected?.url ? (
                 <div className={styles.shotEntry}>
-                  <p className={styles.shotEntryText}>{selectedIndex + 1}. {selected.text}</p>
+                  <div className={styles.shotNav}>
+                    <button
+                      type="button"
+                      className={styles.shotNavBtn}
+                      aria-label="前のショット"
+                      disabled={prevIndex < 0}
+                      onClick={() => setSelectedShotId(entries[prevIndex].shotId)}
+                    >
+                      ‹
+                    </button>
+                    <select
+                      aria-label="ショットを選ぶ"
+                      className={styles.shotSelect}
+                      value={selected.shotId}
+                      onChange={e => setSelectedShotId(e.target.value)}
+                    >
+                      {entries.map((entry, i) => (
+                        <option key={entry.shotId} value={entry.shotId} disabled={!entry.url}>
+                          {i + 1}. {shotMeta(entry)}｜{entry.text}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.shotNavBtn}
+                      aria-label="次のショット"
+                      disabled={nextIndex < 0}
+                      onClick={() => setSelectedShotId(entries[nextIndex].shotId)}
+                    >
+                      ›
+                    </button>
+                  </div>
+                  <p className={styles.shotEntryText}>
+                    <span className={styles.shotCounter}>{selectedIndex + 1} / {entries.length}</span>
+                    <span>{selected.text}</span>
+                  </p>
                   <ShotTrimmer
                     url={selected.url}
                     nextUrl={entries[selectedIndex + 1]?.url ?? null}
@@ -328,34 +381,6 @@ export default function FinalizePage() {
               ) : (
                 <p className={styles.missing}>保存された動画がありません</p>
               )}
-
-              <ul className={styles.shotList}>
-                {entries.map((entry, i) => {
-                  const kept = (entry.trimEnd || entry.duration) - entry.trimStart
-                  const isSelected = i === selectedIndex
-                  return (
-                    <li key={entry.shotId}>
-                      <button
-                        type="button"
-                        className={`${styles.shotRow} ${isSelected ? styles.shotRowSelected : ''}`}
-                        aria-current={isSelected}
-                        disabled={!entry.url}
-                        onClick={() => setSelectedShotId(entry.shotId)}
-                      >
-                        <span className={styles.shotRowNumber}>{i + 1}</span>
-                        <span className={styles.shotRowText}>{entry.text}</span>
-                        <span className={styles.shotRowMeta}>
-                          {!entry.url
-                            ? '動画なし'
-                            : entry.duration > 0
-                              ? `${kept.toFixed(1)}秒`
-                              : '…'}
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
 
               <button
                 className={styles.finalizeBtn}
