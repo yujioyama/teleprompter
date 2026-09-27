@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildOverlayFilterGraph, ffmpegProgressRatio } from './burnSubtitles'
+import { buildOverlayFilterGraph, burnSubtitles, ffmpegProgressRatio } from './burnSubtitles'
+import { CancelledError } from './cancellation'
 
 describe('buildOverlayFilterGraph', () => {
   it('chains one overlay per cue, each reading the previous stage\'s output', () => {
@@ -42,5 +43,16 @@ describe('ffmpegProgressRatio', () => {
 
   it('is 0 when the duration is unknown', () => {
     expect(ffmpegProgressRatio(45_000_000, 0)).toBe(0)
+  })
+})
+
+describe('burnSubtitles', () => {
+  it('rejects a cancelled burn before doing any work (issue #34)', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const cues = [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }]
+    await expect(
+      burnSubtitles(new Blob(['x']), cues, 50, undefined, controller.signal),
+    ).rejects.toBeInstanceOf(CancelledError)
   })
 })
