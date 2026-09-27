@@ -3,6 +3,8 @@ import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
 import { SubtitleCue } from './subtitleCues'
 import { SubtitlePosition, subtitleY } from './subtitlePosition'
+import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
+import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 
 /**
  * Build the chained overlay filtergraph for `cueCount` subtitle image inputs
@@ -106,8 +108,9 @@ const OVERLAY_HEIGHT = 220
 
 /**
  * Burn bilingual subtitles into the video: render one PNG per cue with a
- * `ja` translation, feed each in as a time-bounded image input, and
- * composite them via a chained overlay filtergraph.
+ * `ja` translation and composite each over its time window. Uses the
+ * hardware encoder via WebCodecs when available (issue #10), otherwise
+ * ffmpeg.wasm's overlay filtergraph.
  */
 export async function burnSubtitles(
   videoBlob: Blob,
@@ -120,16 +123,51 @@ export async function burnSubtitles(
     return videoBlob
   }
 
+  const images: Blob[] = []
+  for (const cue of translated) images.push(await renderCueImage(cue, VIDEO_WIDTH))
+  const y = subtitleY(position, VIDEO_HEIGHT, OVERLAY_HEIGHT)
+
+  if (await canUseWebCodecs()) {
+    try {
+      return await burnSubtitlesWebCodecs(
+        videoBlob,
+        translated.map((cue, i) => ({
+          start: cue.start,
+          end: cue.start + cueDuration(cue),
+          image: images[i],
+        })),
+        y,
+      )
+    } catch (err) {
+      disableWebCodecs(err)
+    }
+  }
+  return burnSubtitlesFFmpeg(videoBlob, translated, images, y)
+}
+
+function cueDuration(cue: SubtitleCue): number {
+  return Math.max(0.1, cue.end - cue.start)
+}
+
+/**
+ * ffmpeg.wasm path: feed each cue's PNG in as a time-bounded image input and
+ * composite them via a chained overlay filtergraph.
+ */
+async function burnSubtitlesFFmpeg(
+  videoBlob: Blob,
+  translated: SubtitleCue[],
+  images: Blob[],
+  y: number,
+): Promise<Blob> {
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
 
   const args: string[] = ['-i', 'in.mp4']
   for (let i = 0; i < translated.length; i++) {
     const cue = translated[i]
-    const imageBlob = await renderCueImage(cue, VIDEO_WIDTH)
     const name = `sub${i}.png`
-    await ff.writeFile(name, await fetchFile(imageBlob))
-    const duration = Math.max(0.1, cue.end - cue.start)
+    await ff.writeFile(name, await fetchFile(images[i]))
+    const duration = cueDuration(cue)
     // `-itsoffset` (not `-ss`) is what delays this input's presentation
     // timestamps so it starts compositing at cue.start: `-ss` before `-i`
     // seeks into the SOURCE's own content, which is meaningless for a
@@ -139,7 +177,6 @@ export async function burnSubtitles(
     args.push('-loop', '1', '-itsoffset', cue.start.toFixed(3), '-t', duration.toFixed(3), '-i', name)
   }
 
-  const y = subtitleY(position, VIDEO_HEIGHT, OVERLAY_HEIGHT)
   const { filterGraph, outputLabel } = buildOverlayFilterGraph(translated.length, y)
 
   // buildOverlayFilterGraph's chain references each cue's image input by an

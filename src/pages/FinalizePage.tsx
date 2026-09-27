@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
-import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
+import {
+  normalizedBackendOf,
+  trimAndNormalizeShot,
+  trimAndNormalizeShotFFmpeg,
+} from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { NormalizedShotCache } from '../utils/normalizedShotCache'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
@@ -232,6 +236,19 @@ export default function FinalizePage() {
         )
       } finally {
         cache.onProgress = null
+      }
+      // If WebCodecs broke down partway (see trimAndNormalizeShot), some
+      // clips came from the hardware encoder and some from ffmpeg; their
+      // H.264 headers differ and can't be joined by packet copy, so bring
+      // the stragglers onto the ffmpeg profile too.
+      if (new Set(normalized.map(normalizedBackendOf)).size > 1) {
+        for (let i = 0; i < normalized.length; i++) {
+          if (normalizedBackendOf(normalized[i]) === 'ffmpeg') continue
+          const entry = availableEntries[i]
+          normalized[i] = await trimAndNormalizeShotFFmpeg(
+            entry.blob!, entry.trimStart, entry.trimEnd || entry.duration,
+          )
+        }
       }
       setCombineProgress(1)
       const combined = await concatVideos(normalized)

@@ -1,6 +1,8 @@
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
+import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
+import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
 /**
  * Build the FFmpeg args that trim [start, end] out of in.mp4 and re-encode
@@ -40,9 +42,48 @@ export function buildTrimAndNormalizeArgs(
   return args
 }
 
+export type NormalizeBackend = 'webcodecs' | 'ffmpeg'
+
+const backends = new WeakMap<Blob, NormalizeBackend>()
+
+/** Which encoder produced a clip returned by trimAndNormalizeShot. */
+export function normalizedBackendOf(blob: Blob): NormalizeBackend | undefined {
+  return backends.get(blob)
+}
+
+/**
+ * Trim and normalize a shot, using the device's hardware encoder via
+ * WebCodecs when available (issue #10) and ffmpeg.wasm otherwise. A
+ * WebCodecs failure falls back to ffmpeg for this shot and disables
+ * WebCodecs for the rest of the session, so a device where it misbehaves
+ * doesn't pay for a failed attempt on every shot.
+ *
+ * Clips from the two backends have different H.264 headers and can't be
+ * joined by packet copy — callers combining clips should check
+ * normalizedBackendOf() and re-encode stragglers with the ffmpeg variant.
+ */
+export async function trimAndNormalizeShot(
+  blob: Blob,
+  start: number,
+  end: number,
+  onProgress?: (ratio: number) => void,
+): Promise<Blob> {
+  if (await canUseWebCodecs()) {
+    try {
+      const out = await normalizeShotWebCodecs(blob, start, end, onProgress)
+      backends.set(out, 'webcodecs')
+      return out
+    } catch (err) {
+      disableWebCodecs(err)
+      onProgress?.(0)
+    }
+  }
+  return trimAndNormalizeShotFFmpeg(blob, start, end, onProgress)
+}
+
 let callSeq = 0
 
-export async function trimAndNormalizeShot(
+export async function trimAndNormalizeShotFFmpeg(
   blob: Blob,
   start: number,
   end: number,
@@ -87,7 +128,9 @@ export async function trimAndNormalizeShot(
         `ffmpeg produced a suspiciously small output (${data instanceof Uint8Array ? data.length : typeof data} bytes) — the encode likely failed`,
       )
     }
-    return new Blob([data as Uint8Array], { type: 'video/mp4' })
+    const out = new Blob([data as Uint8Array], { type: 'video/mp4' })
+    backends.set(out, 'ffmpeg')
+    return out
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`trimAndNormalizeShot failed: ${msg}\n--- ffmpeg log tail ---\n${logs.slice(-15).join('\n')}`)
