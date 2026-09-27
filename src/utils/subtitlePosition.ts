@@ -4,7 +4,7 @@ export type SubtitlePosition = number
 /**
  * Preset percent values reproducing the exact pixel positions the old
  * top/center/bottom 3-value enum produced, at the production reference
- * geometry (VIDEO_HEIGHT=1920, OVERLAY_HEIGHT=220 in burnSubtitles.ts):
+ * geometry (VIDEO_HEIGHT=1920, and the old fixed 220px overlay height):
  * old top = round(1920*0.08) = 154, old center = round((1920-220)/2) = 850,
  * old bottom = round(1920*0.78-220) = 1278. Solving y = round(H*p/100 - overlayHeight/2)
  * for p at H=1920, overlayHeight=220 gives the constants below.

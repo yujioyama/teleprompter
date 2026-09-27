@@ -85,6 +85,8 @@
 
 .previewWrapper {
   position: relative;
+  /* SubtitleOverlayPreview sizes itself in cqw of this box (= the video's width). */
+  container-type: inline-size;
 }
 
 .fineTuneRow {

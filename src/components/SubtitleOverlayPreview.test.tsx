@@ -32,4 +32,18 @@ describe('SubtitleOverlayPreview', () => {
     const box = screen.getByTestId('subtitle-overlay-box')
     expect(box.style.top).toBe('72%')
   })
+
+  it('wraps a long cue onto several lines instead of one overflowing line', () => {
+    const long: SubtitleCue[] = [{
+      id: 'c1', start: 0, end: 5,
+      en: 'I was sure the other singer would go through. In my head, I had a very clear thought.',
+      ja: '絶対もう一人の歌手が通ると思ってたんだ。頭の中では、日本語ではっきり考えてた。',
+    }]
+    render(<SubtitleOverlayPreview cues={long} position={50} currentTime={1} />)
+    const box = screen.getByTestId('subtitle-overlay-box')
+    const [en, ja] = box.querySelectorAll('p')
+    expect(en.children.length).toBeGreaterThan(1)
+    expect(ja.children.length).toBeGreaterThan(1)
+    expect(Array.from(en.children, c => c.textContent).join(' ')).toBe(long[0].en)
+  })
 })
