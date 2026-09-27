@@ -10,6 +10,8 @@ import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
 import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
+import { normalizeLoudness } from '../utils/normalizeLoudness'
+import { shareOrDownload } from '../utils/shareOrDownload'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -29,6 +31,11 @@ vi.mock('../utils/probeVideoDuration', () => ({
 vi.mock('../utils/shareOrDownload', () => ({
   shareOrDownload: vi.fn(async () => true),
 }))
+vi.mock('../utils/normalizeLoudness', () => ({
+  normalizeLoudness: vi.fn(),
+}))
+
+const LOUDNESS_NORMALIZED = new Blob(['loudness-normalized'], { type: 'video/mp4' })
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
 
@@ -63,6 +70,7 @@ beforeEach(async () => {
 
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['burned'], { type: 'video/mp4' }))
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
+  vi.mocked(normalizeLoudness).mockResolvedValue(LOUDNESS_NORMALIZED)
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
     blob: () => Promise.resolve(new Blob(['track'], { type: 'audio/mpeg' })),
@@ -425,5 +433,70 @@ describe('FinalizePage wizard', () => {
     expect(screen.getByText('字幕')).toBeInTheDocument()
     expect(screen.getByText('BGM')).toBeInTheDocument()
     expect(screen.getByText('書き出し')).toBeInTheDocument()
+  })
+})
+
+describe('FinalizePage export step: loudness normalization', () => {
+  const BURNED = new Blob(['burned'], { type: 'video/mp4' })
+
+  beforeEach(() => {
+    vi.mocked(burnModule.burnSubtitles).mockResolvedValue(BURNED)
+  })
+
+  // Trim/combine → subtitle → skip BGM, landing on the export step.
+  async function walkToExport() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    fireEvent.click(await screen.findByText('BGMなしで進む'))
+  }
+
+  it('normalizes the finished video and saves that version', async () => {
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+
+    expect(normalizeLoudness).toHaveBeenCalledWith(BURNED)
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('shows progress while normalizing, and no save button until it is done', async () => {
+    let finish: (blob: Blob) => void = () => {}
+    vi.mocked(normalizeLoudness).mockReturnValue(new Promise(resolve => (finish = resolve)))
+    await walkToExport()
+
+    expect(await screen.findByText('音量を調整中...')).toBeInTheDocument()
+    expect(screen.queryByText('保存する')).not.toBeInTheDocument()
+    finish(LOUDNESS_NORMALIZED)
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+  })
+
+  it('saves the original video, with a note, when normalizing fails', async () => {
+    vi.mocked(normalizeLoudness).mockRejectedValue(new Error('decode failed'))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('保存する'))
+    expect(screen.getByText(/音量の自動調整に失敗したため/)).toBeInTheDocument()
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
+  })
+
+  it('skips it when 音量の自動調整 is turned off in settings', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ normalizeAudio: false }))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('保存する'))
+    expect(normalizeLoudness).not.toHaveBeenCalled()
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
   })
 })
