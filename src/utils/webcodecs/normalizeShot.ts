@@ -18,6 +18,7 @@ import {
 } from './support'
 import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
+import { onAbort, throwIfCancelled } from '../cancellation'
 
 /**
  * WebCodecs counterpart of the ffmpeg trim+normalize pass: cut [start, end]
@@ -39,6 +40,8 @@ import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
  * Mediabunny decodes and encodes one frame at a time and closes each
  * VideoFrame itself, and the decoder/encoder are released when the
  * conversion ends, so nothing outlives this call (see issue #12).
+ *
+ * `signal` cancels the conversion (中断する, issue #34).
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
@@ -46,7 +49,9 @@ export async function normalizeShotWebCodecs(
   end: number,
   onProgress?: (ratio: number) => void,
   overlays: SubtitleOverlay[] = [],
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
   const overlay = overlays.length > 0 ? await createOverlayProcess(overlays) : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
@@ -87,18 +92,25 @@ export async function normalizeShotWebCodecs(
       showWarnings: false,
     })
     assertUsable(conversion)
-    // If the encoder stops dead, give up so the caller can fall back to
-    // ffmpeg instead of waiting forever (issue #31).
-    await guardAgainstStall(
-      poke => {
-        conversion.onProgress = progress => {
-          poke()
-          onProgress?.(Math.min(Math.max(progress, 0), 1))
-        }
-        return conversion.execute()
-      },
-      { onStall: () => void conversion.cancel().catch(() => undefined) },
-    )
+    const cancel = () => void conversion.cancel().catch(() => undefined)
+    // 中断する stops the encoder too, not just the wait for it (issue #34).
+    const unregister = onAbort(signal, cancel)
+    try {
+      // If the encoder stops dead, give up so the caller can fall back to
+      // ffmpeg instead of waiting forever (issue #31).
+      await guardAgainstStall(
+        poke => {
+          conversion.onProgress = progress => {
+            poke()
+            onProgress?.(Math.min(Math.max(progress, 0), 1))
+          }
+          return conversion.execute()
+        },
+        { onStall: cancel },
+      )
+    } finally {
+      unregister()
+    }
     const buffer = output.target.buffer
     if (!buffer || buffer.byteLength < 1000) {
       throw new Error(`suspiciously small output (${buffer?.byteLength ?? 0} bytes)`)

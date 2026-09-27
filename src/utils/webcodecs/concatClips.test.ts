@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { AudioTimeline, sameDecoderConfig } from './concatClips'
+import { AudioTimeline, concatClipsWebCodecs, sameDecoderConfig } from './concatClips'
+import { CancelledError } from '../cancellation'
 
 describe('sameDecoderConfig', () => {
   const avcC = new Uint8Array([1, 100, 0, 40, 255])
@@ -71,5 +72,13 @@ describe('AudioTimeline', () => {
       }
       offset += length
     }
+  })
+})
+
+describe('concatClipsWebCodecs', () => {
+  it('rejects a cancelled join before reading any clip', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(concatClipsWebCodecs([new Blob(['x'])], controller.signal)).rejects.toBeInstanceOf(CancelledError)
   })
 })
