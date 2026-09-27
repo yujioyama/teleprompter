@@ -1,3 +1,5 @@
+import { clearShotAnalyses } from './shotAnalysisStore'
+
 const DB_NAME = 'teleprompter-shot-videos'
 const DB_VERSION = 1
 const STORE_NAME = 'shotVideos'
@@ -78,4 +80,5 @@ export async function deleteShotVideo(scriptId: string, shotId: string): Promise
 export async function clearShotVideos(scriptId: string): Promise<void> {
   const videos = await listShotVideos(scriptId)
   await Promise.all(videos.map(v => deleteShotVideo(v.scriptId, v.shotId)))
+  await clearShotAnalyses(scriptId)
 }
