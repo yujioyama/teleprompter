@@ -39,6 +39,7 @@ export default function FinalizePage() {
   const script = id ? getScript(id) : undefined
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
+  const [selectedShotId, setSelectedShotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [combineState, setCombineState] = useState<CombineState>('idle')
@@ -92,9 +93,9 @@ export default function FinalizePage() {
       setEntries(next)
       setLoading(false)
 
-      // ShotTrimmer only keeps a live <video> for shots near the viewport
-      // (issue #12), so shots never scrolled to would otherwise never report
-      // a duration — which combining needs. Probe them one at a time.
+      // Only the selected shot has a live <video> (issue #12), so shots never
+      // selected would otherwise never report a duration — which combining
+      // needs. Probe them one at a time.
       ;(async () => {
         for (const entry of next) {
           if (cancelled) return
@@ -130,8 +131,8 @@ export default function FinalizePage() {
     }
   }, [])
 
-  // A duration can arrive twice — from the probe and from a ShotTrimmer's
-  // player (re-)mounting — so only the first one initializes the trim range.
+  // A duration can arrive twice — from the probe and from the ShotTrimmer
+  // player loading that shot — so only the first one initializes the trim range.
   function setDurationOnce(shotId: string, duration: number) {
     setEntries(prev =>
       prev.map(e => (e.shotId === shotId && e.duration === 0 ? { ...e, duration, trimEnd: duration } : e)),
@@ -165,6 +166,11 @@ export default function FinalizePage() {
   const subtitleProcessing = subtitleState.stage === 'burning'
 
   const availableEntries = entries.filter(e => e.blob)
+  // One player for the whole trim step: every live <video> holds a decoder,
+  // and iOS fails to decode once a handful exist at once (issue #12).
+  const pickedIndex = entries.findIndex(e => e.url && e.shotId === selectedShotId)
+  const selectedIndex = pickedIndex >= 0 ? pickedIndex : entries.findIndex(e => e.url)
+  const selected = selectedIndex >= 0 ? entries[selectedIndex] : undefined
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
@@ -306,29 +312,50 @@ export default function FinalizePage() {
 
           {step === 'trim' && (
             <div className={styles.stepBody}>
-              <div className={styles.shotList}>
+              {selected?.url ? (
+                <div className={styles.shotEntry}>
+                  <p className={styles.shotEntryText}>{selectedIndex + 1}. {selected.text}</p>
+                  <ShotTrimmer
+                    url={selected.url}
+                    nextUrl={entries[selectedIndex + 1]?.url ?? null}
+                    duration={selected.duration}
+                    trimStart={selected.trimStart}
+                    trimEnd={selected.trimEnd || selected.duration}
+                    onDurationKnown={duration => setDurationOnce(selected.shotId, duration)}
+                    onChange={(trimStart, trimEnd) => updateEntry(selected.shotId, { trimStart, trimEnd })}
+                  />
+                </div>
+              ) : (
+                <p className={styles.missing}>保存された動画がありません</p>
+              )}
+
+              <ul className={styles.shotList}>
                 {entries.map((entry, i) => {
-                  const next = entries[i + 1]
+                  const kept = (entry.trimEnd || entry.duration) - entry.trimStart
+                  const isSelected = i === selectedIndex
                   return (
-                    <div key={entry.shotId} className={styles.shotEntry}>
-                      <p className={styles.shotEntryText}>{i + 1}. {entry.text}</p>
-                      {entry.url ? (
-                        <ShotTrimmer
-                          url={entry.url}
-                          nextUrl={next?.url ?? null}
-                          duration={entry.duration}
-                          trimStart={entry.trimStart}
-                          trimEnd={entry.trimEnd || entry.duration}
-                          onDurationKnown={duration => setDurationOnce(entry.shotId, duration)}
-                          onChange={(trimStart, trimEnd) => updateEntry(entry.shotId, { trimStart, trimEnd })}
-                        />
-                      ) : (
-                        <p className={styles.missing}>このショットは保存された動画がありません</p>
-                      )}
-                    </div>
+                    <li key={entry.shotId}>
+                      <button
+                        type="button"
+                        className={`${styles.shotRow} ${isSelected ? styles.shotRowSelected : ''}`}
+                        aria-current={isSelected}
+                        disabled={!entry.url}
+                        onClick={() => setSelectedShotId(entry.shotId)}
+                      >
+                        <span className={styles.shotRowNumber}>{i + 1}</span>
+                        <span className={styles.shotRowText}>{entry.text}</span>
+                        <span className={styles.shotRowMeta}>
+                          {!entry.url
+                            ? '動画なし'
+                            : entry.duration > 0
+                              ? `${kept.toFixed(1)}秒`
+                              : '…'}
+                        </span>
+                      </button>
+                    </li>
                   )
                 })}
-              </div>
+              </ul>
 
               <button
                 className={styles.finalizeBtn}

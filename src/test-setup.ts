@@ -7,3 +7,10 @@ if (!URL.createObjectURL) {
 if (!URL.revokeObjectURL) {
   URL.revokeObjectURL = () => {}
 }
+
+// jsdom doesn't implement media playback; components release players with
+// pause()/load() (see releaseVideo), which would otherwise log "Not implemented".
+if (typeof HTMLMediaElement !== 'undefined') {
+  HTMLMediaElement.prototype.pause = () => {}
+  HTMLMediaElement.prototype.load = () => {}
+}
