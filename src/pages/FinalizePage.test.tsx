@@ -18,6 +18,8 @@ vi.mock('../utils/concatVideos', () => ({
 }))
 vi.mock('../utils/trimAndNormalizeShot', () => ({
   trimAndNormalizeShot: vi.fn(async (blob: Blob) => blob),
+  trimAndNormalizeShotFFmpeg: vi.fn(async (blob: Blob) => blob),
+  normalizedBackendOf: vi.fn(() => 'ffmpeg'),
 }))
 // jsdom never loads media; by default the probe never answers, so tests
 // drive durations through ShotTrimmer's own loadedmetadata as before.

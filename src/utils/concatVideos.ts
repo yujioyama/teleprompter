@@ -1,6 +1,7 @@
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
+import { concatClipsWebCodecs } from './webcodecs/concatClips'
 
 /** Build the concat-demuxer list file content FFmpeg's `-f concat` expects. */
 export function buildConcatListFile(filenames: string[]): string {
@@ -8,11 +9,24 @@ export function buildConcatListFile(filenames: string[]): string {
 }
 
 /**
- * Concatenate already-normalized (same codec/resolution) clips with the fast
- * concat demuxer (-c copy). Callers are expected to have run each clip
- * through trimAndNormalizeShot first so the streams match.
+ * Concatenate already-normalized (same codec/resolution) clips by packet
+ * copy. Callers are expected to have run each clip through
+ * trimAndNormalizeShot first so the streams match.
+ *
+ * Tries a pure-JS packet copy (Mediabunny) first, which needs no
+ * ffmpeg.wasm load and no copy of every clip into its memory; falls back to
+ * ffmpeg's concat demuxer if that can't handle the clips.
  */
 export async function concatVideos(blobs: Blob[]): Promise<Blob> {
+  try {
+    return await concatClipsWebCodecs(blobs)
+  } catch (err) {
+    console.warn('[concatVideos] packet-copy concat failed, falling back to ffmpeg:', err)
+  }
+  return concatVideosFFmpeg(blobs)
+}
+
+async function concatVideosFFmpeg(blobs: Blob[]): Promise<Blob> {
   const ff = await getFFmpeg()
   // See trimAndNormalizeShot.ts for why this is needed: a failed exec()
   // surfaces no detail beyond a generic FS/Aborted error, so the log tail is
