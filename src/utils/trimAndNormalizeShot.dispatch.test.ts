@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { normalizedBackendOf, trimAndNormalizeShot } from './trimAndNormalizeShot'
+import { normalizedBackendOf, trimAndNormalizeShot, unifyNormalizeBackends } from './trimAndNormalizeShot'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import { getFFmpeg } from './ffmpegClient'
@@ -65,5 +65,66 @@ describe('trimAndNormalizeShot backend selection', () => {
 
     expect(normalizeShotWebCodecs).not.toHaveBeenCalled()
     expect(normalizedBackendOf(result)).toBe('ffmpeg')
+  })
+})
+
+describe('unifyNormalizeBackends', () => {
+  const clips = [0, 1, 2].map(i => ({ blob: new Blob([`src${i}`], { type: 'video/mp4' }), start: 0, end: 2 }))
+
+  async function webcodecsClip(): Promise<Blob> {
+    vi.mocked(canUseWebCodecs).mockResolvedValueOnce(true)
+    vi.mocked(normalizeShotWebCodecs).mockResolvedValueOnce(new Blob(['wc'], { type: 'video/mp4' }))
+    return trimAndNormalizeShot(clips[0].blob, 0, 2)
+  }
+
+  async function ffmpegClip(): Promise<Blob> {
+    vi.mocked(canUseWebCodecs).mockResolvedValueOnce(false)
+    return trimAndNormalizeShot(clips[0].blob, 0, 2)
+  }
+
+  it('leaves clips from a single backend alone', async () => {
+    const normalized = [await webcodecsClip(), await webcodecsClip(), await webcodecsClip()]
+    vi.clearAllMocks()
+
+    const result = await unifyNormalizeBackends(clips, normalized)
+
+    expect(result).toEqual(normalized)
+    expect(normalizeShotWebCodecs).not.toHaveBeenCalled()
+    expect(getFFmpeg).not.toHaveBeenCalled()
+  })
+
+  it('re-encodes only the ffmpeg-made clips on the hardware encoder, with progress', async () => {
+    const normalized = [await webcodecsClip(), await ffmpegClip(), await ffmpegClip()]
+    vi.clearAllMocks()
+    vi.mocked(normalizeShotWebCodecs).mockImplementation(async (_blob, _s, _e, onProgress) => {
+      onProgress?.(0.5)
+      return new Blob(['wc-retry'], { type: 'video/mp4' })
+    })
+    const progress: number[] = []
+
+    const result = await unifyNormalizeBackends(clips, normalized, r => progress.push(r))
+
+    expect(normalizeShotWebCodecs).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls.map(c => c[0])).toEqual([clips[1].blob, clips[2].blob])
+    expect(result[0]).toBe(normalized[0])
+    expect(result.map(normalizedBackendOf)).toEqual(['webcodecs', 'webcodecs', 'webcodecs'])
+    expect(getFFmpeg).not.toHaveBeenCalled()
+    expect(progress).toEqual([0.25, 0.5, 0.75, 1])
+  })
+
+  it('falls back to re-encoding the hardware clips with ffmpeg when the hardware retry fails', async () => {
+    const normalized = [await webcodecsClip(), await ffmpegClip(), await webcodecsClip()]
+    vi.clearAllMocks()
+    vi.mocked(getFFmpeg).mockResolvedValue(fakeFFmpeg as never)
+    vi.mocked(normalizeShotWebCodecs).mockRejectedValue(new Error('encoder stalled'))
+    const progress: number[] = []
+
+    const result = await unifyNormalizeBackends(clips, normalized, r => progress.push(r))
+
+    expect(result[1]).toBe(normalized[1])
+    expect(result.map(normalizedBackendOf)).toEqual(['ffmpeg', 'ffmpeg', 'ffmpeg'])
+    expect(vi.mocked(fakeFFmpeg.writeFile).mock.calls.length).toBe(2)
+    expect(progress[0]).toBe(0)
+    expect(progress[progress.length - 1]).toBe(1)
   })
 })

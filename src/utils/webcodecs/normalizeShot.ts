@@ -16,6 +16,7 @@ import {
   OUTPUT_SAMPLE_RATE,
   OUTPUT_WIDTH,
 } from './support'
+import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
 
 /**
@@ -86,8 +87,18 @@ export async function normalizeShotWebCodecs(
       showWarnings: false,
     })
     assertUsable(conversion)
-    if (onProgress) conversion.onProgress = progress => onProgress(Math.min(Math.max(progress, 0), 1))
-    await conversion.execute()
+    // If the encoder stops dead, give up so the caller can fall back to
+    // ffmpeg instead of waiting forever (issue #31).
+    await guardAgainstStall(
+      poke => {
+        conversion.onProgress = progress => {
+          poke()
+          onProgress?.(Math.min(Math.max(progress, 0), 1))
+        }
+        return conversion.execute()
+      },
+      { onStall: () => void conversion.cancel().catch(() => undefined) },
+    )
     const buffer = output.target.buffer
     if (!buffer || buffer.byteLength < 1000) {
       throw new Error(`suspiciously small output (${buffer?.byteLength ?? 0} bytes)`)

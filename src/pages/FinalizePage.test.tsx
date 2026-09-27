@@ -8,7 +8,8 @@ import { saveShotVideo } from '../utils/shotVideoStore'
 import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
-import { trimAndNormalizeShot } from '../utils/trimAndNormalizeShot'
+import { trimAndNormalizeShot, unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
+import { concatVideos } from '../utils/concatVideos'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { shareOrDownload } from '../utils/shareOrDownload'
@@ -25,6 +26,7 @@ vi.mock('../utils/trimAndNormalizeShot', () => ({
   trimAndNormalizeShot: vi.fn(async (blob: Blob) => blob),
   trimAndNormalizeShotFFmpeg: vi.fn(async (blob: Blob) => blob),
   normalizedBackendOf: vi.fn(() => 'ffmpeg'),
+  unifyNormalizeBackends: vi.fn(async (_clips: unknown, normalized: Blob[]) => normalized),
 }))
 // jsdom never loads media; by default the probe never answers, so tests
 // drive durations through ShotTrimmer's own loadedmetadata as before.
@@ -319,6 +321,47 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('結合する'))
     await screen.findByText('次へ')
     expect(vi.mocked(trimAndNormalizeShot)).toHaveBeenCalledTimes(1)
+  })
+
+  async function loadShot() {
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+  }
+
+  it('only shows 100% once every shot is actually encoded (issue #31)', async () => {
+    vi.mocked(trimAndNormalizeShot).mockImplementationOnce((_blob, _start, _end, onProgress) => {
+      onProgress?.(0.996)
+      return new Promise<Blob>(() => {})
+    })
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    expect(await screen.findByText('結合中... 99%')).toBeDisabled()
+  })
+
+  it('reports progress while re-encoding shots onto one encoder, instead of sitting at 100% (issue #31)', async () => {
+    vi.mocked(unifyNormalizeBackends).mockImplementationOnce((_clips, _normalized, onProgress) => {
+      onProgress?.(0.4)
+      return new Promise<Blob[]>(() => {})
+    })
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    expect(await screen.findByText('再変換中... 40%')).toBeDisabled()
+  })
+
+  it('says it is finishing up while the shots are joined (issue #31)', async () => {
+    vi.mocked(concatVideos).mockReturnValueOnce(new Promise<Blob>(() => {}))
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    expect(await screen.findByText('仕上げ中...')).toBeDisabled()
   })
 
   it('encodes shots in the background once the trims settle, and 結合 reuses them', async () => {

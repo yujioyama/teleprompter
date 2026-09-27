@@ -81,6 +81,48 @@ export async function trimAndNormalizeShot(
   return trimAndNormalizeShotFFmpeg(blob, start, end, onProgress)
 }
 
+/**
+ * Bring clips from mixed backends (WebCodecs broke down partway through a
+ * combine) onto one encoder so they can be joined by packet copy.
+ *
+ * Usually only the shots encoded after the breakdown came from ffmpeg, so
+ * those are retried on the hardware encoder first: it's many times faster
+ * than ffmpeg.wasm on a phone, where re-encoding every other shot with
+ * ffmpeg took long enough to look frozen (issue #31). If that fails too, the
+ * hardware clips are re-encoded with ffmpeg instead.
+ *
+ * `onProgress` covers this whole step, restarting from 0 on the fallback.
+ */
+export async function unifyNormalizeBackends(
+  clips: { blob: Blob; start: number; end: number }[],
+  normalized: Blob[],
+  onProgress?: (ratio: number) => void,
+): Promise<Blob[]> {
+  if (new Set(normalized.map(normalizedBackendOf)).size <= 1) return normalized
+
+  const reencode = async (
+    backend: NormalizeBackend,
+    encode: (clip: (typeof clips)[number], onClipProgress: (ratio: number) => void) => Promise<Blob>,
+  ) => {
+    const out = [...normalized]
+    const indices = normalized.flatMap((blob, i) => (normalizedBackendOf(blob) === backend ? [] : [i]))
+    for (const [done, i] of indices.entries()) {
+      out[i] = await encode(clips[i], ratio => onProgress?.((done + ratio) / indices.length))
+      backends.set(out[i], backend)
+      onProgress?.((done + 1) / indices.length)
+    }
+    return out
+  }
+
+  try {
+    return await reencode('webcodecs', (clip, p) => normalizeShotWebCodecs(clip.blob, clip.start, clip.end, p))
+  } catch (err) {
+    console.warn('[unifyNormalizeBackends] hardware re-encode failed, re-encoding with ffmpeg instead:', err)
+  }
+  onProgress?.(0)
+  return reencode('ffmpeg', (clip, p) => trimAndNormalizeShotFFmpeg(clip.blob, clip.start, clip.end, p))
+}
+
 let callSeq = 0
 
 export async function trimAndNormalizeShotFFmpeg(
