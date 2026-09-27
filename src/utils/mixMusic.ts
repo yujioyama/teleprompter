@@ -2,6 +2,8 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
+import { canUseWebCodecs } from './webcodecs/support'
+import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 
 /**
  * Build the filter_complex that loops/trims the BGM track (input 1) to the
@@ -52,9 +54,14 @@ let mixQueue: Promise<unknown> = Promise.resolve()
  * Mix a BGM track under a video's existing audio, looped/faded to match the
  * video's exact duration at the given volume (0-1). Video stream is copied;
  * only audio is re-encoded.
+ *
+ * Uses Web Audio + WebCodecs when available (no ffmpeg.wasm load), falling
+ * back to ffmpeg.wasm for this call if that fails. Unlike the encode paths,
+ * a failure here doesn't disable WebCodecs for the session: it may just as
+ * well be the BGM file or Web Audio at fault.
  */
 export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
-  const run = mixQueue.then(() => mixMusicInternal(videoBlob, trackBlob, volume))
+  const run = mixQueue.then(() => mixMusicAuto(videoBlob, trackBlob, volume))
   // Swallow rejection in the queue chain itself so one failed mix doesn't
   // permanently wedge the queue for later calls; this call's own returned
   // promise still rejects normally for its caller.
@@ -62,7 +69,18 @@ export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Prom
   return run
 }
 
-async function mixMusicInternal(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+async function mixMusicAuto(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+  if (await canUseWebCodecs()) {
+    try {
+      return await mixMusicWebCodecs(videoBlob, trackBlob, volume)
+    } catch (err) {
+      console.warn('[mixMusic] WebCodecs mix failed, falling back to ffmpeg:', err)
+    }
+  }
+  return mixMusicFFmpeg(videoBlob, trackBlob, volume)
+}
+
+async function mixMusicFFmpeg(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
   await ff.writeFile('track.mp3', await fetchFile(trackBlob))
