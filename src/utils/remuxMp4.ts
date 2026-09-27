@@ -54,24 +54,11 @@ export async function remuxMp4(
     const ff = await getFFmpeg()
     await ff.writeFile('in.mp4', await fetchFile(blob))
 
-    // Probe container duration (comes from FFmpeg's -i log output)
-    let containerDuration: number | null = null
-    const durHandler = ({ message }: { message: string }) => {
-      const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(message)
-      if (m && containerDuration === null) {
-        containerDuration =
-          parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3])
-      }
-    }
-    ff.on('log', durHandler)
-    try {
-      await ff.exec(['-i', 'in.mp4', '-f', 'null', '-'])
-    } catch {
-      // duration probe only; a failed exec here is harmless
-    }
-    ff.off('log', durHandler)
-
-    console.log('[remuxMp4] blob:', blob.size, 'bytes | container duration:', containerDuration, 's')
+    // No separate duration probe here: `-i in.mp4 -f null -` is a real
+    // (null-muxer) output, so it decoded every audio and video frame — by far
+    // the slowest step of an import, for a value that was only ever logged
+    // (issue #11).
+    console.log('[remuxMp4] blob:', blob.size, 'bytes')
     if (trim) console.log('[remuxMp4] trim requested:', trim)
 
     let KF_start = 0
