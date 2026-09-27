@@ -63,6 +63,7 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   const [burnProgress, setBurnProgress] = useState(0)
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewRef = useRef<HTMLVideoElement>(null)
 
   function patch(changes: Partial<SubtitleState>) {
     onStateChange(prev => ({ ...prev, ...changes }))
@@ -120,6 +121,10 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   }
 
   async function handleBurnIn() {
+    // A playing preview holds the phone's hardware decoder while the burn
+    // needs it too; on iOS that could fail the hardware encode over to the
+    // far slower ffmpeg.wasm path, leaving the button near 0% (issue #33).
+    previewRef.current?.pause()
     patch({ stage: 'burning' })
     setErrorMessage(null)
     setBurnProgress(0)
@@ -186,9 +191,10 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
               <p className={styles.sectionTitle}>プレビュー</p>
               <div className={styles.previewWrapper}>
                 <video
+                  ref={previewRef}
                   className={styles.preview}
                   src={previewUrl ?? undefined}
-                  controls
+                  controls={stage !== 'burning'}
                   playsInline
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
                 />

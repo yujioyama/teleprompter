@@ -72,7 +72,11 @@ export async function encodeAll(
   onProgress?: (ratio: number) => void,
 ): Promise<Blob[]> {
   const ratios = new Map(requests.map(r => [r.key, 0]))
+  // Once this settles (e.g. rejected by one clip's failure), clips still
+  // finishing must not report into a caller that has moved on.
+  let settled = false
   const report = () => {
+    if (settled) return
     let sum = 0
     ratios.forEach(r => (sum += r))
     onProgress?.(requests.length > 0 ? sum / requests.length : 1)
@@ -93,6 +97,7 @@ export async function encodeAll(
       ),
     )
   } finally {
+    settled = true
     cache.onProgress = null
   }
 }
@@ -132,5 +137,5 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  return burnSubtitles(combinedBlob, cues, position)
+  return burnSubtitles(combinedBlob, cues, position, onProgress)
 }

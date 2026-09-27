@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildOverlayFilterGraph } from './burnSubtitles'
+import { buildOverlayFilterGraph, ffmpegProgressRatio } from './burnSubtitles'
 
 describe('buildOverlayFilterGraph', () => {
   it('chains one overlay per cue, each reading the previous stage\'s output', () => {
@@ -26,5 +26,21 @@ describe('buildOverlayFilterGraph', () => {
     const { filterGraph, outputLabel } = buildOverlayFilterGraph([])
     expect(filterGraph).toBe('')
     expect(outputLabel).toBe('[0:v]')
+  })
+})
+
+describe('ffmpegProgressRatio', () => {
+  it('is the output time (microseconds) over the video duration', () => {
+    expect(ffmpegProgressRatio(45_000_000, 90)).toBe(0.5)
+  })
+
+  it('stays within 0–1, including ffmpeg\'s bogus early/late timestamps', () => {
+    expect(ffmpegProgressRatio(-1_000, 90)).toBe(0)
+    expect(ffmpegProgressRatio(95_000_000, 90)).toBe(1)
+    expect(ffmpegProgressRatio(NaN, 90)).toBe(0)
+  })
+
+  it('is 0 when the duration is unknown', () => {
+    expect(ffmpegProgressRatio(45_000_000, 0)).toBe(0)
   })
 })

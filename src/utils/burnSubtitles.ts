@@ -1,4 +1,5 @@
 import { fetchFile } from '@ffmpeg/util'
+import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
 import { SubtitleCue } from './subtitleCues'
@@ -130,12 +131,14 @@ export async function renderSubtitleOverlays(
  * ffmpeg.wasm's overlay filtergraph.
  *
  * Re-encodes the whole joined video, so FinalizePage only falls back to it
- * when burning shot by shot (burnShotSubtitles) isn't possible.
+ * when burning shot by shot (burnShotSubtitles) isn't possible. That can
+ * take minutes on a phone, hence `onProgress` (0–1) on both backends.
  */
 export async function burnSubtitles(
   videoBlob: Blob,
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
   const translated = cues.filter(c => c.ja !== null)
   if (translated.length === 0) {
@@ -146,9 +149,10 @@ export async function burnSubtitles(
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays)
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress)
     } catch (err) {
       disableWebCodecs(err)
+      onProgress?.(0)
     }
   }
   return burnSubtitlesFFmpeg(
@@ -156,6 +160,7 @@ export async function burnSubtitles(
     translated,
     overlays.map(o => o.image),
     overlays.map(o => o.y),
+    onProgress,
   )
 }
 
@@ -184,6 +189,32 @@ function cueDuration(cue: SubtitleCue): number {
 }
 
 /**
+ * The video's duration in seconds read from its container (no <video>
+ * player, see issue #12), or 0 if it can't be read.
+ */
+async function containerDuration(blob: Blob): Promise<number> {
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
+  try {
+    const duration = await input.computeDuration()
+    return Number.isFinite(duration) && duration > 0 ? duration : 0
+  } catch {
+    return 0
+  } finally {
+    input.dispose()
+  }
+}
+
+/**
+ * ffmpeg.wasm's own `progress` ratio is measured against its inputs'
+ * durations, which the looped subtitle images make meaningless here, so
+ * derive it from the output timestamp (`time`, in microseconds) instead.
+ */
+export function ffmpegProgressRatio(timeMicros: number, durationSec: number): number {
+  if (!(durationSec > 0) || !Number.isFinite(timeMicros)) return 0
+  return Math.min(Math.max(timeMicros / 1e6 / durationSec, 0), 1)
+}
+
+/**
  * ffmpeg.wasm path: feed each cue's PNG in as a time-bounded image input and
  * composite them via a chained overlay filtergraph.
  */
@@ -192,7 +223,9 @@ async function burnSubtitlesFFmpeg(
   translated: SubtitleCue[],
   images: Blob[],
   ys: number[],
+  onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
+  const duration = onProgress ? await containerDuration(videoBlob) : 0
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
 
@@ -247,7 +280,13 @@ async function burnSubtitlesFFmpeg(
     'out.mp4',
   )
 
-  await execFFmpeg(ff, args)
+  const reportProgress = ({ time }: { time: number }) => onProgress?.(ffmpegProgressRatio(time, duration))
+  if (onProgress && duration > 0) ff.on('progress', reportProgress)
+  try {
+    await execFFmpeg(ff, args)
+  } finally {
+    ff.off('progress', reportProgress)
+  }
   const data = await ff.readFile('out.mp4')
 
   ff.deleteFile('in.mp4')
