@@ -11,6 +11,8 @@ import { concatVideos } from '../utils/concatVideos'
 import { NormalizedShotCache } from '../utils/normalizedShotCache'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { shareOrDownload } from '../utils/shareOrDownload'
+import { normalizeLoudness } from '../utils/normalizeLoudness'
+import { useSettings } from '../hooks/useSettings'
 import ShotTrimmer from '../components/ShotTrimmer'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
 import { ShotCueInput } from '../utils/subtitleCues'
@@ -29,6 +31,7 @@ interface ShotEntry {
 }
 
 type CombineState = 'idle' | 'combining' | 'done' | 'error'
+type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 
@@ -49,6 +52,7 @@ export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { getScript } = useScripts()
+  const [{ normalizeAudio }] = useSettings()
   const script = id ? getScript(id) : undefined
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
@@ -74,6 +78,10 @@ export default function FinalizePage() {
   const combinedUrlRef = useRef<string | null>(null)
   const finalUrlRef = useRef<string | null>(null)
   const [finalUrl, setFinalUrl] = useState<string | null>(null)
+  // What the export step previews and saves: `finalBlob` with its loudness
+  // brought to the platforms' level, or `finalBlob` itself if that's off.
+  const [exportBlob, setExportBlob] = useState<Blob | null>(null)
+  const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const normalizeCacheRef = useRef<NormalizedShotCache | null>(null)
 
   function getNormalizeCache(): NormalizedShotCache {
@@ -192,8 +200,44 @@ export default function FinalizePage() {
   const canCombine = availableEntries.length > 0 && availableEntries.every(e => e.duration > 0)
   const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
 
+  // Loudness is corrected once, on the finished video: the BGM mix halves
+  // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
+  // final audio can be brought to the level Instagram/TikTok play back at.
   useEffect(() => {
-    if (!finalBlob) {
+    if (step !== 'export' || !finalBlob) {
+      setExportBlob(null)
+      setLoudnessState('idle')
+      return
+    }
+    if (!normalizeAudio) {
+      setExportBlob(finalBlob)
+      setLoudnessState('idle')
+      return
+    }
+    let cancelled = false
+    setExportBlob(null)
+    setLoudnessState('normalizing')
+    normalizeLoudness(finalBlob).then(
+      normalized => {
+        if (cancelled) return
+        setExportBlob(normalized)
+        setLoudnessState('idle')
+      },
+      err => {
+        if (cancelled) return
+        // Still let the video be saved, just at its original level.
+        console.warn('[FinalizePage] loudness normalization failed:', err)
+        setExportBlob(finalBlob)
+        setLoudnessState('failed')
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [step, finalBlob, normalizeAudio])
+
+  useEffect(() => {
+    if (!exportBlob) {
       if (finalUrlRef.current) {
         URL.revokeObjectURL(finalUrlRef.current)
         finalUrlRef.current = null
@@ -201,11 +245,11 @@ export default function FinalizePage() {
       setFinalUrl(null)
       return
     }
-    const url = URL.createObjectURL(finalBlob)
+    const url = URL.createObjectURL(exportBlob)
     if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
     finalUrlRef.current = url
     setFinalUrl(url)
-  }, [finalBlob])
+  }, [exportBlob])
 
   useEffect(() => {
     return () => {
@@ -295,8 +339,8 @@ export default function FinalizePage() {
   }
 
   async function handleSaveFinal() {
-    if (!finalBlob || !script) return
-    await shareOrDownload(finalBlob, `${script.title}-final`)
+    if (!exportBlob || !script) return
+    await shareOrDownload(exportBlob, `${script.title}-final`)
   }
 
   if (!script) {
@@ -441,10 +485,19 @@ export default function FinalizePage() {
             </div>
           )}
 
-          {step === 'export' && finalBlob && finalUrl && (
+          {step === 'export' && loudnessState === 'normalizing' && (
+            <div className={styles.stepBody}>
+              <p className={styles.shotEntryText}>音量を調整中...</p>
+            </div>
+          )}
+
+          {step === 'export' && exportBlob && finalUrl && (
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
               <video className={styles.preview} src={finalUrl} controls playsInline />
+              {loudnessState === 'failed' && (
+                <p className={styles.missing}>音量の自動調整に失敗したため、元の音量のまま保存されます</p>
+              )}
               <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
                 保存する
               </button>
