@@ -80,7 +80,13 @@ export class ShotEncodeCache {
   cancel(): void {
     this.controller.abort()
     this.controller = new AbortController()
-    for (const key of this.unfinished) this.results.delete(key)
+    for (const key of this.unfinished) {
+      this.results.delete(key)
+      // Otherwise a later prefetch for the same key skips canRunInBackground
+      // (it looks like something the caller is still waiting on) and the
+      // encode the user just cancelled restarts in the background.
+      this.demanded.delete(key)
+    }
     this.unfinished.clear()
   }
 

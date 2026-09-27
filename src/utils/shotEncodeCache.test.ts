@@ -230,6 +230,23 @@ describe('ShotEncodeCache', () => {
     expect(run).toHaveBeenCalledTimes(2)
   })
 
+  it('cancel() un-demands cancelled keys, so a later prefetch still respects canRunInBackground (issue #34)', async () => {
+    const cache = new ShotEncodeCache(() => false)
+    const hung = cache.get(request('s1', 'a', () => new Promise<Blob>(() => {})))
+    await flush()
+
+    cache.cancel()
+    await expect(hung).rejects.toBeInstanceOf(CancelledError)
+    await flush()
+
+    const run = vi.fn<EncodeJob>(async () => new Blob(['out']))
+    cache.prefetch(request('s1', 'a', run))
+    await flush()
+    await flush()
+
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('dispose() aborts the running encode', async () => {
     const cache = new ShotEncodeCache()
     let seen: AbortSignal | undefined

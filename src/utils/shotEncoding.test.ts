@@ -221,6 +221,7 @@ describe('cancelling (issue #34)', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, undefined, controller.signal)
 
     const signals = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[6])
+    expect(signals).toHaveLength(2)
     expect(signals.every(s => s instanceof AbortSignal)).toBe(true)
   })
 })

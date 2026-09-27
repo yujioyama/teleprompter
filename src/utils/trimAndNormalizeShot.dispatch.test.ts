@@ -94,6 +94,19 @@ describe('trimAndNormalizeShot backend selection', () => {
     expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][5]).toBe(controller.signal)
   })
 
+  it('does not call releaseFFmpeg when cancelled while ffmpeg was still loading (issue #34)', async () => {
+    const controller = new AbortController()
+    vi.mocked(canUseWebCodecs).mockResolvedValue(false)
+    vi.mocked(getFFmpeg).mockImplementation(async () => {
+      controller.abort()
+      return fakeFFmpeg as never
+    })
+
+    await expect(trimAndNormalizeShot(src, 0, 2, undefined, controller.signal)).rejects.toBeInstanceOf(CancelledError)
+
+    expect(releaseFFmpeg).not.toHaveBeenCalled()
+  })
+
   it('terminates ffmpeg when cancelled during an ffmpeg encode', async () => {
     const controller = new AbortController()
     vi.mocked(canUseWebCodecs).mockResolvedValue(false)

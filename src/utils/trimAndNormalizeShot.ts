@@ -143,6 +143,11 @@ export async function trimAndNormalizeShotFFmpeg(
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const ff = await getFFmpeg()
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
   // Per-call file names: FinalizePage runs this in the background (see
   // normalizedShotCache.ts), so it can overlap with other callers of the
   // shared FFmpeg instance that use the fixed in.mp4/out.mp4 names. The

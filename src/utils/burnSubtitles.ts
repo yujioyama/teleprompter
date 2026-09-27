@@ -237,6 +237,11 @@ async function burnSubtitlesFFmpeg(
   throwIfCancelled(signal)
   const duration = onProgress ? await containerDuration(videoBlob) : 0
   const ff = await getFFmpeg()
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
   // Terminating ffmpeg is the only way to stop an exec() midway (issue #34).
   const unregister = onAbort(signal, releaseFFmpeg)
   try {

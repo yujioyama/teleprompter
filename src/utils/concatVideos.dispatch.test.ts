@@ -62,6 +62,21 @@ describe('concatVideos', () => {
     expect(concatClipsWebCodecs).toHaveBeenCalledWith(clips, controller.signal)
   })
 
+  it('does not call releaseFFmpeg when cancelled while ffmpeg was still loading for the fallback path (issue #34)', async () => {
+    const controller = new AbortController()
+    vi.mocked(concatClipsWebCodecs).mockRejectedValue(new Error('different parameters'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(getFFmpeg).mockImplementation(async () => {
+      controller.abort()
+      return fakeFFmpeg as never
+    })
+
+    await expect(concatVideos(clips, controller.signal)).rejects.toBeInstanceOf(CancelledError)
+    warn.mockRestore()
+
+    expect(releaseFFmpeg).not.toHaveBeenCalled()
+  })
+
   it('terminates ffmpeg when cancelled during the ffmpeg join', async () => {
     const controller = new AbortController()
     vi.mocked(concatClipsWebCodecs).mockRejectedValue(new Error('different parameters'))

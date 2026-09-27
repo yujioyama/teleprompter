@@ -31,6 +31,11 @@ export async function concatVideos(blobs: Blob[], signal?: AbortSignal): Promise
 async function concatVideosFFmpeg(blobs: Blob[], signal?: AbortSignal): Promise<Blob> {
   throwIfCancelled(signal)
   const ff = await getFFmpeg()
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
   // See trimAndNormalizeShot.ts for why this is needed: a failed exec()
   // surfaces no detail beyond a generic FS/Aborted error, so the log tail is
   // the only way to see ffmpeg's actual reason for failing.
