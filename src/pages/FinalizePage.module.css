@@ -60,6 +60,9 @@
   /* Below 16px, iOS Safari zooms the page in when the select is focused. */
   font-size: 1rem;
   text-overflow: ellipsis;
+  /* iOS lays the selected option's full text out past the select's edge;
+     unclipped, a long shot widens the page and Safari zooms out (#24). */
+  overflow: hidden;
 }
 
 .shotEntry {
