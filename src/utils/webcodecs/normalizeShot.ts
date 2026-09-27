@@ -9,6 +9,7 @@ import {
   Quality,
 } from 'mediabunny'
 import {
+  aacEncoderDelay,
   OUTPUT_CHANNELS,
   OUTPUT_FRAME_RATE,
   OUTPUT_HEIGHT,
@@ -37,6 +38,7 @@ export async function normalizeShotWebCodecs(
   end: number,
   onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
+  const audioDelay = await aacEncoderDelay()
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
     const output = new Output({
@@ -64,6 +66,12 @@ export async function normalizeShotWebCodecs(
         numberOfChannels: OUTPUT_CHANNELS,
         quality: new Quality('high'),
         forceTranscode: true,
+        // Feed the encoder early by its priming delay so the audio isn't
+        // pushed later than the video (see aacEncoderDelay).
+        process: sample => {
+          sample.setTimestamp(sample.timestamp - audioDelay)
+          return sample
+        },
       },
       showWarnings: false,
     })
