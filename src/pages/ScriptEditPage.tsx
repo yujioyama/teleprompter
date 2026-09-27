@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
+import { reconcileShots } from '../utils/reconcileShots'
 import { Shot } from '../types'
 import styles from './ScriptEditPage.module.css'
 
@@ -66,12 +67,12 @@ export default function ScriptEditPage() {
       return
     }
 
-    const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
-
-    if (isEdit && id) {
-      updateScript(id, { title: title.trim(), shots })
-      navigate(`/scripts/${id}/shots`)
+    if (existingScript) {
+      const shots = reconcileShots(existingScript.shots, preview, generateId)
+      updateScript(existingScript.id, { title: title.trim(), shots })
+      navigate(`/scripts/${existingScript.id}/shots`)
     } else {
+      const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
       const script = createScript(title.trim(), shots)
       clearDraft()
       navigate(`/scripts/${script.id}/shots`)
