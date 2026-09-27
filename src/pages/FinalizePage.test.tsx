@@ -551,19 +551,23 @@ describe('FinalizePage wizard', () => {
     await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
     const burnedBlob = await vi.mocked(burnModule.burnSubtitles).mock.results[0].value
 
-    // Step 3: BGM — select a track, then change the volume to trigger a
-    // second (re-)mix. Each call resolves to a distinguishable blob so we
-    // can assert on the *arguments* of the second call directly.
+    // Step 3: BGM — mix a track, then come back to the BGM step and mix
+    // again at another volume. Each call resolves to a distinguishable blob
+    // so we can assert on the *arguments* of the second call directly.
     vi.mocked(mixModule.mixMusic)
       .mockResolvedValueOnce(new Blob(['mixed-1'], { type: 'video/mp4' }))
       .mockResolvedValueOnce(new Blob(['mixed-2'], { type: 'video/mp4' }))
 
     fireEvent.click(await screen.findByText(MUSIC_TRACKS[0].title))
-    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1), { timeout: 1000 })
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('保存する')
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
 
-    const slider = screen.getByRole('slider')
-    fireEvent.change(slider, { target: { value: '0.7' } })
-    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2), { timeout: 1000 })
+    fireEvent.click(screen.getByText('BGM').closest('button')!)
+    fireEvent.click(await screen.findByText(MUSIC_TRACKS[0].title))
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '0.7' } })
+    fireEvent.click(screen.getByText('次へ'))
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2))
 
     // Both calls must be fed the pre-BGM (burned) blob...
     expect(vi.mocked(mixModule.mixMusic).mock.calls[0][0]).toBe(burnedBlob)

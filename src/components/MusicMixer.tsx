@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { MUSIC_TRACKS } from '../data/musicTracks'
+import { MUSIC_TRACKS, MusicTrack } from '../data/musicTracks'
 import { mixMusic } from '../utils/mixMusic'
+import { BgmPreview } from '../utils/bgmPreview'
 import MusicPicker from './MusicPicker'
 import styles from './MusicMixer.module.css'
 
@@ -10,75 +11,109 @@ interface MusicMixerProps {
   onNext: () => void
 }
 
-type Stage = 'idle' | 'mixing' | 'done' | 'error'
+type Stage = 'idle' | 'mixing' | 'error'
 
-const DEBOUNCE_MS = 300
+// Each track's file, fetched once per session and shared by the live
+// preview and the real mix.
+const trackBlobs = new Map<string, Promise<Blob>>()
+
+function fetchTrack(track: MusicTrack): Promise<Blob> {
+  let blob = trackBlobs.get(track.id)
+  if (!blob) {
+    blob = fetch(`/${track.file}`).then(response => {
+      if (!response.ok) throw new Error(`「${track.title}」の読み込みに失敗しました`)
+      return response.blob()
+    })
+    trackBlobs.set(track.id, blob)
+    blob.catch(() => trackBlobs.delete(track.id))
+  }
+  return blob
+}
 
 export default function MusicMixer({ videoBlob, onMixed, onNext }: MusicMixerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [volume, setVolume] = useState(0.3)
   const [stage, setStage] = useState<Stage>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [mixedUrl, setMixedUrl] = useState<string | null>(null)
-  const mixedUrlRef = useRef<string | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Bumped each time a new mix is scheduled (or the user skips), so an
-  // in-flight mix's eventual result can be told apart from a newer request
-  // superseding it. mixMusic uses one shared FFmpeg instance with fixed
-  // filenames — two mixes running concurrently would corrupt each other's
-  // files — but debouncing only cancels a *pending* timer, not a mix whose
-  // FFmpeg call has already started. This guard doesn't prevent that overlap;
-  // it ensures that whichever call finishes, only the result matching the
-  // latest request is ever applied to state (a stale one is silently
-  // discarded, not treated as an error and not further processed).
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const previewRef = useRef<BgmPreview | null>(null)
+  // Bumped when the component unmounts or the user skips, so a mix still
+  // running then is discarded instead of re-adding BGM afterwards.
   const requestIdRef = useRef(0)
 
   useEffect(() => {
     return () => {
-      if (mixedUrlRef.current) URL.revokeObjectURL(mixedUrlRef.current)
-      if (debounceRef.current) clearTimeout(debounceRef.current)
       requestIdRef.current += 1
     }
   }, [])
 
+  // Created and revoked in the same effect so StrictMode's simulated
+  // remount never leaves the player on a revoked URL (see SubtitleWorkflow).
   useEffect(() => {
-    if (!selectedId) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      requestIdRef.current += 1
-      void runMix(requestIdRef.current, selectedId, volume)
-    }, DEBOUNCE_MS)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, volume])
+    const url = URL.createObjectURL(videoBlob)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [videoBlob])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const preview = new BgmPreview(video)
+    previewRef.current = preview
+    return () => {
+      preview.dispose()
+      previewRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    previewRef.current?.setVolume(volume)
+  }, [volume])
+
+  useEffect(() => {
+    const preview = previewRef.current
+    if (!preview) return
+    const track = MUSIC_TRACKS.find(t => t.id === selectedId)
+    if (!track) {
+      void preview.setTrack(null)
+      return
+    }
+    let cancelled = false
+    fetchTrack(track).then(
+      blob => {
+        if (!cancelled) void preview.setTrack(blob)
+      },
+      err => console.warn('[MusicMixer] could not load the track for preview:', err),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
 
   if (MUSIC_TRACKS.length === 0) return null
 
-  async function runMix(requestId: number, trackId: string, vol: number) {
-    const track = MUSIC_TRACKS.find(t => t.id === trackId)
-    if (!track) return
+  function handleSelect(id: string | null) {
+    // A tap: the only moment iOS lets the preview's audio start.
+    previewRef.current?.unlock()
+    setSelectedId(id)
+    setErrorMessage(null)
+    if (stage === 'error') setStage('idle')
+  }
 
+  async function handleNext() {
+    const track = MUSIC_TRACKS.find(t => t.id === selectedId)
+    if (!track) return
+    videoRef.current?.pause()
+    const requestId = ++requestIdRef.current
     setStage('mixing')
     setErrorMessage(null)
     try {
-      const trackResponse = await fetch(`/${track.file}`)
-      if (!trackResponse.ok) {
-        throw new Error(`「${track.title}」の合成に失敗しました: ファイルの読み込みエラー`)
-      }
-      const trackBlob = await trackResponse.blob()
-      const mixed = await mixMusic(videoBlob, trackBlob, vol)
-      // A newer request (or a skip) has superseded this one — discard the
-      // result quietly. Don't revoke any URL here: the newer/skip path
-      // already owns URL lifecycle from this point on.
+      const mixed = await mixMusic(videoBlob, await fetchTrack(track), volume)
       if (requestIdRef.current !== requestId) return
-      if (mixedUrlRef.current) URL.revokeObjectURL(mixedUrlRef.current)
-      const url = URL.createObjectURL(mixed)
-      mixedUrlRef.current = url
-      setMixedUrl(url)
-      setStage('done')
       onMixed(mixed)
+      onNext()
     } catch (err) {
-      // Same guard for the rejection path: a stale failure must not stomp a
-      // newer request's in-progress or already-applied state.
       if (requestIdRef.current !== requestId) return
       const detail = err instanceof Error ? err.message : String(err)
       setErrorMessage(`「${track.title}」の合成に失敗しました: ${detail}`)
@@ -87,13 +122,13 @@ export default function MusicMixer({ videoBlob, onMixed, onNext }: MusicMixerPro
   }
 
   function handleSkip() {
-    // Bump the generation so any mix still in flight is ignored when it
-    // eventually resolves — it must not silently re-add BGM after the user
-    // has explicitly chosen to skip it.
     requestIdRef.current += 1
+    videoRef.current?.pause()
     onMixed(null)
     onNext()
   }
+
+  const mixing = stage === 'mixing'
 
   return (
     <div className={styles.wrapper}>
@@ -102,27 +137,32 @@ export default function MusicMixer({ videoBlob, onMixed, onNext }: MusicMixerPro
         <MusicPicker
           tracks={MUSIC_TRACKS}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={handleSelect}
           volume={volume}
           onVolumeChange={setVolume}
         />
-        {stage === 'mixing' && <p className={styles.status}>プレビュー更新中...</p>}
         {stage === 'error' && errorMessage && <p className={styles.error}>{errorMessage}</p>}
       </div>
 
-      {stage === 'done' && mixedUrl && (
-        <div className={styles.section}>
-          <p className={styles.sectionTitle}>プレビュー</p>
-          <video className={styles.preview} src={mixedUrl} controls playsInline />
-        </div>
-      )}
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>プレビュー</p>
+        <video
+          ref={videoRef}
+          className={styles.preview}
+          src={previewUrl ?? undefined}
+          controls={!mixing}
+          playsInline
+        />
+        {selectedId && <p className={styles.status}>再生するとBGMを重ねて確認できます</p>}
+      </div>
 
       <div className={styles.actions}>
+        {/* Left enabled while mixing, to give up on a slow mix. */}
         <button className={styles.skipBtn} onClick={handleSkip}>
           BGMなしで進む
         </button>
-        <button className={styles.mixBtn} onClick={onNext} disabled={stage !== 'done'}>
-          次へ
+        <button className={styles.mixBtn} onClick={handleNext} disabled={!selectedId || mixing}>
+          {mixing ? 'BGMを合成中...' : '次へ'}
         </button>
       </div>
     </div>
