@@ -15,22 +15,23 @@ export interface SubtitleOverlay {
   start: number
   end: number
   image: Blob
+  /** Top edge of the image in the output frame. */
+  y: number
 }
 
 /**
  * WebCodecs counterpart of the ffmpeg overlay filtergraph: re-encode the
- * video once, compositing each cue's pre-rendered PNG at (centered, y)
+ * video once, compositing each cue's pre-rendered PNG at (centered, its y)
  * during [start, end). Frames with no cue are passed to the encoder as-is.
  * Audio packets are copied untouched.
  */
 export async function burnSubtitlesWebCodecs(
   videoBlob: Blob,
   overlays: SubtitleOverlay[],
-  y: number,
   onProgress?: (ratio: number) => void,
 ): Promise<Blob> {
   const bitmaps = await Promise.all(overlays.map(o => createImageBitmap(o.image)))
-  const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, bitmap: bitmaps[i] }))
+  const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, y: o.y, bitmap: bitmaps[i] }))
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   let canvas: OffscreenCanvas | null = null
   let ctx: OffscreenCanvasRenderingContext2D | null = null
@@ -62,7 +63,7 @@ export async function burnSubtitlesWebCodecs(
           }
           sample.draw(ctx!, 0, 0, width, height)
           for (const cue of active) {
-            ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), y)
+            ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
           }
           return canvas
         },

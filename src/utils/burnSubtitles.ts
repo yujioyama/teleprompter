@@ -5,106 +5,98 @@ import { SubtitleCue } from './subtitleCues'
 import { SubtitlePosition, subtitleY } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
+import {
+  EN_STYLE,
+  JA_STYLE,
+  SUBTITLE_BLOCK_GAP,
+  SUBTITLE_BOX_MARGIN_X,
+  SUBTITLE_BOX_PADDING_Y,
+  SUBTITLE_BOX_RADIUS,
+  SUBTITLE_REFERENCE_WIDTH,
+  TextBlockLayout,
+  fontFor,
+  layoutCue,
+} from './subtitleLayout'
 
 /**
- * Build the chained overlay filtergraph for `cueCount` subtitle image inputs
- * (indices 1..cueCount, input 0 is the base video), each composited at the
- * same fixed (horizontally centered, given Y) position. Each image input is
- * itself time-bounded via `-loop 1 -t <duration>` and a `-ss <start>` offset
- * at the ffmpeg-input level (see burnSubtitles below), so no `enable=`
- * time-window expression is needed here — simpler and less error-prone than
- * threading per-cue timing through the filter string itself.
+ * Build the chained overlay filtergraph for one subtitle image input per
+ * entry of `ys` (indices 1..ys.length, input 0 is the base video), each
+ * composited horizontally centered at its own Y (cue boxes differ in height
+ * with their line count). Each image input is itself time-bounded via
+ * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
+ * level (see burnSubtitles below), so no `enable=` time-window expression is
+ * needed here — simpler and less error-prone than threading per-cue timing
+ * through the filter string itself.
  */
-export function buildOverlayFilterGraph(
-  cueCount: number,
-  y: number,
-): { filterGraph: string; outputLabel: string } {
-  if (cueCount === 0) {
+export function buildOverlayFilterGraph(ys: number[]): { filterGraph: string; outputLabel: string } {
+  if (ys.length === 0) {
     return { filterGraph: '', outputLabel: '[0:v]' }
   }
 
-  const stages: string[] = []
-  for (let i = 0; i < cueCount; i++) {
+  const stages = ys.map((y, i) => {
     const baseInput = i === 0 ? '[0:v]' : `[v${i - 1}]`
-    const outputLabel = `[v${i}]`
-    stages.push(`${baseInput}[sub${i}]overlay=x=(W-w)/2:y=${y}${outputLabel}`)
-  }
+    return `${baseInput}[sub${i}]overlay=x=(W-w)/2:y=${y}[v${i}]`
+  })
 
-  return { filterGraph: stages.join(';'), outputLabel: `[v${cueCount - 1}]` }
-}
-
-/**
- * Find the largest font size (in 2px steps, down to `minPx`) at which `text`
- * measures within `maxWidth` when rendered with the given `weight`. Used
- * instead of passing a `maxWidth` to `fillText`, which condenses/squashes
- * glyphs horizontally rather than shrinking or wrapping them.
- */
-function fitFontSize(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  startPx: number,
-  minPx: number,
-  weight: string,
-): number {
-  let size = startPx
-  while (size > minPx) {
-    ctx.font = `${weight} ${size}px sans-serif`
-    if (ctx.measureText(text).width <= maxWidth) break
-    size -= 2
-  }
-  return size
+  return { filterGraph: stages.join(';'), outputLabel: `[v${ys.length - 1}]` }
 }
 
 /**
  * Render one cue's bilingual subtitle (English bold/larger above, Japanese
  * smaller below, on a semi-transparent rounded background) as a transparent
- * PNG sized to the video width.
+ * PNG as wide as the video and exactly as tall as its box. Text is wrapped
+ * onto balanced lines (see subtitleLayout) rather than shrunk until it fits
+ * one line, which left long cues unreadably small and still overflowing.
  */
-export async function renderCueImage(cue: SubtitleCue, videoWidth: number): Promise<Blob> {
-  const height = 220
+export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; height: number }> {
+  const measureCanvas = document.createElement('canvas')
+  const measureCtx = measureCanvas.getContext('2d')
+  if (!measureCtx) throw new Error('Canvas 2D context unavailable')
+  const layout = layoutCue(cue, (text, font) => {
+    measureCtx.font = font
+    return measureCtx.measureText(text).width
+  })
+
+  const width = SUBTITLE_REFERENCE_WIDTH
+  const height = layout.height
   const canvas = document.createElement('canvas')
-  canvas.width = videoWidth
+  canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D context unavailable')
 
-  ctx.clearRect(0, 0, videoWidth, height)
-
-  const padding = 24
-  const boxTop = 20
-  const boxHeight = height - 40
   ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
-  const radius = 16
   ctx.beginPath()
-  ctx.roundRect(padding, boxTop, videoWidth - padding * 2, boxHeight, radius)
+  ctx.roundRect(SUBTITLE_BOX_MARGIN_X, 0, width - SUBTITLE_BOX_MARGIN_X * 2, height, SUBTITLE_BOX_RADIUS)
   ctx.fill()
 
   ctx.textAlign = 'center'
-  ctx.fillStyle = '#ffffff'
+  ctx.textBaseline = 'middle'
+  let top = SUBTITLE_BOX_PADDING_Y
+  const drawBlock = (block: TextBlockLayout, font: string, color: string) => {
+    ctx.font = font
+    ctx.fillStyle = color
+    for (const line of block.lines) {
+      ctx.fillText(line, width / 2, top + block.lineHeightPx / 2)
+      top += block.lineHeightPx
+    }
+  }
+  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx), '#ffffff')
+  if (layout.ja) {
+    top += SUBTITLE_BLOCK_GAP
+    drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
+  }
 
-  const textWidth = videoWidth - padding * 4
-  const enFontSize = fitFontSize(ctx, cue.en, textWidth, 52, 24, 'bold')
-  ctx.font = `bold ${enFontSize}px sans-serif`
-  ctx.fillText(cue.en, videoWidth / 2, boxTop + 70)
-
-  const jaText = cue.ja ?? ''
-  const jaFontSize = fitFontSize(ctx, jaText, textWidth, 34, 18, '')
-  ctx.font = `${jaFontSize}px sans-serif`
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
-  ctx.fillText(jaText, videoWidth / 2, boxTop + 130)
-
-  return new Promise((resolve, reject) => {
+  const image = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(blob => {
       if (blob) resolve(blob)
       else reject(new Error('Failed to render subtitle image'))
     }, 'image/png')
   })
+  return { image, height }
 }
 
-const VIDEO_WIDTH = 1080
 const VIDEO_HEIGHT = 1920
-const OVERLAY_HEIGHT = 220
 
 /**
  * Burn bilingual subtitles into the video: render one PNG per cue with a
@@ -124,8 +116,13 @@ export async function burnSubtitles(
   }
 
   const images: Blob[] = []
-  for (const cue of translated) images.push(await renderCueImage(cue, VIDEO_WIDTH))
-  const y = subtitleY(position, VIDEO_HEIGHT, OVERLAY_HEIGHT)
+  const ys: number[] = []
+  for (const cue of translated) {
+    const { image, height } = await renderCueImage(cue)
+    images.push(image)
+    // Centered on the chosen position, but kept fully on screen.
+    ys.push(Math.min(Math.max(subtitleY(position, VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height))
+  }
 
   if (await canUseWebCodecs()) {
     try {
@@ -135,14 +132,14 @@ export async function burnSubtitles(
           start: cue.start,
           end: cue.start + cueDuration(cue),
           image: images[i],
+          y: ys[i],
         })),
-        y,
       )
     } catch (err) {
       disableWebCodecs(err)
     }
   }
-  return burnSubtitlesFFmpeg(videoBlob, translated, images, y)
+  return burnSubtitlesFFmpeg(videoBlob, translated, images, ys)
 }
 
 function cueDuration(cue: SubtitleCue): number {
@@ -157,7 +154,7 @@ async function burnSubtitlesFFmpeg(
   videoBlob: Blob,
   translated: SubtitleCue[],
   images: Blob[],
-  y: number,
+  ys: number[],
 ): Promise<Blob> {
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
@@ -177,7 +174,7 @@ async function burnSubtitlesFFmpeg(
     args.push('-loop', '1', '-itsoffset', cue.start.toFixed(3), '-t', duration.toFixed(3), '-i', name)
   }
 
-  const { filterGraph, outputLabel } = buildOverlayFilterGraph(translated.length, y)
+  const { filterGraph, outputLabel } = buildOverlayFilterGraph(ys)
 
   // buildOverlayFilterGraph's chain references each cue's image input by an
   // arbitrary label ([sub0], [sub1], ...), but ffmpeg only recognizes an
