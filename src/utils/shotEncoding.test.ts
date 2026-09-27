@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ShotEncodeCache } from './shotEncodeCache'
-import { burnRequest, burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type ShotClip } from './shotEncoding'
+import {
+  burnRequest,
+  burnSubtitlesByShot,
+  encodeAll,
+  normalizeRequest,
+  shotBurnRequests,
+  type ShotClip,
+} from './shotEncoding'
 import { cuesFromShotEntries, type SubtitleCue } from './subtitleCues'
 import * as burnModule from './burnSubtitles'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
 import { trimAndNormalizeShot } from './trimAndNormalizeShot'
+import { CancelledError } from './cancellation'
 
 vi.mock('./burnSubtitles')
 vi.mock('./trimAndNormalizeShot', () => ({
@@ -92,7 +100,7 @@ describe('burnSubtitlesByShot', () => {
     expect(concatClipsWebCodecs).toHaveBeenCalledTimes(1)
     expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
     const burned = await Promise.all(vi.mocked(burnModule.burnShotSubtitles).mock.results.map(r => r.value))
-    expect(concatClipsWebCodecs).toHaveBeenCalledWith(burned)
+    expect(concatClipsWebCodecs).toHaveBeenCalledWith(burned, undefined)
     expect(out).toBe(await vi.mocked(concatClipsWebCodecs).mock.results[0].value)
   })
 
@@ -128,7 +136,7 @@ describe('burnSubtitlesByShot', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50)
 
     expect(burnModule.burnShotSubtitles).not.toHaveBeenCalled()
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined, undefined)
   })
 
   it('disables WebCodecs and burns the whole video when a per-shot burn fails', async () => {
@@ -137,7 +145,7 @@ describe('burnSubtitlesByShot', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50)
 
     expect(disableWebCodecs).toHaveBeenCalledWith(err)
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined, undefined)
   })
 
   // Issue #33: the fallback re-encodes the whole video and can take minutes
@@ -161,6 +169,58 @@ describe('burnSubtitlesByShot', () => {
     warn.mockRestore()
 
     expect(disableWebCodecs).not.toHaveBeenCalled()
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, 50, undefined, undefined)
+  })
+})
+
+describe('cancelling (issue #34)', () => {
+  const clips = [clip('a', 0, 2), clip('b', 0, 1)]
+  const cues = translate(cuesFromShotEntries([
+    { text: 'first', duration: 2 },
+    { text: 'second', duration: 1 },
+  ]))
+
+  it('encodeAll cancels the cache, so a hung encode stops blocking it', async () => {
+    const cache = new ShotEncodeCache()
+    const controller = new AbortController()
+    const all = encodeAll(cache, [{ slot: 's1', key: 'k1', run: () => new Promise<Blob>(() => {}) }], undefined, controller.signal)
+
+    controller.abort()
+
+    await expect(all).rejects.toBeInstanceOf(CancelledError)
+    await expect(cache.get({ slot: 's2', key: 'k2', run: async () => new Blob(['ok']) })).resolves.toBeInstanceOf(Blob)
+  })
+
+  it('encodeAll rejects at once for an already-cancelled signal', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const run = vi.fn(async () => new Blob(['x']))
+
+    await expect(encodeAll(new ShotEncodeCache(), [{ slot: 's', key: 'k', run }], undefined, controller.signal))
+      .rejects.toBeInstanceOf(CancelledError)
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('burnSubtitlesByShot neither disables WebCodecs nor burns the whole video when cancelled', async () => {
+    const controller = new AbortController()
+    vi.mocked(burnModule.burnShotSubtitles).mockImplementationOnce(() => {
+      controller.abort()
+      return new Promise<Blob>(() => {})
+    })
+
+    await expect(
+      burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, undefined, controller.signal),
+    ).rejects.toBeInstanceOf(CancelledError)
+
+    expect(disableWebCodecs).not.toHaveBeenCalled()
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
+  })
+
+  it('burnSubtitlesByShot passes the signal to each shot\'s burn', async () => {
+    const controller = new AbortController()
+    await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, undefined, controller.signal)
+
+    const signals = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[6])
+    expect(signals.every(s => s instanceof AbortSignal)).toBe(true)
   })
 })

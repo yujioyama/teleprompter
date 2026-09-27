@@ -412,7 +412,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
     await screen.findByText('BGMなしで進む')
     expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1)
-    expect(concatClipsWebCodecs).toHaveBeenCalledWith([burnedShot])
+    expect(vi.mocked(concatClipsWebCodecs).mock.calls[0][0]).toEqual([burnedShot])
     expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
   })
 

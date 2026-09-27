@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ShotEncodeCache, blobId, type EncodeJob, type EncodeRequest } from './shotEncodeCache'
+import { CancelledError } from './cancellation'
 
 function deferred<T>() {
   let resolve!: (v: T) => void
@@ -159,6 +160,89 @@ describe('ShotEncodeCache', () => {
     await flush()
 
     expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancel() rejects a hung encode and lets the next request run (issue #34)', async () => {
+    const cache = new ShotEncodeCache()
+    const hung = cache.get(request('s1', 'a', () => new Promise<Blob>(() => {})))
+    await flush()
+
+    cache.cancel()
+
+    await expect(hung).rejects.toBeInstanceOf(CancelledError)
+    await expect(cache.get(request('s2', 'b', async () => new Blob(['b'])))).resolves.toBeInstanceOf(Blob)
+  })
+
+  it('cancel() aborts the signal handed to the running encode', async () => {
+    const cache = new ShotEncodeCache()
+    let seen: AbortSignal | undefined
+    const running = cache.get(request('s1', 'a', (_onProgress, signal) => {
+      seen = signal
+      return new Promise<Blob>(() => {})
+    }))
+    await flush()
+
+    cache.cancel()
+
+    await expect(running).rejects.toBeInstanceOf(CancelledError)
+    expect(seen?.aborted).toBe(true)
+  })
+
+  it('cancel() drops queued encodes without running them', async () => {
+    const cache = new ShotEncodeCache()
+    const queuedRun = vi.fn<EncodeJob>(async () => new Blob(['q']))
+    const running = cache.get(request('s1', 'a', () => new Promise<Blob>(() => {})))
+    const queued = cache.get(request('s2', 'b', queuedRun))
+    await flush()
+
+    cache.cancel()
+
+    await expect(running).rejects.toBeInstanceOf(CancelledError)
+    await expect(queued).rejects.toBeInstanceOf(CancelledError)
+    expect(queuedRun).not.toHaveBeenCalled()
+  })
+
+  it('cancel() keeps finished results', async () => {
+    const cache = new ShotEncodeCache()
+    const run = vi.fn<EncodeJob>(async () => new Blob(['done']))
+    const first = await cache.get(request('s1', 'a', run))
+
+    cache.cancel()
+
+    await expect(cache.get(request('s1', 'a', run))).resolves.toBe(first)
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs a request made after cancel() afresh instead of reusing the cancelled one', async () => {
+    const cache = new ShotEncodeCache()
+    const run = vi
+      .fn<EncodeJob>()
+      .mockImplementationOnce(() => new Promise<Blob>(() => {}))
+      .mockResolvedValue(new Blob(['retry']))
+    const first = cache.get(request('s1', 'a', run))
+    await flush()
+
+    cache.cancel()
+    const retry = cache.get(request('s1', 'a', run))
+
+    await expect(first).rejects.toBeInstanceOf(CancelledError)
+    await expect(retry).resolves.toBeInstanceOf(Blob)
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
+  it('dispose() aborts the running encode', async () => {
+    const cache = new ShotEncodeCache()
+    let seen: AbortSignal | undefined
+    const running = cache.get(request('s1', 'a', (_onProgress, signal) => {
+      seen = signal
+      return new Promise<Blob>(() => {})
+    }))
+    await flush()
+
+    cache.dispose()
+
+    await expect(running).rejects.toThrow()
+    expect(seen?.aborted).toBe(true)
   })
 })
 
