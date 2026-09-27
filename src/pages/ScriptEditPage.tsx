@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
@@ -41,6 +41,24 @@ export default function ScriptEditPage() {
   const [splitOptions, setSplitOptions] = useState<SplitOptions>(
     () => existingScript ? DEFAULT_SPLIT_OPTIONS : NEW_SCRIPT_SPLIT_OPTIONS
   )
+
+  // Grow the textarea to fit its content so a long pasted script is visible
+  // in full, instead of hiding most of it in a small scroll box nested
+  // inside the scrolling page.
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    // Resetting the height briefly shortens the page, which would clamp and
+    // jump the surrounding scroll position; restore it after measuring.
+    const scroller = el.parentElement
+    const scrollTop = scroller?.scrollTop ?? 0
+    el.style.height = 'auto'
+    if (el.scrollHeight > el.clientHeight) {
+      el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
+    }
+    if (scroller) scroller.scrollTop = scrollTop
+  }, [body])
 
   function saveDraft(nextTitle: string, nextBody: string) {
     if (!isEdit) {
@@ -104,6 +122,7 @@ export default function ScriptEditPage() {
         <label className={styles.label} htmlFor="script-body">スクリプト全文</label>
         <textarea
           id="script-body"
+          ref={bodyRef}
           className={styles.textarea}
           placeholder="ここにスクリプトを入力または貼り付け..."
           value={body}
