@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { processRecordedVideo, isRemuxableContainer, inferMimeType } from './processRecordedVideo'
 import { remuxMp4 } from './remuxMp4'
+import { canUseWebCodecs } from './webcodecs/support'
+import { normalizeLoudnessWebCodecs } from './webcodecs/normalizeLoudnessWebCodecs'
 
 vi.mock('./remuxMp4', () => ({ remuxMp4: vi.fn() }))
+vi.mock('./webcodecs/support', () => ({ canUseWebCodecs: vi.fn() }))
+vi.mock('./webcodecs/normalizeLoudnessWebCodecs', () => ({ normalizeLoudnessWebCodecs: vi.fn() }))
 
 const mockRemux = vi.mocked(remuxMp4)
+const mockCanUseWebCodecs = vi.mocked(canUseWebCodecs)
+const mockNormalizeWebCodecs = vi.mocked(normalizeLoudnessWebCodecs)
 
 function makeBlob(content = 'x') {
   return new Blob([content], { type: 'video/mp4' })
@@ -12,6 +18,8 @@ function makeBlob(content = 'x') {
 
 beforeEach(() => {
   mockRemux.mockReset()
+  mockCanUseWebCodecs.mockReset().mockResolvedValue(false)
+  mockNormalizeWebCodecs.mockReset()
 })
 
 describe('processRecordedVideo', () => {
@@ -39,6 +47,57 @@ describe('processRecordedVideo', () => {
 
     await processRecordedVideo(raw, 'video/quicktime', { normalizeAudio: false })
 
+    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
+  })
+
+  it('normalizes with WebCodecs instead of ffmpeg.wasm when available (issue #30)', async () => {
+    const raw = makeBlob()
+    const normalized = makeBlob('normalized')
+    mockCanUseWebCodecs.mockResolvedValue(true)
+    mockNormalizeWebCodecs.mockResolvedValue(normalized)
+
+    const result = await processRecordedVideo(raw, 'video/quicktime', { normalizeAudio: true })
+
+    expect(mockNormalizeWebCodecs).toHaveBeenCalledWith(raw)
+    expect(mockRemux).not.toHaveBeenCalled()
+    expect(result).toEqual({ blob: normalized, ok: true, error: null })
+  })
+
+  it('only stream-copies when WebCodecs finds the audio already on target', async () => {
+    const raw = makeBlob()
+    const remuxed = makeBlob('remuxed')
+    mockCanUseWebCodecs.mockResolvedValue(true)
+    mockNormalizeWebCodecs.mockResolvedValue(raw)
+    mockRemux.mockResolvedValue({ blob: remuxed, ok: true })
+
+    const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: true })
+
+    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
+    expect(result).toEqual({ blob: remuxed, ok: true, error: null })
+  })
+
+  it('falls back to the ffmpeg loudnorm remux when the WebCodecs pass fails', async () => {
+    const raw = makeBlob()
+    const remuxed = makeBlob('remuxed')
+    mockCanUseWebCodecs.mockResolvedValue(true)
+    mockNormalizeWebCodecs.mockRejectedValue(new Error('no decoder'))
+    mockRemux.mockResolvedValue({ blob: remuxed, ok: true })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: true })
+
+    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: true })
+    expect(result).toEqual({ blob: remuxed, ok: true, error: null })
+  })
+
+  it('skips WebCodecs when audio normalization is off', async () => {
+    const raw = makeBlob()
+    mockCanUseWebCodecs.mockResolvedValue(true)
+    mockRemux.mockResolvedValue({ blob: raw, ok: true })
+
+    await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: false })
+
+    expect(mockNormalizeWebCodecs).not.toHaveBeenCalled()
     expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
   })
 
