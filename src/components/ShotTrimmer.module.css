@@ -6,12 +6,11 @@
 
 .video {
   width: 100%;
-  border-radius: 8px;
-  background: #000;
-}
-
-.placeholder {
-  width: 100%;
+  /* A full-width 9:16 clip would fill the whole phone screen and push the
+     trim bar and the shot list out of view. */
+  height: 55vh;
+  height: 55dvh;
+  object-fit: contain;
   border-radius: 8px;
   background: #000;
 }

@@ -1,3 +1,5 @@
+import { releaseVideo } from './releaseVideo'
+
 /**
  * Read a video's duration from its metadata, then fully release the
  * temporary player. The finalize screen needs every shot's duration to
@@ -15,8 +17,7 @@ export function probeVideoDuration(blob: Blob): Promise<number> {
     function done(duration: number) {
       video.removeEventListener('loadedmetadata', onMeta)
       video.removeEventListener('error', onError)
-      video.removeAttribute('src')
-      video.load() // drops the media player behind the element
+      releaseVideo(video)
       URL.revokeObjectURL(url)
       resolve(Number.isFinite(duration) && duration > 0 ? duration : 0)
     }

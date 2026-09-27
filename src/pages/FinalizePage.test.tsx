@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
@@ -67,6 +67,62 @@ beforeEach(async () => {
     ok: true,
     blob: () => Promise.resolve(new Blob(['track'], { type: 'audio/mpeg' })),
   }) as unknown as typeof fetch
+})
+
+describe('FinalizePage trim step: one player for the selected shot', () => {
+  const SHOT_2 = '22222222-2222-2222-2222-222222222222'
+
+  async function seedTwoShots() {
+    const script: Script = {
+      id: 'script-1',
+      title: 'テスト動画',
+      shots: [
+        { id: SHOT_1, text: 'ショット1' },
+        { id: SHOT_2, text: 'ショット2' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+  }
+
+  it('keeps a single <video> no matter how many shots there are (issue #12)', async () => {
+    await seedTwoShots()
+    renderFinalizePage('script-1')
+
+    await screen.findByText('1. ショット1')
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+  })
+
+  it('switches the player to a shot tapped in the list, keeping each shot\'s own trim', async () => {
+    await seedTwoShots()
+    let n = 0
+    const urlSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:shot-${++n}`)
+    onTestFinished(() => urlSpy.mockRestore())
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(8)
+    renderFinalizePage('script-1')
+
+    await screen.findByText('1. ショット1')
+    await screen.findByText('終了 5.0秒')
+    const firstSrc = document.querySelector('video')!.getAttribute('src')
+
+    fireEvent.click(screen.getByRole('button', { name: /ショット2/ }))
+
+    expect(screen.getByText('2. ショット2')).toBeInTheDocument()
+    expect(screen.getByText('終了 8.0秒')).toBeInTheDocument()
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+    expect(document.querySelector('video')!.getAttribute('src')).not.toBe(firstSrc)
+  })
+
+  it('shows each shot\'s kept length in the list', async () => {
+    await seedTwoShots()
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(8)
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /ショット2/ })).toHaveTextContent('8.0秒'))
+    expect(screen.getByRole('button', { name: /ショット1/ })).toHaveTextContent('5.0秒')
+  })
 })
 
 describe('FinalizePage wizard', () => {
