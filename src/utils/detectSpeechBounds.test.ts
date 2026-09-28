@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findSpeechBounds } from './detectSpeechBounds'
+import { findSpeechBounds, findSpeechRegion, speechBoundsFor } from './detectSpeechBounds'
 
 const SR = 16000
 
@@ -92,5 +92,16 @@ describe('findSpeechBounds', () => {
   it('returns null when there is no speech at all', () => {
     const clip = makeClip(3, [{ from: 0.1, to: 0.15, kind: 'click', amp: 0.6 }])
     expect(findSpeechBounds(clip, SR, 0.3, 0.4)).toBeNull()
+  })
+})
+
+describe('speechBoundsFor', () => {
+  it('turns one stored region into the cut for whatever padding is in effect', () => {
+    const clip = makeClip(5, [{ from: 1, to: 3, kind: 'voice' }])
+    const region = findSpeechRegion(clip, SR)!
+    expect(speechBoundsFor(region, 0.3, 0.4)).toEqual(findSpeechBounds(clip, SR, 0.3, 0.4))
+    const wider = speechBoundsFor(region, 0.6, 0.8)!
+    expect(wider.start).toBeCloseTo(0.4, 1)
+    expect(wider.end).toBeCloseTo(3.8, 1)
   })
 })

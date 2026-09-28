@@ -13,7 +13,9 @@ import { concatVideos } from '../utils/concatVideos'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { shareOrDownload } from '../utils/shareOrDownload'
-import { detectSpeechBounds } from '../utils/detectSpeechBounds'
+import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
+import { listShotAnalyses, updateShotAnalysis } from '../utils/shotAnalysisStore'
+import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
 
@@ -39,9 +41,14 @@ vi.mock('../utils/shareOrDownload', () => ({
 vi.mock('../utils/normalizeLoudness', () => ({
   normalizeLoudness: vi.fn(),
 }))
-vi.mock('../utils/detectSpeechBounds', () => ({
-  detectSpeechBounds: vi.fn(async () => null),
+vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/detectSpeechBounds')>()),
+  detectSpeech: vi.fn(async () => null),
 }))
+
+// Speech from 1.0s to 3.0s of a 5s shot: with the default padding
+// (0.3s before, 0.4s after) that's a cut from 0.7s to 3.4s.
+const SPEECH_1_TO_3: SpeechRegion = { speechStart: 1, speechEnd: 3, floor: 0, ceiling: 5, duration: 5 }
 // Off by default (as in jsdom itself): background encoding and per-shot
 // burn-in only happen on the hardware path.
 vi.mock('../utils/webcodecs/support', () => ({
@@ -203,12 +210,11 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
 
   it('opens each shot already trimmed to its speech, and combines that cut', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
-    vi.mocked(detectSpeechBounds).mockResolvedValueOnce({ start: 0.7, end: 3.4 })
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
     renderFinalizePage('script-1')
 
     await screen.findByText('開始 0.7秒')
     expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
-    expect(detectSpeechBounds).toHaveBeenCalledWith(expect.anything(), 0.3, 0.4)
 
     await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
     fireEvent.click(screen.getByText('結合する'))
@@ -227,16 +233,20 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     ]
     localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
     await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
     renderFinalizePage('script-1')
 
-    await waitFor(() => expect(detectSpeechBounds).toHaveBeenCalledTimes(1))
-    expect(detectSpeechBounds).toHaveBeenCalledWith(expect.anything(), 1, 1.5)
+    // 1.0s - 1s and 3.0s + 1.5s.
+    await screen.findByText('終了 4.5秒')
+    expect(screen.getByText('開始 0.0秒')).toBeInTheDocument()
+    expect(detectSpeech).toHaveBeenCalledTimes(1)
   })
 
   it('holds 結合 until every shot has been checked for speech', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     let finish!: (b: null) => void
-    vi.mocked(detectSpeechBounds).mockReturnValueOnce(new Promise(r => (finish = r)))
+    vi.mocked(detectSpeech).mockReturnValueOnce(new Promise(r => (finish = r)))
     renderFinalizePage('script-1')
 
     const button = await screen.findByText(/前後の無音を検出中/)
@@ -250,7 +260,7 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
 
   it('lets a hand-adjusted cut go back to the detected one', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
-    vi.mocked(detectSpeechBounds).mockResolvedValueOnce({ start: 0.7, end: 3.4 })
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
     renderFinalizePage('script-1')
     await screen.findByText('終了 3.4秒')
     expect(screen.queryByText('自動カットに戻す')).not.toBeInTheDocument()
@@ -264,8 +274,8 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
   })
 
   it('never moves a handle the user already dragged when detection finishes late', async () => {
-    let finish!: (b: { start: number; end: number }) => void
-    vi.mocked(detectSpeechBounds).mockReturnValueOnce(new Promise(r => (finish = r)))
+    let finish!: (region: SpeechRegion) => void
+    vi.mocked(detectSpeech).mockReturnValueOnce(new Promise(r => (finish = r)))
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     renderFinalizePage('script-1')
     await screen.findByText('終了 5.0秒')
@@ -273,9 +283,37 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     dragEndHandleTo(80)
     expect(screen.getByText('終了 4.0秒')).toBeInTheDocument()
 
-    finish({ start: 0.7, end: 3.4 })
+    finish(SPEECH_1_TO_3)
     await screen.findByText('自動カットに戻す')
     expect(screen.getByText('終了 4.0秒')).toBeInTheDocument()
+  })
+
+  async function currentTakes() {
+    return new Map((await listShotVideos('script-1')).map(v => [v.shotId, v.updatedAt]))
+  }
+
+  it('remembers each shot\'s duration and speech for the next visit', async () => {
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
+    renderFinalizePage('script-1')
+    await screen.findByText('終了 3.4秒')
+
+    const takes = await currentTakes()
+    await waitFor(async () =>
+      expect((await listShotAnalyses('script-1', takes)).get(SHOT_1)).toEqual({ duration: 5, speech: SPEECH_1_TO_3 }),
+    )
+  })
+
+  it('opens an already analysed take cut at once, without decoding it again', async () => {
+    const takes = await currentTakes()
+    await updateShotAnalysis('script-1', SHOT_1, takes.get(SHOT_1)!, { duration: 5, speech: SPEECH_1_TO_3 })
+    renderFinalizePage('script-1')
+
+    await screen.findByText('終了 3.4秒')
+    expect(screen.getByText('開始 0.7秒')).toBeInTheDocument()
+    expect(screen.getByText('結合する')).not.toBeDisabled()
+    expect(probeVideoDuration).not.toHaveBeenCalled()
+    expect(detectSpeech).not.toHaveBeenCalled()
   })
 })
 
@@ -513,19 +551,23 @@ describe('FinalizePage wizard', () => {
     await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
     const burnedBlob = await vi.mocked(burnModule.burnSubtitles).mock.results[0].value
 
-    // Step 3: BGM — select a track, then change the volume to trigger a
-    // second (re-)mix. Each call resolves to a distinguishable blob so we
-    // can assert on the *arguments* of the second call directly.
+    // Step 3: BGM — mix a track, then come back to the BGM step and mix
+    // again at another volume. Each call resolves to a distinguishable blob
+    // so we can assert on the *arguments* of the second call directly.
     vi.mocked(mixModule.mixMusic)
       .mockResolvedValueOnce(new Blob(['mixed-1'], { type: 'video/mp4' }))
       .mockResolvedValueOnce(new Blob(['mixed-2'], { type: 'video/mp4' }))
 
     fireEvent.click(await screen.findByText(MUSIC_TRACKS[0].title))
-    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1), { timeout: 1000 })
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('保存する')
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
 
-    const slider = screen.getByRole('slider')
-    fireEvent.change(slider, { target: { value: '0.7' } })
-    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2), { timeout: 1000 })
+    fireEvent.click(screen.getByText('BGM').closest('button')!)
+    fireEvent.click(await screen.findByText(MUSIC_TRACKS[0].title))
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '0.7' } })
+    fireEvent.click(screen.getByText('次へ'))
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2))
 
     // Both calls must be fed the pre-BGM (burned) blob...
     expect(vi.mocked(mixModule.mixMusic).mock.calls[0][0]).toBe(burnedBlob)

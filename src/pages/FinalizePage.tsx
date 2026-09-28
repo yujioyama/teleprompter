@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
+import { listShotAnalyses, updateShotAnalysis, type ShotAnalysis } from '../utils/shotAnalysisStore'
 import { unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { ShotEncodeCache } from '../utils/shotEncodeCache'
@@ -14,7 +15,7 @@ import {
 } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
-import { detectSpeechBounds, type SpeechBounds } from '../utils/detectSpeechBounds'
+import { detectSpeech, speechBoundsFor, type SpeechBounds } from '../utils/detectSpeechBounds'
 import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
@@ -148,20 +149,42 @@ export default function FinalizePage() {
     if (!script) return
     let cancelled = false
 
-    listShotVideos(script.id).then(stored => {
+    listShotVideos(script.id).then(async stored => {
+      const takes = new Map(stored.map(v => [v.shotId, v.updatedAt]))
+      // An unreadable cache only means analysing every shot again.
+      const analyses = await listShotAnalyses(script.id, takes).catch(err => {
+        console.warn('[FinalizePage] could not read stored shot analyses:', err)
+        return new Map<string, ShotAnalysis>()
+      })
+      return { stored, takes, analyses }
+    }).then(({ stored, takes, analyses }) => {
       if (cancelled) return
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
+      const trimSettings = new Map(script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings)]))
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
         const url = blob ? URL.createObjectURL(blob) : null
         if (url) urlsRef.current.push(url)
-        return {
-          shotId: shot.id, text: shot.text, blob, url, duration: 0, trimStart: 0, trimEnd: 0,
-          autoTrim: null, autoTrimPending: blob !== null, trimEdited: false,
+        const trim = trimSettings.get(shot.id)!
+        // What earlier visits already found for this take (see shotAnalysisStore).
+        const known = analyses.get(shot.id)
+        const speech = trim.trimEnabled ? known?.speech : null
+        const entry: ShotEntry = {
+          shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0, trimStart: 0, trimEnd: 0,
+          autoTrim: speech ? speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd) : null,
+          autoTrimPending: blob !== null && speech === undefined,
+          trimEdited: false,
         }
+        return entry.duration > 0 ? { ...entry, ...autoTrimRange(entry) } : entry
       })
       setEntries(next)
       setLoading(false)
+
+      const remember = (shotId: string, changes: ShotAnalysis) => {
+        updateShotAnalysis(script.id, shotId, takes.get(shotId)!, changes).catch(err =>
+          console.warn('[FinalizePage] could not store a shot analysis:', err),
+        )
+      }
 
       // Only the selected shot has a live <video> (issue #12), so shots never
       // selected would otherwise never report a duration — which combining
@@ -169,10 +192,13 @@ export default function FinalizePage() {
       ;(async () => {
         for (const entry of next) {
           if (cancelled) return
-          if (!entry.blob) continue
+          if (!entry.blob || entry.duration > 0) continue
           const duration = await probeVideoDuration(entry.blob)
           if (cancelled) return
-          if (duration > 0) setDurationOnce(entry.shotId, duration)
+          if (duration > 0) {
+            setDurationOnce(entry.shotId, duration)
+            remember(entry.shotId, { duration })
+          }
         }
       })()
 
@@ -182,14 +208,21 @@ export default function FinalizePage() {
       ;(async () => {
         for (const entry of next) {
           if (cancelled) return
-          if (!entry.blob) continue
-          const shot = script.shots.find(s => s.id === entry.shotId)
-          const trim = resolveShotTrimSettings(shot, settings)
-          const bounds = trim.trimEnabled
-            ? await detectSpeechBounds(entry.blob, trim.trimPaddingStart, trim.trimPaddingEnd)
-            : null
+          if (!entry.autoTrimPending) continue
+          const speech = await detectSpeech(entry.blob!).then(
+            found => {
+              remember(entry.shotId, { speech: found })
+              return found
+            },
+            // Left untrimmed, but not remembered: it may well decode next time.
+            err => {
+              console.warn('[FinalizePage] speech detection failed, skipping auto-trim:', err)
+              return null
+            },
+          )
           if (cancelled) return
-          setAutoTrim(entry.shotId, bounds)
+          const trim = trimSettings.get(entry.shotId)!
+          setAutoTrim(entry.shotId, speech && speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd))
         }
       })()
     }).catch(err => {

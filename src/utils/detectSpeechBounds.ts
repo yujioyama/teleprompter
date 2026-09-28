@@ -1,3 +1,5 @@
+import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from 'mediabunny'
+
 /**
  * Detect the start and end of the speech in a shot, so the finalize step can
  * open each shot already trimmed past the record-button press at its start
@@ -30,6 +32,21 @@ const MIN_SAVED_S = 0.1
 export interface SpeechBounds {
   start: number // seconds from beginning to start playback
   end: number   // seconds from beginning to stop playback
+}
+
+/**
+ * Where the speech is in a clip, independent of the padding settings, so it
+ * can be stored once per recording and turned into a cut for whatever
+ * padding is in effect (see speechBoundsFor).
+ */
+export interface SpeechRegion {
+  speechStart: number
+  speechEnd: number
+  /** End of the sound just before the speech (e.g. the record-button tap), or 0. */
+  floor: number
+  /** Start of the sound just after the speech (e.g. the stop tap), or the duration. */
+  ceiling: number
+  duration: number
 }
 
 interface Segment {
@@ -65,13 +82,8 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]
 }
 
-/** Pure: find the speech in mono PCM. Null if there's none, or nothing worth trimming. */
-export function findSpeechBounds(
-  samples: Float32Array,
-  sampleRate: number,
-  paddingStart: number,
-  paddingEnd: number,
-): SpeechBounds | null {
+/** Pure: find the speech in mono PCM, or null if there's none. */
+export function findSpeechRegion(samples: Float32Array, sampleRate: number): SpeechRegion | null {
   const duration = samples.length / sampleRate
   const windowSize = Math.max(1, Math.round(sampleRate * WINDOW_S))
   const filtered = highPass(samples, sampleRate)
@@ -113,41 +125,109 @@ export function findSpeechBounds(
   while (first > 0 && segments[first].start - segments[first - 1].end <= ATTACH_GAP_S) first--
   while (last < segments.length - 1 && segments[last + 1].start - segments[last].end <= ATTACH_GAP_S) last++
 
+  return {
+    speechStart: segments[first].start,
+    speechEnd: segments[last].end,
+    floor: segments[first - 1]?.end ?? 0,
+    ceiling: segments[last + 1]?.start ?? duration,
+    duration,
+  }
+}
+
+/** The cut around `region` with the given padding, or null when it's not worth trimming. */
+export function speechBoundsFor(region: SpeechRegion, paddingStart: number, paddingEnd: number): SpeechBounds | null {
   // Padding keeps a natural breath around the speech, but never reaches back
   // into a sound that was just left out (the button press).
-  const start = Math.max(0, segments[first].start - paddingStart, segments[first - 1]?.end ?? 0)
-  const end = Math.min(duration, segments[last].end + paddingEnd, segments[last + 1]?.start ?? duration)
-
-  if (start < MIN_SAVED_S && duration - end < MIN_SAVED_S) return null
+  const start = Math.max(0, region.speechStart - paddingStart, region.floor)
+  const end = Math.min(region.duration, region.speechEnd + paddingEnd, region.ceiling)
+  if (start < MIN_SAVED_S && region.duration - end < MIN_SAVED_S) return null
   return { start, end }
 }
 
+/** Pure: find the speech in mono PCM. Null if there's none, or nothing worth trimming. */
+export function findSpeechBounds(
+  samples: Float32Array,
+  sampleRate: number,
+  paddingStart: number,
+  paddingEnd: number,
+): SpeechBounds | null {
+  const region = findSpeechRegion(samples, sampleRate)
+  return region && speechBoundsFor(region, paddingStart, paddingEnd)
+}
+
 /**
- * Decode a shot's audio and find its speech. Null when decoding fails
- * (e.g. an unusual container) — the shot is then left untrimmed.
+ * Decode a shot's audio and find its speech. Rejects when the audio can't be
+ * decoded (e.g. an unusual container), so the caller can leave the shot
+ * untrimmed without remembering that as its result.
  */
-export async function detectSpeechBounds(blob: Blob, paddingStart: number, paddingEnd: number): Promise<SpeechBounds | null> {
+export async function detectSpeech(blob: Blob): Promise<SpeechRegion | null> {
+  let pcm: MonoPcm
   try {
-    const arrayBuffer = await blob.arrayBuffer()
-    const ctx = new AudioContext({ sampleRate: ANALYSIS_SAMPLE_RATE })
-
-    let audioBuffer: AudioBuffer
-    try {
-      audioBuffer = await ctx.decodeAudioData(arrayBuffer)
-    } finally {
-      await ctx.close()
-    }
-
-    // Mix all channels down to mono for analysis
-    const mono = new Float32Array(audioBuffer.length)
-    for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
-      const ch = audioBuffer.getChannelData(c)
-      for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / audioBuffer.numberOfChannels
-    }
-
-    return findSpeechBounds(mono, audioBuffer.sampleRate, paddingStart, paddingEnd)
+    pcm = await decodeMonoWebCodecs(blob)
   } catch (err) {
-    console.warn('detectSpeechBounds failed, skipping auto-trim:', err)
-    return null
+    console.warn('[detectSpeech] WebCodecs decode failed, falling back to decodeAudioData:', err)
+    pcm = await decodeMonoWebAudio(blob)
   }
+  return findSpeechRegion(pcm.samples, pcm.sampleRate)
+}
+
+interface MonoPcm {
+  samples: Float32Array
+  sampleRate: number
+}
+
+/**
+ * Decode just the audio track, reading only its packets out of the blob, and
+ * mix it down to mono near ANALYSIS_SAMPLE_RATE as it goes (averaging whole
+ * blocks of samples, plenty for measuring levels). Never holds the video
+ * file or the full-rate audio in memory: a Cinematic take can be hundreds of
+ * MB, which is too much to read whole on a phone (issue #12).
+ */
+async function decodeMonoWebCodecs(blob: Blob): Promise<MonoPcm> {
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
+  try {
+    const track = await input.getPrimaryAudioTrack()
+    if (!track) return { samples: new Float32Array(0), sampleRate: ANALYSIS_SAMPLE_RATE }
+    if (!(await track.canDecode())) throw new Error(`cannot decode ${track.codec ?? 'unknown'} audio`)
+
+    const rate = track.sampleRate
+    const factor = Math.max(1, Math.floor(rate / ANALYSIS_SAMPLE_RATE))
+    const samples = new Float32Array(Math.ceil(((await track.computeDuration()) * rate) / factor))
+    for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers()) {
+      const channels = buffer.numberOfChannels
+      const scale = 1 / (channels * factor)
+      // Anything before 0 is AAC priming, not part of the audio.
+      const first = Math.round(timestamp * rate)
+      for (let c = 0; c < channels; c++) {
+        const data = buffer.getChannelData(c)
+        for (let i = 0; i < data.length; i++) {
+          const index = Math.floor((first + i) / factor)
+          if (index >= 0 && index < samples.length) samples[index] += data[i] * scale
+        }
+      }
+    }
+    return { samples, sampleRate: rate / factor }
+  } finally {
+    input.dispose()
+  }
+}
+
+/** Fallback for browsers without WebCodecs audio decoding: reads the whole file. */
+async function decodeMonoWebAudio(blob: Blob): Promise<MonoPcm> {
+  const arrayBuffer = await blob.arrayBuffer()
+  const ctx = new AudioContext({ sampleRate: ANALYSIS_SAMPLE_RATE })
+
+  let audioBuffer: AudioBuffer
+  try {
+    audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+  } finally {
+    await ctx.close()
+  }
+
+  const samples = new Float32Array(audioBuffer.length)
+  for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+    const ch = audioBuffer.getChannelData(c)
+    for (let i = 0; i < samples.length; i++) samples[i] += ch[i] / audioBuffer.numberOfChannels
+  }
+  return { samples, sampleRate: audioBuffer.sampleRate }
 }
