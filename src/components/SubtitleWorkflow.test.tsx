@@ -223,6 +223,47 @@ describe('SubtitleWorkflow position controls', () => {
     expect(screen.getAllByDisplayValue(/shot line/)).toHaveLength(2)
   })
 
+  it('lets a stuck burn-in be cancelled, keeping the cues and position (issue #34)', async () => {
+    let seen: AbortSignal | undefined
+    function StuckWorkflow() {
+      const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+      return (
+        <SubtitleWorkflow
+          combinedBlob={BLOB}
+          shotCueInputs={SHOT_CUE_INPUTS}
+          state={state}
+          onStateChange={setState}
+          burn={(_cues, _position, _onProgress, signal) => {
+            seen = signal
+            return new Promise(() => {})
+          }}
+        />
+      )
+    }
+    render(<StuckWorkflow />)
+
+    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('上部'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('焼き込み中... 0%')
+
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.queryByText(/エラーが発生しました/)).not.toBeInTheDocument()
+    expect(seen?.aborted).toBe(true)
+    expect(screen.getByText('次へ')).not.toBeDisabled()
+    expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
+    expect(screen.getByText('上部')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('中断する')).not.toBeInTheDocument()
+  })
+
   it('shows an error and stays on the generate button when every shot has blank text', () => {
     render(
       <ControlledSubtitleWorkflow

@@ -1,6 +1,7 @@
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
-import { getFFmpeg } from './ffmpegClient'
+import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
+import { onAbort, throwIfCancelled } from './cancellation'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -67,18 +68,22 @@ export async function trimAndNormalizeShot(
   start: number,
   end: number,
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   if (await canUseWebCodecs()) {
     try {
-      const out = await normalizeShotWebCodecs(blob, start, end, onProgress)
+      const out = await normalizeShotWebCodecs(blob, start, end, onProgress, [], signal)
       backends.set(out, 'webcodecs')
       return out
     } catch (err) {
+      // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
+      throwIfCancelled(signal)
       disableWebCodecs(err)
       onProgress?.(0)
     }
   }
-  return trimAndNormalizeShotFFmpeg(blob, start, end, onProgress)
+  return trimAndNormalizeShotFFmpeg(blob, start, end, onProgress, signal)
 }
 
 /**
@@ -97,6 +102,7 @@ export async function unifyNormalizeBackends(
   clips: { blob: Blob; start: number; end: number }[],
   normalized: Blob[],
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob[]> {
   if (new Set(normalized.map(normalizedBackendOf)).size <= 1) return normalized
 
@@ -115,12 +121,15 @@ export async function unifyNormalizeBackends(
   }
 
   try {
-    return await reencode('webcodecs', (clip, p) => normalizeShotWebCodecs(clip.blob, clip.start, clip.end, p))
+    return await reencode('webcodecs', (clip, p) =>
+      normalizeShotWebCodecs(clip.blob, clip.start, clip.end, p, [], signal),
+    )
   } catch (err) {
+    throwIfCancelled(signal)
     console.warn('[unifyNormalizeBackends] hardware re-encode failed, re-encoding with ffmpeg instead:', err)
   }
   onProgress?.(0)
-  return reencode('ffmpeg', (clip, p) => trimAndNormalizeShotFFmpeg(clip.blob, clip.start, clip.end, p))
+  return reencode('ffmpeg', (clip, p) => trimAndNormalizeShotFFmpeg(clip.blob, clip.start, clip.end, p, signal))
 }
 
 let callSeq = 0
@@ -130,8 +139,15 @@ export async function trimAndNormalizeShotFFmpeg(
   start: number,
   end: number,
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   const ff = await getFFmpeg()
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
   // Per-call file names: FinalizePage runs this in the background (see
   // normalizedShotCache.ts), so it can overlap with other callers of the
   // shared FFmpeg instance that use the fixed in.mp4/out.mp4 names. The
@@ -154,6 +170,8 @@ export async function trimAndNormalizeShotFFmpeg(
     : undefined
   ff.on('log', handleLog)
   if (handleProgress) ff.on('progress', handleProgress)
+  // Terminating ffmpeg is the only way to stop an exec() midway (issue #34).
+  const unregister = onAbort(signal, releaseFFmpeg)
   try {
     await ff.writeFile(inputName, await fetchFile(blob))
     await execFFmpeg(ff, buildTrimAndNormalizeArgs(start, end, inputName, outputName))
@@ -174,9 +192,11 @@ export async function trimAndNormalizeShotFFmpeg(
     backends.set(out, 'ffmpeg')
     return out
   } catch (err) {
+    throwIfCancelled(signal)
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`trimAndNormalizeShot failed: ${msg}\n--- ffmpeg log tail ---\n${logs.slice(-15).join('\n')}`)
   } finally {
+    unregister()
     // Always clean up — a failed encode would otherwise leave the input
     // (and any partial output) in MEMFS for the rest of the session.
     await ff.deleteFile(inputName).catch(() => undefined)

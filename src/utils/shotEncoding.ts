@@ -5,6 +5,7 @@ import { cuesForShot, type SubtitleCue } from './subtitleCues'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
+import { onAbort, throwIfCancelled } from './cancellation'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -23,7 +24,7 @@ export function normalizeRequest(clip: ShotClip): EncodeRequest {
   return {
     slot: `normalize:${clip.shotId}`,
     key: `normalize|${clipKey(clip)}`,
-    run: onProgress => trimAndNormalizeShot(clip.blob, clip.start, clip.end, onProgress),
+    run: (onProgress, signal) => trimAndNormalizeShot(clip.blob, clip.start, clip.end, onProgress, signal),
   }
 }
 
@@ -39,7 +40,8 @@ export function burnRequest(clip: ShotClip, cues: SubtitleCue[], position: Subti
   return {
     slot: `burn:${clip.shotId}`,
     key: `burn|${clipKey(clip)}|${position}|${look}`,
-    run: onProgress => burnShotSubtitles(clip.blob, clip.start, clip.end, translated, position, onProgress),
+    run: (onProgress, signal) =>
+      burnShotSubtitles(clip.blob, clip.start, clip.end, translated, position, onProgress, signal),
   }
 }
 
@@ -70,7 +72,9 @@ export async function encodeAll(
   cache: ShotEncodeCache,
   requests: EncodeRequest[],
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob[]> {
+  throwIfCancelled(signal)
   const ratios = new Map(requests.map(r => [r.key, 0]))
   // Once this settles (e.g. rejected by one clip's failure), clips still
   // finishing must not report into a caller that has moved on.
@@ -86,6 +90,8 @@ export async function encodeAll(
     ratios.set(key, ratio)
     report()
   }
+  // Cancelling stops the cache's running encode and drops the queued ones.
+  const unregister = onAbort(signal, () => cache.cancel())
   try {
     return await Promise.all(
       requests.map(r =>
@@ -99,6 +105,7 @@ export async function encodeAll(
   } finally {
     settled = true
     cache.onProgress = null
+    unregister()
   }
 }
 
@@ -119,23 +126,27 @@ export async function burnSubtitlesByShot(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   if (!cues.some(c => c.ja !== null)) return combinedBlob
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position), onProgress)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position), onProgress, signal)
     } catch (err) {
+      // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
+      throwIfCancelled(signal)
       disableWebCodecs(err)
     }
     if (burned) {
       try {
-        return await concatClipsWebCodecs(burned)
+        return await concatClipsWebCodecs(burned, signal)
       } catch (err) {
+        throwIfCancelled(signal)
         console.warn('[burnSubtitlesByShot] joining burned shots failed, burning the joined video instead:', err)
       }
     }
     onProgress?.(0)
   }
-  return burnSubtitles(combinedBlob, cues, position, onProgress)
+  return burnSubtitles(combinedBlob, cues, position, onProgress, signal)
 }

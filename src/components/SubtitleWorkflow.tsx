@@ -8,6 +8,8 @@ import {
 } from '../utils/subtitlePosition'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
+import CancelProcessing from './CancelProcessing'
+import { raceAbort } from '../utils/cancellation'
 import styles from './SubtitleWorkflow.module.css'
 
 // No 'error' stage: a failed generate/burn reverts to the stage the user was
@@ -42,8 +44,13 @@ interface SubtitleWorkflowProps {
   shotCueInputs: ShotCueInput[]
   state: SubtitleState
   onStateChange: (updater: SubtitleState | ((prev: SubtitleState) => SubtitleState)) => void
-  /** Burn `cues` into the combined video, reporting progress 0–1. */
-  burn: (cues: SubtitleCue[], position: SubtitlePosition, onProgress: (ratio: number) => void) => Promise<Blob>
+  /** Burn `cues` into the combined video, reporting progress 0–1; `signal` aborts it. */
+  burn: (
+    cues: SubtitleCue[],
+    position: SubtitlePosition,
+    onProgress: (ratio: number) => void,
+    signal: AbortSignal,
+  ) => Promise<Blob>
   onBurned?: (blob: Blob) => void
 }
 
@@ -56,6 +63,7 @@ const PRESETS: { label: string; value: SubtitlePosition }[] = [
 export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, burn, onBurned }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
@@ -64,6 +72,8 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
+  // Aborted by 中断する (issue #34) or if this unmounts mid-burn.
+  const burnAbortRef = useRef<AbortController | null>(null)
 
   function patch(changes: Partial<SubtitleState>) {
     onStateChange(prev => ({ ...prev, ...changes }))
@@ -82,6 +92,10 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       URL.revokeObjectURL(url)
     }
   }, [combinedBlob])
+
+  useEffect(() => {
+    return () => burnAbortRef.current?.abort()
+  }, [])
 
   function handleGenerate() {
     const generated = cuesFromShotEntries(shotCueInputs)
@@ -125,11 +139,21 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
     // needs it too; on iOS that could fail the hardware encode over to the
     // far slower ffmpeg.wasm path, leaving the button near 0% (issue #33).
     previewRef.current?.pause()
+    const controller = new AbortController()
+    burnAbortRef.current = controller
+    const { signal } = controller
     patch({ stage: 'burning' })
     setErrorMessage(null)
+    setNotice(null)
     setBurnProgress(0)
     try {
-      const burned = await burn(cues, position, setBurnProgress)
+      // Raced so 中断する frees the page even if the burn never settles.
+      const burned = await raceAbort(
+        burn(cues, position, ratio => {
+          if (!signal.aborted) setBurnProgress(ratio)
+        }, signal),
+        signal,
+      )
       // Reset to 'reviewing' on success too: this state is lifted to the
       // parent and survives unmount, so without this the stage would stay
       // stuck on 'burning' (disabled button, "焼き込み中...") if the user
@@ -137,11 +161,14 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       patch({ stage: 'reviewing' })
       onBurned?.(burned)
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err))
+      if (signal.aborted) setNotice('中断しました')
+      else setErrorMessage(err instanceof Error ? err.message : String(err))
       // Back to 'reviewing' (not a separate error stage) so the cues,
       // position controls and next button remain visible and usable —
       // the user can adjust position or just retry burning in.
       patch({ stage: 'reviewing' })
+    } finally {
+      if (burnAbortRef.current === controller) burnAbortRef.current = null
     }
   }
 
@@ -153,6 +180,7 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       {errorMessage && (
         <p className={styles.error}>エラーが発生しました: {errorMessage}</p>
       )}
+      {notice && <p className={styles.notice}>{notice}</p>}
 
       {stage === 'idle' && (
         <button className={styles.genBtn} onClick={handleGenerate}>
@@ -242,6 +270,10 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
               >
                 {stage === 'burning' ? `焼き込み中... ${Math.round(burnProgress * 100)}%` : '次へ'}
               </button>
+
+              {stage === 'burning' && (
+                <CancelProcessing progress={burnProgress} onCancel={() => burnAbortRef.current?.abort()} />
+              )}
             </div>
           )}
         </>

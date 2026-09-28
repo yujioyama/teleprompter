@@ -1,7 +1,8 @@
 import { fetchFile } from '@ffmpeg/util'
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import { execFFmpeg } from './execFFmpeg'
-import { getFFmpeg } from './ffmpegClient'
+import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
+import { onAbort, throwIfCancelled } from './cancellation'
 import { SubtitleCue } from './subtitleCues'
 import { SubtitlePosition, subtitleY } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
@@ -139,7 +140,9 @@ export async function burnSubtitles(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   const translated = cues.filter(c => c.ja !== null)
   if (translated.length === 0) {
     // Nothing to burn in — return the video unchanged.
@@ -149,8 +152,10 @@ export async function burnSubtitles(
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress)
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal)
     } catch (err) {
+      // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
+      throwIfCancelled(signal)
       disableWebCodecs(err)
       onProgress?.(0)
     }
@@ -161,6 +166,7 @@ export async function burnSubtitles(
     overlays.map(o => o.image),
     overlays.map(o => o.y),
     onProgress,
+    signal,
   )
 }
 
@@ -178,10 +184,12 @@ export async function burnShotSubtitles(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
   const overlays = await renderSubtitleOverlays(cues, position)
-  return normalizeShotWebCodecs(blob, start, end, onProgress, overlays)
+  return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal)
 }
 
 function cueDuration(cue: SubtitleCue): number {
@@ -224,74 +232,90 @@ async function burnSubtitlesFFmpeg(
   images: Blob[],
   ys: number[],
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   const duration = onProgress ? await containerDuration(videoBlob) : 0
   const ff = await getFFmpeg()
-  await ff.writeFile('in.mp4', await fetchFile(videoBlob))
-
-  const args: string[] = ['-i', 'in.mp4']
-  for (let i = 0; i < translated.length; i++) {
-    const cue = translated[i]
-    const name = `sub${i}.png`
-    await ff.writeFile(name, await fetchFile(images[i]))
-    const duration = cueDuration(cue)
-    // `-itsoffset` (not `-ss`) is what delays this input's presentation
-    // timestamps so it starts compositing at cue.start: `-ss` before `-i`
-    // seeks into the SOURCE's own content, which is meaningless for a
-    // `-loop 1` static image (there is nothing to seek past) and so does
-    // NOT delay when the overlay appears in the composited output — every
-    // image would otherwise start compositing at t=0.
-    args.push('-loop', '1', '-itsoffset', cue.start.toFixed(3), '-t', duration.toFixed(3), '-i', name)
-  }
-
-  const { filterGraph, outputLabel } = buildOverlayFilterGraph(ys)
-
-  // buildOverlayFilterGraph's chain references each cue's image input by an
-  // arbitrary label ([sub0], [sub1], ...), but ffmpeg only recognizes an
-  // input by its positional stream specifier ([1:v], [2:v], ...) unless a
-  // filter stage explicitly defines that label first. Without this alias
-  // preamble, ffmpeg fails immediately with "Invalid stream specifier" /
-  // "matches no streams" and the whole -filter_complex is rejected. Each
-  // cue's PNG is input index i+1 (input 0 is the base video), so alias it
-  // to the label the chain expects via a no-op `copy` filter.
-  //
-  // Each overlay stage also needs `eof_action=pass`: once a cue's
-  // (duration-bounded) image stream ends, overlay's default eof_action is
-  // `repeat`, which freezes and keeps showing that image's last frame for
-  // the rest of the output — so a cue that already ended would otherwise
-  // stay burned in (and, being the topmost stage, visually hide every
-  // later cue too) all the way to the end of the video. `pass` makes the
-  // stage fall back to showing its unmodified input once the overlay
-  // stream ends, so the caption correctly disappears at cue.end.
-  const aliasStages = translated.map((_, i) => `[${i + 1}:v]copy[sub${i}]`).join(';')
-  const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
-  const fullFilterGraph = `${aliasStages};${overlayStages}`
-
-  args.push(
-    '-filter_complex', fullFilterGraph,
-    '-map', outputLabel,
-    '-map', '0:a',
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '20',
-    '-c:a', 'copy',
-    '-shortest',
-    '-movflags', '+faststart',
-    'out.mp4',
-  )
-
-  const reportProgress = ({ time }: { time: number }) => onProgress?.(ffmpegProgressRatio(time, duration))
-  if (onProgress && duration > 0) ff.on('progress', reportProgress)
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
+  // Terminating ffmpeg is the only way to stop an exec() midway (issue #34).
+  const unregister = onAbort(signal, releaseFFmpeg)
   try {
-    await execFFmpeg(ff, args)
+    await ff.writeFile('in.mp4', await fetchFile(videoBlob))
+
+    const args: string[] = ['-i', 'in.mp4']
+    for (let i = 0; i < translated.length; i++) {
+      const cue = translated[i]
+      const name = `sub${i}.png`
+      await ff.writeFile(name, await fetchFile(images[i]))
+      const duration = cueDuration(cue)
+      // `-itsoffset` (not `-ss`) is what delays this input's presentation
+      // timestamps so it starts compositing at cue.start: `-ss` before `-i`
+      // seeks into the SOURCE's own content, which is meaningless for a
+      // `-loop 1` static image (there is nothing to seek past) and so does
+      // NOT delay when the overlay appears in the composited output — every
+      // image would otherwise start compositing at t=0.
+      args.push('-loop', '1', '-itsoffset', cue.start.toFixed(3), '-t', duration.toFixed(3), '-i', name)
+    }
+
+    const { filterGraph, outputLabel } = buildOverlayFilterGraph(ys)
+
+    // buildOverlayFilterGraph's chain references each cue's image input by an
+    // arbitrary label ([sub0], [sub1], ...), but ffmpeg only recognizes an
+    // input by its positional stream specifier ([1:v], [2:v], ...) unless a
+    // filter stage explicitly defines that label first. Without this alias
+    // preamble, ffmpeg fails immediately with "Invalid stream specifier" /
+    // "matches no streams" and the whole -filter_complex is rejected. Each
+    // cue's PNG is input index i+1 (input 0 is the base video), so alias it
+    // to the label the chain expects via a no-op `copy` filter.
+    //
+    // Each overlay stage also needs `eof_action=pass`: once a cue's
+    // (duration-bounded) image stream ends, overlay's default eof_action is
+    // `repeat`, which freezes and keeps showing that image's last frame for
+    // the rest of the output — so a cue that already ended would otherwise
+    // stay burned in (and, being the topmost stage, visually hide every
+    // later cue too) all the way to the end of the video. `pass` makes the
+    // stage fall back to showing its unmodified input once the overlay
+    // stream ends, so the caption correctly disappears at cue.end.
+    const aliasStages = translated.map((_, i) => `[${i + 1}:v]copy[sub${i}]`).join(';')
+    const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
+    const fullFilterGraph = `${aliasStages};${overlayStages}`
+
+    args.push(
+      '-filter_complex', fullFilterGraph,
+      '-map', outputLabel,
+      '-map', '0:a',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '20',
+      '-c:a', 'copy',
+      '-shortest',
+      '-movflags', '+faststart',
+      'out.mp4',
+    )
+
+    const reportProgress = ({ time }: { time: number }) => onProgress?.(ffmpegProgressRatio(time, duration))
+    if (onProgress && duration > 0) ff.on('progress', reportProgress)
+    try {
+      await execFFmpeg(ff, args)
+    } finally {
+      ff.off('progress', reportProgress)
+    }
+    const data = await ff.readFile('out.mp4')
+
+    ff.deleteFile('in.mp4')
+    for (let i = 0; i < translated.length; i++) ff.deleteFile(`sub${i}.png`)
+    ff.deleteFile('out.mp4')
+
+    return new Blob([data as Uint8Array], { type: 'video/mp4' })
+  } catch (err) {
+    throwIfCancelled(signal)
+    throw err
   } finally {
-    ff.off('progress', reportProgress)
+    unregister()
   }
-  const data = await ff.readFile('out.mp4')
-
-  ff.deleteFile('in.mp4')
-  for (let i = 0; i < translated.length; i++) ff.deleteFile(`sub${i}.png`)
-  ff.deleteFile('out.mp4')
-
-  return new Blob([data as Uint8Array], { type: 'video/mp4' })
 }

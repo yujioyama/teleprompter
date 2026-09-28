@@ -1,4 +1,6 @@
-export type EncodeJob = (onProgress: (ratio: number) => void) => Promise<Blob>
+import { raceAbort, throwIfCancelled } from './cancellation'
+
+export type EncodeJob = (onProgress: (ratio: number) => void, signal: AbortSignal) => Promise<Blob>
 
 /**
  * One encode the cache can run or reuse.
@@ -52,6 +54,10 @@ export class ShotEncodeCache {
   private demanded = new Set<string>()
   private chain: Promise<unknown> = Promise.resolve()
   private disposed = false
+  // Aborted by cancel(); jobs queued under it are dropped when they come up.
+  private controller = new AbortController()
+  // Keys whose job hasn't settled yet, so cancel() can forget them.
+  private unfinished = new Set<string>()
 
   constructor(private canRunInBackground: () => boolean | Promise<boolean> = () => true) {}
 
@@ -66,9 +72,28 @@ export class ShotEncodeCache {
     return this.lookup(request)
   }
 
-  /** Stop starting queued encodes (an in-flight one can't be interrupted). */
+  /**
+   * Stop the running encode and drop every queued one (中断する, issue #34).
+   * The queue moves on at once even if the running encode never settles;
+   * finished clips stay cached, and later requests run as usual.
+   */
+  cancel(): void {
+    this.controller.abort()
+    this.controller = new AbortController()
+    for (const key of this.unfinished) {
+      this.results.delete(key)
+      // Otherwise a later prefetch for the same key skips canRunInBackground
+      // (it looks like something the caller is still waiting on) and the
+      // encode the user just cancelled restarts in the background.
+      this.demanded.delete(key)
+    }
+    this.unfinished.clear()
+  }
+
+  /** Stop the running encode and never start the queued ones. */
   dispose(): void {
     this.disposed = true
+    this.controller.abort()
     this.results.clear()
   }
 
@@ -84,7 +109,9 @@ export class ShotEncodeCache {
     const existing = this.results.get(key)
     if (existing) return existing
 
+    const { signal } = this.controller
     const job = this.chain.then(async () => {
+      throwIfCancelled(signal)
       if (this.disposed) throw new Error('ShotEncodeCache disposed')
       if (!this.demanded.has(key)) {
         if (this.latestKeyBySlot.get(slot) !== key) throw new SkippedError('superseded by a newer request')
@@ -95,14 +122,25 @@ export class ShotEncodeCache {
           throw new SkippedError('background encoding not allowed now')
         }
       }
-      return run(ratio => this.onProgress?.(key, ratio))
+      throwIfCancelled(signal)
+      // Raced so a hung encode can't hold up the queue once cancelled.
+      return raceAbort(run(ratio => this.onProgress?.(key, ratio), signal), signal)
     })
     this.chain = job.catch(() => undefined)
     this.results.set(key, job)
-    job.catch(() => {
-      // Don't cache failures (or skips) — the next request should retry.
-      if (this.results.get(key) === job) this.results.delete(key)
-    })
+    this.unfinished.add(key)
+    job.then(
+      () => {
+        if (this.results.get(key) === job) this.unfinished.delete(key)
+      },
+      () => {
+        // Don't cache failures (or skips) — the next request should retry.
+        if (this.results.get(key) === job) {
+          this.results.delete(key)
+          this.unfinished.delete(key)
+        }
+      },
+    )
     return job
   }
 }

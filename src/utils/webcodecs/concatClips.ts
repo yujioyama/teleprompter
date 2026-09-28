@@ -12,6 +12,7 @@ import {
   AudioBufferSource,
   Quality,
 } from 'mediabunny'
+import { throwIfCancelled } from '../cancellation'
 
 type DecoderConfig = VideoDecoderConfig | AudioDecoderConfig
 
@@ -118,7 +119,8 @@ function getSilentFrame(): Promise<{ packet: EncodedPacket; config: AudioDecoder
  * Each clip's video is placed at the end of the previous clip's video;
  * audio follows it as laid out by AudioTimeline.
  */
-export async function concatClipsWebCodecs(blobs: Blob[]): Promise<Blob> {
+export async function concatClipsWebCodecs(blobs: Blob[], signal?: AbortSignal): Promise<Blob> {
+  throwIfCancelled(signal)
   if (blobs.length === 0) throw new Error('concatClipsWebCodecs: no clips')
 
   const videoSource = new EncodedVideoPacketSource('avc')
@@ -138,6 +140,7 @@ export async function concatClipsWebCodecs(blobs: Blob[]): Promise<Blob> {
 
   try {
     for (let i = 0; i < blobs.length; i++) {
+      throwIfCancelled(signal)
       const input = new Input({ source: new BlobSource(blobs[i]), formats: ALL_FORMATS })
       try {
         const videoTrack = await input.getPrimaryVideoTrack()
@@ -168,6 +171,7 @@ export async function concatClipsWebCodecs(blobs: Blob[]): Promise<Blob> {
         let videoEnd = offset
         let firstPacket = i === 0
         for await (const packet of new EncodedPacketSink(videoTrack).packets()) {
+          throwIfCancelled(signal)
           const timestamp = packet.timestamp - videoStart + offset
           videoEnd = Math.max(videoEnd, timestamp + packet.duration)
           await videoSource.add(
@@ -181,6 +185,7 @@ export async function concatClipsWebCodecs(blobs: Blob[]): Promise<Blob> {
         const isLastClip = i === blobs.length - 1
         firstPacket = i === 0
         for await (const packet of new EncodedPacketSink(audioTrack).packets()) {
+          throwIfCancelled(signal)
           const intended = packet.timestamp - videoStart + offset
           // The next clip re-anchors the audio anyway; only the last one
           // needs its tail cut where the video ends.

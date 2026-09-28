@@ -1,7 +1,8 @@
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
-import { getFFmpeg } from './ffmpegClient'
+import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
+import { onAbort, throwIfCancelled } from './cancellation'
 
 /** Build the concat-demuxer list file content FFmpeg's `-f concat` expects. */
 export function buildConcatListFile(filenames: string[]): string {
@@ -17,17 +18,24 @@ export function buildConcatListFile(filenames: string[]): string {
  * ffmpeg.wasm load and no copy of every clip into its memory; falls back to
  * ffmpeg's concat demuxer if that can't handle the clips.
  */
-export async function concatVideos(blobs: Blob[]): Promise<Blob> {
+export async function concatVideos(blobs: Blob[], signal?: AbortSignal): Promise<Blob> {
   try {
-    return await concatClipsWebCodecs(blobs)
+    return await concatClipsWebCodecs(blobs, signal)
   } catch (err) {
+    throwIfCancelled(signal)
     console.warn('[concatVideos] packet-copy concat failed, falling back to ffmpeg:', err)
   }
-  return concatVideosFFmpeg(blobs)
+  return concatVideosFFmpeg(blobs, signal)
 }
 
-async function concatVideosFFmpeg(blobs: Blob[]): Promise<Blob> {
+async function concatVideosFFmpeg(blobs: Blob[], signal?: AbortSignal): Promise<Blob> {
+  throwIfCancelled(signal)
   const ff = await getFFmpeg()
+  // getFFmpeg() can take a while on first load; if the abort landed while it
+  // was pending, bail before registering onAbort below — otherwise it would
+  // fire immediately and terminate the shared instance a retry may already
+  // be using (issue #34).
+  throwIfCancelled(signal)
   // See trimAndNormalizeShot.ts for why this is needed: a failed exec()
   // surfaces no detail beyond a generic FS/Aborted error, so the log tail is
   // the only way to see ffmpeg's actual reason for failing.
@@ -37,6 +45,8 @@ async function concatVideosFFmpeg(blobs: Blob[]): Promise<Blob> {
     if (logs.length > 40) logs.shift()
   }
   ff.on('log', handleLog)
+  // Terminating ffmpeg is the only way to stop an exec() midway (issue #34).
+  const unregister = onAbort(signal, releaseFFmpeg)
   try {
     const filenames = await Promise.all(
       blobs.map(async (blob, i) => {
@@ -56,9 +66,11 @@ async function concatVideosFFmpeg(blobs: Blob[]): Promise<Blob> {
 
     return new Blob([data as Uint8Array], { type: 'video/mp4' })
   } catch (err) {
+    throwIfCancelled(signal)
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`concatVideos failed: ${msg}\n--- ffmpeg log tail ---\n${logs.slice(-15).join('\n')}`)
   } finally {
+    unregister()
     ff.off('log', handleLog)
   }
 }

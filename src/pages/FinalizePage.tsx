@@ -19,8 +19,10 @@ import { detectSpeech, speechBoundsFor, type SpeechBounds } from '../utils/detec
 import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
+import { raceAbort } from '../utils/cancellation'
 import { useSettings } from '../hooks/useSettings'
 import ShotTrimmer from '../components/ShotTrimmer'
+import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
 import { ShotCueInput } from '../utils/subtitleCues'
 import MusicMixer from '../components/MusicMixer'
@@ -42,7 +44,7 @@ interface ShotEntry {
   trimEdited: boolean
 }
 
-type CombineState = 'idle' | 'combining' | 'done' | 'error'
+type CombineState = 'idle' | 'combining' | 'done' | 'error' | 'cancelled'
 // What 結合 is busy with, so the button never sits at 100% while work
 // remains (issue #31): encoding each shot, re-encoding some onto one
 // encoder after WebCodecs broke down partway, then joining them.
@@ -128,6 +130,8 @@ export default function FinalizePage() {
   const [exportBlob, setExportBlob] = useState<Blob | null>(null)
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
+  // Aborted by 中断する (issue #34) or when the page goes away mid-combine.
+  const combineAbortRef = useRef<AbortController | null>(null)
 
   // Encodes run in the background only on the hardware (WebCodecs) path:
   // ffmpeg.wasm's memory use made iOS drop the on-screen previews (issue #12).
@@ -140,6 +144,7 @@ export default function FinalizePage() {
 
   useEffect(() => {
     return () => {
+      combineAbortRef.current?.abort()
       encodeCacheRef.current?.dispose()
       encodeCacheRef.current = null
     }
@@ -408,6 +413,13 @@ export default function FinalizePage() {
   }, [])
 
   async function handleCombine() {
+    const controller = new AbortController()
+    combineAbortRef.current = controller
+    const { signal } = controller
+    // A cancelled run may still report in late; it must not touch the page.
+    const whileLive = <T,>(update: (value: T) => void) => (value: T) => {
+      if (!signal.aborted) update(value)
+    }
     setCombineState('combining')
     setCombineError(null)
     setCombinePhase('encoding')
@@ -422,17 +434,33 @@ export default function FinalizePage() {
     setSubtitleState(INITIAL_SUBTITLE_STATE)
     try {
       const clips = availableEntries.map(clipOf)
-      const encoded = await encodeAll(getEncodeCache(), clips.map(normalizeRequest), setCombineProgress)
-      // If WebCodecs broke down partway (see trimAndNormalizeShot), some
-      // clips came from the hardware encoder and some from ffmpeg; their
-      // H.264 headers differ and can't be joined by packet copy, so some
-      // have to be re-encoded onto the other's profile.
-      const normalized = await unifyNormalizeBackends(clips, encoded, ratio => {
-        setCombinePhase('unifying')
-        setCombineProgress(ratio)
-      })
-      setCombinePhase('joining')
-      const combined = await concatVideos(normalized)
+      // Raced so 中断する frees the page even if an encode never settles.
+      const combined = await raceAbort(
+        (async () => {
+          const encoded = await encodeAll(
+            getEncodeCache(),
+            clips.map(normalizeRequest),
+            whileLive(setCombineProgress),
+            signal,
+          )
+          // If WebCodecs broke down partway (see trimAndNormalizeShot), some
+          // clips came from the hardware encoder and some from ffmpeg; their
+          // H.264 headers differ and can't be joined by packet copy, so some
+          // have to be re-encoded onto the other's profile.
+          const normalized = await unifyNormalizeBackends(
+            clips,
+            encoded,
+            whileLive((ratio: number) => {
+              setCombinePhase('unifying')
+              setCombineProgress(ratio)
+            }),
+            signal,
+          )
+          whileLive(setCombinePhase)('joining')
+          return concatVideos(normalized, signal)
+        })(),
+        signal,
+      )
       if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
       const url = URL.createObjectURL(combined)
       combinedUrlRef.current = url
@@ -447,8 +475,14 @@ export default function FinalizePage() {
       )
       setCombineState('done')
     } catch (err) {
+      if (signal.aborted) {
+        setCombineState('cancelled')
+        return
+      }
       setCombineError(err instanceof Error ? err.message : String(err))
       setCombineState('error')
+    } finally {
+      if (combineAbortRef.current === controller) combineAbortRef.current = null
     }
   }
 
@@ -559,6 +593,15 @@ export default function FinalizePage() {
                     : '結合する'}
               </button>
 
+              {combineState === 'combining' && (
+                <CancelProcessing
+                  progress={`${combinePhase}:${combineProgress}`}
+                  onCancel={() => combineAbortRef.current?.abort()}
+                />
+              )}
+
+              {combineState === 'cancelled' && <p className={styles.missing}>中断しました</p>}
+
               {combineState === 'error' && (
                 <p className={styles.missing}>結合に失敗しました: {combineError}</p>
               )}
@@ -586,8 +629,8 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
-                burn={(cues, position, onProgress) =>
-                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress)
+                burn={(cues, position, onProgress, signal) =>
+                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress, signal)
                 }
                 onBurned={burned => {
                   setBurnedBlob(burned)

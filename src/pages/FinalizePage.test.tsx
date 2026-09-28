@@ -402,6 +402,40 @@ describe('FinalizePage wizard', () => {
     expect(await screen.findByText('仕上げ中...')).toBeDisabled()
   })
 
+  it('lets a stuck 結合 be cancelled and retried with the same trims (issue #34)', async () => {
+    vi.mocked(trimAndNormalizeShot).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText(/^結合中\.\.\./)
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.queryByText('中断する')).not.toBeInTheDocument()
+    const combineBtn = screen.getByText('結合する')
+    expect(combineBtn).not.toBeDisabled()
+
+    fireEvent.click(combineBtn)
+    await screen.findByText('次へ')
+    const [first, retry] = vi.mocked(trimAndNormalizeShot).mock.calls
+    expect(retry.slice(1, 3)).toEqual(first.slice(1, 3))
+  })
+
+  it('lets 結合 be cancelled while the shots are being joined (issue #34)', async () => {
+    vi.mocked(concatVideos).mockReturnValueOnce(new Promise<Blob>(() => {}))
+    renderFinalizePage('script-1')
+    await loadShot()
+
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('仕上げ中...')
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(vi.mocked(concatVideos).mock.calls[0][1]).toBeInstanceOf(AbortSignal)
+    expect(vi.mocked(concatVideos).mock.calls[0][1]?.aborted).toBe(true)
+  })
+
   it('encodes shots in the background once the trims settle, and 結合 reuses them', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     renderFinalizePage('script-1')
@@ -450,7 +484,7 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
     await screen.findByText('BGMなしで進む')
     expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1)
-    expect(concatClipsWebCodecs).toHaveBeenCalledWith([burnedShot])
+    expect(vi.mocked(concatClipsWebCodecs).mock.calls[0][0]).toEqual([burnedShot])
     expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
   })
 
@@ -668,6 +702,39 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('BGMなしで進む')
     expect(screen.getByText('トリミング').closest('button')).not.toBeDisabled()
     expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
+  })
+
+  it('unlocks navigation when a stuck burn-in is cancelled (issue #34)', async () => {
+    vi.mocked(burnModule.burnSubtitles).mockReturnValue(new Promise(() => {}))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+
+    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText(/^焼き込み中\.\.\./)
+    expect(screen.getByText('‹ 戻る')).toBeDisabled()
+
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.getByText('‹ 戻る')).not.toBeDisabled()
+    expect(screen.getByText('トリミング').closest('button')).not.toBeDisabled()
+    expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
+    const burnCall = vi.mocked(burnModule.burnSubtitles).mock.calls[0]
+    expect(burnCall[4]).toBeInstanceOf(AbortSignal)
+    expect(burnCall[4]?.aborted).toBe(true)
   })
 
   it('shows the wizard progress indicator with 4 steps', async () => {

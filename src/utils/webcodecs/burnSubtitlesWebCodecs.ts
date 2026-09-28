@@ -10,6 +10,7 @@ import {
 } from 'mediabunny'
 import { assertUsable } from './normalizeShot'
 import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
+import { onAbort, throwIfCancelled } from '../cancellation'
 
 export type { SubtitleOverlay } from './subtitleOverlay'
 
@@ -26,7 +27,9 @@ export async function burnSubtitlesWebCodecs(
   videoBlob: Blob,
   overlays: SubtitleOverlay[],
   onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  throwIfCancelled(signal)
   const overlay = await createOverlayProcess(overlays)
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
@@ -49,7 +52,12 @@ export async function burnSubtitlesWebCodecs(
     })
     assertUsable(conversion)
     if (onProgress) conversion.onProgress = progress => onProgress(Math.min(Math.max(progress, 0), 1))
-    await conversion.execute()
+    const unregister = onAbort(signal, () => void conversion.cancel().catch(() => undefined))
+    try {
+      await conversion.execute()
+    } finally {
+      unregister()
+    }
     const buffer = output.target.buffer
     if (!buffer || buffer.byteLength < 1000) {
       throw new Error(`suspiciously small output (${buffer?.byteLength ?? 0} bytes)`)

@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { normalizedBackendOf, trimAndNormalizeShot, unifyNormalizeBackends } from './trimAndNormalizeShot'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
-import { getFFmpeg } from './ffmpegClient'
+import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
+import { execFFmpeg } from './execFFmpeg'
+import { CancelledError } from './cancellation'
 
 vi.mock('./webcodecs/support', () => ({
   canUseWebCodecs: vi.fn(),
@@ -13,6 +15,7 @@ vi.mock('./webcodecs/normalizeShot', () => ({
 }))
 vi.mock('./ffmpegClient', () => ({
   getFFmpeg: vi.fn(),
+  releaseFFmpeg: vi.fn(),
 }))
 vi.mock('./execFFmpeg', () => ({
   execFFmpeg: vi.fn(async () => undefined),
@@ -65,6 +68,56 @@ describe('trimAndNormalizeShot backend selection', () => {
 
     expect(normalizeShotWebCodecs).not.toHaveBeenCalled()
     expect(normalizedBackendOf(result)).toBe('ffmpeg')
+  })
+
+  it('neither falls back to ffmpeg nor disables WebCodecs when cancelled mid-encode (issue #34)', async () => {
+    const controller = new AbortController()
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(normalizeShotWebCodecs).mockImplementation(async () => {
+      controller.abort()
+      throw new Error('conversion canceled')
+    })
+
+    await expect(trimAndNormalizeShot(src, 0, 2, undefined, controller.signal)).rejects.toBeInstanceOf(CancelledError)
+
+    expect(disableWebCodecs).not.toHaveBeenCalled()
+    expect(getFFmpeg).not.toHaveBeenCalled()
+  })
+
+  it('passes the signal on to the hardware encode', async () => {
+    const controller = new AbortController()
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(normalizeShotWebCodecs).mockResolvedValue(new Blob(['wc'], { type: 'video/mp4' }))
+
+    await trimAndNormalizeShot(src, 0, 2, undefined, controller.signal)
+
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][5]).toBe(controller.signal)
+  })
+
+  it('does not call releaseFFmpeg when cancelled while ffmpeg was still loading (issue #34)', async () => {
+    const controller = new AbortController()
+    vi.mocked(canUseWebCodecs).mockResolvedValue(false)
+    vi.mocked(getFFmpeg).mockImplementation(async () => {
+      controller.abort()
+      return fakeFFmpeg as never
+    })
+
+    await expect(trimAndNormalizeShot(src, 0, 2, undefined, controller.signal)).rejects.toBeInstanceOf(CancelledError)
+
+    expect(releaseFFmpeg).not.toHaveBeenCalled()
+  })
+
+  it('terminates ffmpeg when cancelled during an ffmpeg encode', async () => {
+    const controller = new AbortController()
+    vi.mocked(canUseWebCodecs).mockResolvedValue(false)
+    vi.mocked(execFFmpeg).mockImplementationOnce(async () => {
+      controller.abort()
+      throw 'called FFmpeg.terminate()'
+    })
+
+    await expect(trimAndNormalizeShot(src, 0, 2, undefined, controller.signal)).rejects.toBeInstanceOf(CancelledError)
+
+    expect(releaseFFmpeg).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -126,5 +179,20 @@ describe('unifyNormalizeBackends', () => {
     expect(vi.mocked(fakeFFmpeg.writeFile).mock.calls.length).toBe(2)
     expect(progress[0]).toBe(0)
     expect(progress[progress.length - 1]).toBe(1)
+  })
+
+  it('does not fall back to ffmpeg when cancelled during the hardware re-encode (issue #34)', async () => {
+    const normalized = [await webcodecsClip(), await ffmpegClip(), await webcodecsClip()]
+    vi.clearAllMocks()
+    const controller = new AbortController()
+    vi.mocked(normalizeShotWebCodecs).mockImplementation(async () => {
+      controller.abort()
+      throw new Error('conversion canceled')
+    })
+
+    await expect(unifyNormalizeBackends(clips, normalized, undefined, controller.signal)).rejects.toBeInstanceOf(
+      CancelledError,
+    )
+    expect(getFFmpeg).not.toHaveBeenCalled()
   })
 })
