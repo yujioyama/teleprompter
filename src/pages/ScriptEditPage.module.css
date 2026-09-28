@@ -71,6 +71,9 @@
   resize: none;
   width: 100%;
   line-height: 1.6;
+  /* A textarea is a scroll container, so its automatic min-height is 0 and
+     it would absorb all the shrink when the split preview overflows .body. */
+  flex-shrink: 0;
 }
 
 .textarea:focus {
