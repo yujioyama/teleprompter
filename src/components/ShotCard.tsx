@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Shot } from '../types'
 import styles from './ShotCard.module.css'
@@ -16,13 +16,22 @@ export default function ShotCard({ shot, index, onUpdate, onDelete, isMergeTarge
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(shot.text)
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: shot.id })
+  // Each card is both draggable (to merge it into another) and a drop target
+  // (to have another merged into it). There is no reordering.
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } =
+    useDraggable({ id: shot.id })
+  const { setNodeRef: setDropRef } = useDroppable({ id: shot.id })
+
+  function setNodeRef(node: HTMLElement | null) {
+    setDragRef(node)
+    setDropRef(node)
+  }
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
+    position: 'relative' as const,
+    zIndex: isDragging ? 1 : undefined,
   }
 
   function handleConfirm() {
@@ -52,7 +61,7 @@ export default function ShotCard({ shot, index, onUpdate, onDelete, isMergeTarge
         className={styles.handle}
         {...attributes}
         {...listeners}
-        aria-label="並び替え"
+        aria-label="ドラッグして別のショットと合体"
       >
         ⠿
       </button>
