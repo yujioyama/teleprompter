@@ -10,13 +10,17 @@ describe('buildClaudePrompt', () => {
     const prompt = buildClaudePrompt(makeCues(['Hello there', 'This is a test']))
     expect(prompt).toContain('1. Hello there')
     expect(prompt).toContain('2. This is a test')
-    expect(prompt).toContain('番号はそのまま保持')
+    expect(prompt).toContain('動画に焼き込む日本語字幕')
+  })
+
+  it('places the numbered lines at the end, under the 【英語セリフ】 heading', () => {
+    const prompt = buildClaudePrompt(makeCues(['Hello there', 'This is a test']))
+    expect(prompt.endsWith('【英語セリフ】\n1. Hello there\n2. This is a test')).toBe(true)
   })
 
   it('handles a single cue', () => {
     const prompt = buildClaudePrompt(makeCues(['Only one line']))
-    expect(prompt).toContain('1. Only one line')
-    expect(prompt).not.toContain('2.')
+    expect(prompt.endsWith('【英語セリフ】\n1. Only one line')).toBe(true)
   })
 })
 
@@ -59,6 +63,15 @@ describe('parseJapanesePaste', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error).toContain('2')
+    }
+  })
+
+  it('keeps 。 mid-line and accepts lines with no trailing 。', () => {
+    const cues = makeCues(['Hello', 'World', 'Bye'])
+    const result = parseJapanesePaste('1. 朝起きた。で、二度寝してた\n2. 暴走族かも\n3. それだけ。', cues)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.cues.map(c => c.ja)).toEqual(['朝起きた。で、二度寝してた', '暴走族かも', 'それだけ。'])
     }
   })
 
