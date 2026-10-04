@@ -804,6 +804,13 @@ describe('FinalizePage export step: loudness normalization', () => {
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
   })
 
+  it('shows no BGM row when the video has no BGM', async () => {
+    await walkToExport()
+
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+    expect(screen.queryByText('BGMを外す')).not.toBeInTheDocument()
+  })
+
   it('skips it when 音量の自動調整 is turned off in settings', async () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, normalizeAudio: false }))
     await walkToExport()
@@ -853,6 +860,25 @@ describe('FinalizePage with a usual BGM', () => {
     expect(video).toBe(BURNED)
     expect(volume).toBe(0.45)
     expect(screen.getByText('BGM').closest('button')).not.toBeDisabled()
+  })
+
+  it('lets BGMを外す drop the BGM on the export step and save the video without it', async () => {
+    const mixed = new Blob(['mixed-usual'], { type: 'video/mp4' })
+    vi.mocked(mixModule.mixMusic).mockResolvedValue(mixed)
+    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo' })
+    await walkThroughSubtitles()
+    await screen.findByText('保存する')
+
+    expect(screen.getByText('BGM: Tokyo Lofi')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('BGMを外す'))
+
+    await waitFor(() => expect(normalizeLoudness).toHaveBeenLastCalledWith(BURNED))
+    expect(screen.queryByText('BGM: Tokyo Lofi')).not.toBeInTheDocument()
+    expect(screen.queryByText('BGMを外す')).not.toBeInTheDocument()
+    expect(screen.getByText('BGM').closest('button')).not.toBeDisabled()
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
   })
 
   it('opens the BGM step on the usual BGM when going back to it, without mixing again', async () => {
