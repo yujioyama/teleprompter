@@ -1,42 +1,175 @@
+import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from 'mediabunny'
 import { SubtitleCue } from './subtitleCues'
+import { CancelledError, onAbort, throwIfCancelled } from './cancellation'
+import type { WhisperResponse } from '../workers/whisperWorker'
 
-interface WhisperChunk {
+/**
+ * One timed piece of Whisper output (text has a leading space): a segment,
+ * about a sentence, as the pipeline returns them, or a word placed inside
+ * one by wordsFromSegments.
+ */
+export interface WhisperWord {
   text: string
   timestamp: [number, number | null]
 }
 
+/**
+ * Spread each segment's time over its words in proportion to their length,
+ * so segments can be cut into short cues. Whisper's own word timestamps
+ * would be exact, but computing them keeps every decoder step's attention
+ * in memory, and the phone already runs out of it (the page reloads).
+ * Segments already end where the speaker pauses, so the guesses only have
+ * to place cuts within a sentence.
+ */
+export function wordsFromSegments(segments: WhisperWord[]): WhisperWord[] {
+  const words: WhisperWord[] = []
+  for (const segment of segments) {
+    const parts = segment.text.trim().split(/\s+/).filter(Boolean)
+    if (parts.length === 0) continue
+    const [start, rawEnd] = segment.timestamp
+    const end = rawEnd ?? start + parts.length * MIN_WORD_S
+    // Each word's share, counting the space after it.
+    const total = parts.reduce((sum, w) => sum + w.length + 1, 0)
+    let offset = 0
+    for (const w of parts) {
+      const from = start + ((end - start) * offset) / total
+      offset += w.length + 1
+      words.push({ text: ` ${w}`, timestamp: [from, start + ((end - start) * offset) / total] })
+    }
+  }
+  return words
+}
+
+/** Where transcription is: fetching the model (first time only), then recognizing. */
+export type WhisperProgress =
+  | { phase: 'download'; ratio: number }
+  | { phase: 'recognize'; tokens: number }
+
 const WHISPER_SAMPLE_RATE = 16000
 
-/** Pure: map raw Whisper pipeline output chunks to SubtitleCue objects. */
-export function cuesFromWhisperChunks(chunks: WhisperChunk[]): SubtitleCue[] {
-  return chunks.map((chunk, i) => ({
-    id: `cue-${i}`,
-    start: chunk.timestamp[0],
-    end: chunk.timestamp[1] ?? chunk.timestamp[0] + 2,
-    en: chunk.text.trim(),
-    ja: null,
-  }))
+// A cue is cut before a word that would take it past MAX_CUE_CHARS (about
+// two lines of the English subtitle), after a sentence ends, after a comma
+// once it is already COMMA_BREAK_CHARS long, and wherever the speaker
+// pauses for PAUSE_BREAK_S. Free talk runs on for a minute without a full
+// stop, so the length cap is what keeps each cue readable, and short enough
+// to leave room for its Japanese line.
+const MAX_CUE_CHARS = 42
+const COMMA_BREAK_CHARS = 24
+const PAUSE_BREAK_S = 0.7
+// A cue stays up through a gap shorter than this before the next one rather
+// than blinking off between them.
+const LINGER_S = 1
+// Floor for a word Whisper gave no end time (audio cut off mid-word).
+const MIN_WORD_S = 0.3
+
+const SENTENCE_END = /[.?!]["')\]]*$/
+const CLAUSE_END = /[,;:—–-]["')\]]*$/
+// Non-speech markers Whisper emits on silence or noise, e.g. [BLANK_AUDIO].
+const NON_SPEECH = /^[[(].*[\])]$/
+
+/**
+ * Group Whisper's timed words into short subtitle cues, each shown from its
+ * first word until its last ends (or until the next cue, across a short
+ * gap). Pure; see the constants above for where it cuts.
+ */
+export function cuesFromWhisperWords(words: WhisperWord[]): SubtitleCue[] {
+  const groups: { text: string; start: number; end: number }[] = []
+  let current: { text: string; start: number; end: number } | null = null
+
+  for (const word of words) {
+    const text = word.text.trim()
+    if (!text || NON_SPEECH.test(text)) continue
+    const [start, rawEnd] = word.timestamp
+    const end = Math.max(rawEnd ?? start + MIN_WORD_S, start)
+
+    if (current && (start - current.end >= PAUSE_BREAK_S || current.text.length + 1 + text.length > MAX_CUE_CHARS)) {
+      groups.push(current)
+      current = null
+    }
+    if (current) {
+      current.text += ` ${text}`
+      current.end = end
+    } else {
+      current = { text, start, end }
+    }
+    if (SENTENCE_END.test(text) || (CLAUSE_END.test(text) && current.text.length >= COMMA_BREAK_CHARS)) {
+      groups.push(current)
+      current = null
+    }
+  }
+  if (current) groups.push(current)
+
+  return groups.map((g, i) => {
+    const next = groups[i + 1]
+    let end = g.end
+    if (next && next.start - end < LINGER_S) end = next.start
+    return { id: `speech-${i}`, start: g.start, end: Math.max(end, g.start + MIN_WORD_S), en: g.text, ja: null }
+  })
 }
 
 /**
- * Decode an audio/video Blob into mono PCM samples at Whisper's expected
- * 16kHz sample rate.
- *
- * This must run on the main thread: `transformers.js`'s pipeline decodes a
- * URL/Blob input via the browser's `AudioContext`, which does not exist
- * inside a Web Worker (confirmed by manual testing — passing an object URL
- * straight to the worker throws "AudioContext is not available in your
- * environment"). Decoding here and transferring the raw samples avoids that
- * entirely.
- *
- * `decodeAudioData` is container-agnostic: it decodes straight out of a
- * combined H.264/AAC video Blob just as well as a standalone WAV, and
- * `AudioContext({ sampleRate: WHISPER_SAMPLE_RATE })` resamples to 16kHz on
- * its own — confirmed by manual testing directly against a real MP4 with an
- * AAC audio track. So callers pass the source video Blob directly; there is
- * no separate audio-extraction step.
+ * The video's audio as mono PCM at Whisper's 16kHz. Reads just the audio
+ * track's packets out of the blob rather than the whole file — a long
+ * one-take video can be hundreds of MB, too much to load at once on a phone
+ * (issue #12) — mixing each decoded chunk down to mono as it arrives, then
+ * resamples offline. Falls back to decodeAudioData where WebCodecs can't
+ * decode the audio.
  */
 async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
+  let audio: AudioBuffer
+  try {
+    audio = await decodeMonoTrack(blob)
+  } catch (err) {
+    console.warn('[transcribeSpeech] WebCodecs decode failed, falling back to decodeAudioData:', err)
+    return decodeWithWebAudio(blob)
+  }
+  const length = Math.ceil(audio.duration * WHISPER_SAMPLE_RATE)
+  const ctx = new OfflineAudioContext(1, length, WHISPER_SAMPLE_RATE)
+  const source = ctx.createBufferSource()
+  source.buffer = audio
+  source.connect(ctx.destination)
+  source.start()
+  const rendered = await ctx.startRendering()
+  return rendered.getChannelData(0)
+}
+
+/** The video's audio track, decoded and averaged to one channel at its own rate. */
+async function decodeMonoTrack(blob: Blob): Promise<AudioBuffer> {
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
+  try {
+    const track = await input.getPrimaryAudioTrack()
+    if (!track) throw new Error('video has no audio track')
+    if (!(await track.canDecode())) throw new Error(`cannot decode ${track.codec ?? 'unknown'} audio`)
+
+    const rate = track.sampleRate
+    const mono = new Float32Array(Math.ceil((await track.computeDuration()) * rate))
+    let end = 0
+    for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers()) {
+      const channels = buffer.numberOfChannels
+      // Anything before 0 is AAC priming, not part of the audio.
+      const first = Math.round(timestamp * rate)
+      for (let c = 0; c < channels; c++) {
+        const data = buffer.getChannelData(c)
+        for (let i = Math.max(0, -first); i < data.length && first + i < mono.length; i++) {
+          mono[first + i] += data[i] / channels
+        }
+      }
+      end = Math.min(mono.length, Math.max(end, first + buffer.length))
+    }
+    if (end <= 0) throw new Error('video has no decodable audio')
+    const out = new AudioBuffer({ numberOfChannels: 1, length: end, sampleRate: rate })
+    out.copyToChannel(mono.subarray(0, end), 0)
+    return out
+  } finally {
+    input.dispose()
+  }
+}
+
+/**
+ * `AudioContext({ sampleRate: 16000 })` resamples to 16kHz on its own while
+ * decoding, straight out of an H.264/AAC video blob.
+ */
+async function decodeWithWebAudio(blob: Blob): Promise<Float32Array> {
   const arrayBuffer = await blob.arrayBuffer()
   const audioCtx = new AudioContext({ sampleRate: WHISPER_SAMPLE_RATE })
   try {
@@ -60,36 +193,54 @@ async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
 }
 
 /**
- * Run on-device Whisper transcription in a Web Worker (keeps model load and
- * inference off the main thread). Resolves with timestamped English cues.
- *
- * Accepts the combined video Blob directly (no separate audio-extraction
- * step needed) — see `decodeToWhisperPcm` above.
+ * Transcribe what was actually said in the video into short, timed English
+ * cues, with on-device Whisper in a Web Worker (keeps model load and
+ * inference off the main thread). The first run downloads the model, which
+ * the browser then caches. Aborting `signal` stops the worker and rejects
+ * with CancelledError.
  */
-export async function transcribeSpeech(videoBlob: Blob): Promise<SubtitleCue[]> {
+export async function transcribeSpeech(
+  videoBlob: Blob,
+  onProgress?: (progress: WhisperProgress) => void,
+  signal?: AbortSignal,
+): Promise<SubtitleCue[]> {
+  throwIfCancelled(signal)
   const audioData = await decodeToWhisperPcm(videoBlob)
+  throwIfCancelled(signal)
 
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/whisperWorker.ts', import.meta.url), {
       type: 'module',
     })
+    const unregister = onAbort(signal, () => {
+      cleanup()
+      reject(new CancelledError())
+    })
 
     function cleanup() {
+      unregister()
       worker.terminate()
     }
 
-    worker.onmessage = (e: MessageEvent<{ type: 'done'; chunks: WhisperChunk[] } | { type: 'error'; message: string }>) => {
+    worker.onmessage = (e: MessageEvent<WhisperResponse>) => {
+      const message = e.data
+      if (message.type === 'progress') {
+        onProgress?.(message.progress)
+        return
+      }
       cleanup()
-      if (e.data.type === 'error') {
-        reject(new Error(e.data.message))
+      if (message.type === 'error') {
+        reject(new Error(message.message))
       } else {
-        resolve(cuesFromWhisperChunks(e.data.chunks))
+        resolve(cuesFromWhisperWords(wordsFromSegments(message.segments)))
       }
     }
     worker.onerror = (err) => {
       cleanup()
       reject(new Error(err.message || 'Whisper worker failed'))
     }
-    worker.postMessage({ audioData }, [audioData.buffer])
+    // Copied rather than transferred: the samples may be an AudioBuffer's
+    // own channel data, which isn't ours to detach.
+    worker.postMessage({ audioData })
   })
 }

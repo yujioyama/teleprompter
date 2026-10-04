@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
-import { ShotCueInput } from '../utils/subtitleCues'
+import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
+import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 
 vi.mock('../utils/burnSubtitles')
@@ -21,10 +22,12 @@ function ControlledSubtitleWorkflow({
   combinedBlob,
   shotCueInputs,
   onBurned,
+  transcribe,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
   onBurned: (blob: Blob) => void
+  transcribe?: (blob: Blob, onProgress: (p: WhisperProgress) => void, signal: AbortSignal) => Promise<SubtitleCue[]>
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   return (
@@ -35,6 +38,7 @@ function ControlledSubtitleWorkflow({
       onStateChange={setState}
       burn={(cues, position) => burnModule.burnSubtitles(combinedBlob, cues, position)}
       onBurned={onBurned}
+      transcribe={transcribe}
     />
   )
 }
@@ -276,5 +280,99 @@ describe('SubtitleWorkflow position controls', () => {
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
     expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
     expect(screen.queryByText('📝 英語字幕を生成')).not.toBeInTheDocument()
+  })
+})
+
+describe('SubtitleWorkflow subtitles from speech', () => {
+  const SPOKEN: SubtitleCue[] = [
+    { id: 'speech-0', start: 0, end: 1.5, en: 'Thanks for the comment.', ja: null },
+    { id: 'speech-1', start: 1.5, end: 3, en: 'I mean, it was not planned.', ja: null },
+  ]
+
+  it('starts from the script, and replaces it with what was said when asked', async () => {
+    const transcribe = vi.fn().mockResolvedValue(SPOKEN)
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} transcribe={transcribe} />)
+    expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
+    expect(screen.getByText('台本から')).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByText('話した音声から'))
+
+    expect(await screen.findByDisplayValue('I mean, it was not planned.')).toBeInTheDocument()
+    expect(transcribe).toHaveBeenCalledWith(BLOB, expect.any(Function), expect.any(AbortSignal))
+    expect(screen.queryByDisplayValue('Hello')).not.toBeInTheDocument()
+    expect(screen.getByText('話した音声から')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/聞き取り違いがあれば直してください/)).toBeInTheDocument()
+  })
+
+  it('works when the script has no text at all', async () => {
+    const transcribe = vi.fn().mockResolvedValue(SPOKEN)
+    render(
+      <ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={[{ text: '', duration: 3 }]} onBurned={vi.fn()} transcribe={transcribe} />
+    )
+    expect(screen.getByText(/字幕にできるテキストがありません/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('話した音声から'))
+
+    expect(await screen.findByDisplayValue('Thanks for the comment.')).toBeInTheDocument()
+    expect(screen.queryByText(/字幕にできるテキストがありません/)).not.toBeInTheDocument()
+  })
+
+  it('shows the model download, then recognition, while it runs', async () => {
+    let report: (p: WhisperProgress) => void = () => undefined
+    let finish: (cues: SubtitleCue[]) => void = () => undefined
+    const transcribe = vi.fn((_blob: Blob, onProgress: (p: WhisperProgress) => void) => {
+      report = onProgress
+      return new Promise<SubtitleCue[]>(resolve => { finish = resolve })
+    })
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} transcribe={transcribe} />)
+    fireEvent.click(await screen.findByText('話した音声から'))
+
+    act(() => report({ phase: 'download', ratio: 0.42 }))
+    expect(screen.getByText('音声認識モデルをダウンロード中... 42%')).toBeInTheDocument()
+    expect(screen.queryByText('台本から')).not.toBeInTheDocument()
+
+    act(() => report({ phase: 'recognize', tokens: 3 }))
+    expect(screen.getByText('話した音声から字幕を作成中...')).toBeInTheDocument()
+
+    await act(async () => finish(SPOKEN))
+    expect(screen.getByDisplayValue('Thanks for the comment.')).toBeInTheDocument()
+  })
+
+  it('can be cancelled, keeping the script cues it started from', async () => {
+    const transcribe = vi.fn(() => new Promise<SubtitleCue[]>(() => undefined))
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} transcribe={transcribe} />)
+    fireEvent.click(await screen.findByText('話した音声から'))
+
+    fireEvent.click(screen.getByText('中断する'))
+
+    expect(await screen.findByText('中断しました')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
+    expect(screen.getByText('台本から')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows a failure and keeps the script cues', async () => {
+    const transcribe = vi.fn().mockRejectedValue(new Error('model failed to load'))
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} transcribe={transcribe} />)
+    fireEvent.click(await screen.findByText('話した音声から'))
+
+    expect(await screen.findByText(/model failed to load/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
+  })
+
+  it('asks before throwing away a translation, and keeps it if declined', async () => {
+    const transcribe = vi.fn().mockResolvedValue(SPOKEN)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} transcribe={transcribe} />)
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), { target: { value: '1. こんにちは' } })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('話した音声から'))
+
+    expect(confirm).toHaveBeenCalled()
+    expect(transcribe).not.toHaveBeenCalled()
+    expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
+    confirm.mockRestore()
   })
 })

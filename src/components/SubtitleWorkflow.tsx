@@ -9,13 +9,21 @@ import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
 import { raceAbort } from '../utils/cancellation'
+import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import styles from './SubtitleWorkflow.module.css'
 
-// No 'error' stage: a failed generate/burn reverts to the stage the user was
-// on before attempting it ('idle' or 'reviewing' respectively), with the
-// failure surfaced via `errorMessage` instead, so the review/position UI
-// (and the ability to retry) is never fully replaced by an error screen.
-export type SubtitleStage = 'idle' | 'reviewing' | 'burning'
+// No 'error' stage: a failed generate/transcribe/burn reverts to the stage
+// the user was on before attempting it, with the failure surfaced via
+// `errorMessage` instead, so the review/position UI (and the ability to
+// retry) is never fully replaced by an error screen.
+export type SubtitleStage = 'idle' | 'transcribing' | 'reviewing' | 'burning'
+
+/**
+ * Where the English cues come from: the teleprompter script (one cue per
+ * shot), or what was actually said, transcribed by Whisper — for free talk
+ * and self-corrections that stray from the script.
+ */
+export type SubtitleSource = 'script' | 'speech'
 
 /**
  * Subtitle work lifted up to the parent (FinalizePage) so it survives
@@ -29,6 +37,7 @@ export interface SubtitleState {
   cues: SubtitleCue[]
   pasteText: string
   position: SubtitlePosition
+  source: SubtitleSource
 }
 
 export const INITIAL_SUBTITLE_STATE: SubtitleState = {
@@ -36,6 +45,7 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
   cues: [],
   pasteText: '',
   position: SUBTITLE_POSITION_BOTTOM,
+  source: 'script',
 }
 
 interface SubtitleWorkflowProps {
@@ -51,10 +61,29 @@ interface SubtitleWorkflowProps {
     signal: AbortSignal,
   ) => Promise<Blob>
   onBurned?: (blob: Blob) => void
+  /** Transcribe the combined video into timed English cues; `signal` aborts it. */
+  transcribe?: (
+    blob: Blob,
+    onProgress: (progress: WhisperProgress) => void,
+    signal: AbortSignal,
+  ) => Promise<SubtitleCue[]>
 }
 
-export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, burn, onBurned }: SubtitleWorkflowProps) {
-  const { stage, cues, pasteText, position } = state
+const SOURCES: { label: string; value: SubtitleSource }[] = [
+  { label: '台本から', value: 'script' },
+  { label: '話した音声から', value: 'speech' },
+]
+
+export default function SubtitleWorkflow({
+  combinedBlob,
+  shotCueInputs,
+  state,
+  onStateChange,
+  burn,
+  onBurned,
+  transcribe = transcribeSpeech,
+}: SubtitleWorkflowProps) {
+  const { stage, cues, pasteText, position, source } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -62,11 +91,13 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   const [previewTime, setPreviewTime] = useState(0)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [burnProgress, setBurnProgress] = useState(0)
+  const [transcribeProgress, setTranscribeProgress] = useState<WhisperProgress | null>(null)
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
   // Aborted by 中断する (issue #34) or if this unmounts mid-burn.
   const burnAbortRef = useRef<AbortController | null>(null)
+  const transcribeAbortRef = useRef<AbortController | null>(null)
 
   function patch(changes: Partial<SubtitleState>) {
     onStateChange(prev => ({ ...prev, ...changes }))
@@ -87,7 +118,10 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
   }, [combinedBlob])
 
   useEffect(() => {
-    return () => burnAbortRef.current?.abort()
+    return () => {
+      burnAbortRef.current?.abort()
+      transcribeAbortRef.current?.abort()
+    }
   }, [])
 
   // The English cues come straight from the script and trims, so there is
@@ -104,7 +138,47 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       setErrorMessage('字幕にできるテキストがありません。トリミング画面でスクリプトのテキストを確認してください。')
       return
     }
-    patch({ cues: generated, stage: 'reviewing' })
+    setErrorMessage(null)
+    patch({ cues: generated, stage: 'reviewing', source: 'script', pasteText: '' })
+  }
+
+  async function handleTranscribe() {
+    const before = stage
+    const controller = new AbortController()
+    transcribeAbortRef.current = controller
+    const { signal } = controller
+    patch({ stage: 'transcribing' })
+    setErrorMessage(null)
+    setNotice(null)
+    setTranscribeProgress(null)
+    try {
+      const transcribed = await raceAbort(
+        transcribe(combinedBlob, progress => {
+          if (!signal.aborted) setTranscribeProgress(progress)
+        }, signal),
+        signal,
+      )
+      if (transcribed.length === 0) {
+        setErrorMessage('音声から言葉を聞き取れませんでした。')
+        patch({ stage: before })
+        return
+      }
+      patch({ cues: transcribed, stage: 'reviewing', source: 'speech', pasteText: '' })
+    } catch (err) {
+      if (signal.aborted) setNotice('中断しました')
+      else setErrorMessage(err instanceof Error ? err.message : String(err))
+      patch({ stage: before })
+    } finally {
+      if (transcribeAbortRef.current === controller) transcribeAbortRef.current = null
+    }
+  }
+
+  function handleChooseSource(next: SubtitleSource) {
+    if (next === source && cues.length > 0) return
+    // New cues mean new lines, so any translation no longer lines up.
+    if (hasAnyJapanese && !window.confirm('字幕を作り直すと、日本語訳は消えます。作り直しますか？')) return
+    if (next === 'script') handleGenerate()
+    else void handleTranscribe()
   }
 
   function handleEditEn(id: string, text: string) {
@@ -183,10 +257,43 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       )}
       {notice && <p className={styles.notice}>{notice}</p>}
 
+      {(stage === 'idle' || stage === 'reviewing') && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>字幕の作り方</p>
+          <div className={styles.positionRow}>
+            {SOURCES.map(s => (
+              <button
+                key={s.value}
+                className={`${styles.positionBtn} ${cues.length > 0 && source === s.value ? styles.positionBtnActive : ''}`}
+                aria-pressed={cues.length > 0 && source === s.value}
+                onClick={() => handleChooseSource(s.value)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <p className={styles.hint}>アドリブや言い直しがある動画は「話した音声から」がおすすめです</p>
+        </div>
+      )}
+
+      {stage === 'transcribing' && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>
+            {transcribeProgress?.phase === 'download'
+              ? `音声認識モデルをダウンロード中... ${Math.round(transcribeProgress.ratio * 100)}%`
+              : '話した音声から字幕を作成中...'}
+          </p>
+          <p className={styles.hint}>初回だけモデル（約80MB）のダウンロードがあります。動画が長いと数分かかることがあります</p>
+          <CancelProcessing progress={transcribeProgress} onCancel={() => transcribeAbortRef.current?.abort()} />
+        </div>
+      )}
+
       {(stage === 'reviewing' || stage === 'burning') && cues.length > 0 && (
         <>
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>英語字幕（必要なら修正してください）</p>
+            <p className={styles.sectionTitle}>
+              {source === 'speech' ? '英語字幕（聞き取り違いがあれば直してください）' : '英語字幕（必要なら修正してください）'}
+            </p>
             <SubtitleEditor cues={cues} onEditEn={handleEditEn} onEditJa={handleEditJa} />
           </div>
 
