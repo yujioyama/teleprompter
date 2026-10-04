@@ -26,6 +26,26 @@ beforeEach(() => {
 })
 
 describe('PreparedAudio', () => {
+  it('settles right away with nothing prepared, and otherwise once the audio is done or failed', async () => {
+    const prepared = new PreparedAudio()
+    await expect(prepared.settled()).resolves.toBeUndefined()
+
+    let finish: (blob: Blob) => void = () => undefined
+    vi.mocked(prepareFinalAudio).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    prepared.prepare(COMBINED, KEY, async () => TRACK)
+    let settled = false
+    const waiting = prepared.settled().then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    finish(PREPARED)
+    await waiting
+    expect(settled).toBe(true)
+
+    vi.mocked(prepareFinalAudio).mockRejectedValueOnce(new Error('no WebCodecs'))
+    prepared.prepare(COMBINED, { ...KEY, volume: 0.5 }, async () => TRACK)
+    await expect(prepared.settled()).resolves.toBeUndefined()
+  })
+
   it('builds the audio once per source and key', async () => {
     const prepared = new PreparedAudio()
     const track = vi.fn(async () => TRACK)

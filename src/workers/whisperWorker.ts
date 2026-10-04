@@ -11,12 +11,13 @@ if (env.backends.onnx.wasm) {
 }
 
 // base.en is the most accurate Whisper that still fits a phone: ~77MB at
-// 8-bit (tiny.en is ~40MB and noticeably worse on accented English; small.en
-// is ~250MB, too much memory and minutes of single-threaded WASM on an
-// iPhone). The `_timestamped` export carries the cross-attentions needed for
-// word-level timestamps, which let long free-talk takes be cut into short
-// cues at the right moments.
-const MODEL_ID = 'onnx-community/whisper-base.en_timestamped'
+// 8-bit (tiny.en is ~40MB and noticeably worse on accented English, yet
+// peaked higher in WASM memory when measured; small.en is ~250MB, too much
+// memory and minutes of single-threaded WASM on an iPhone). Segment
+// timestamps only: word-level ones need the `_timestamped` export and hold
+// every decoder step's cross-attention in memory, and a 1-minute take
+// already reloaded the page on an iPhone.
+const MODEL_ID = 'onnx-community/whisper-base.en'
 
 let transcriberPromise: Promise<AutomaticSpeechRecognitionPipeline> | null = null
 
@@ -62,7 +63,7 @@ interface WhisperRequest {
 
 export type WhisperResponse =
   | { type: 'progress'; progress: WhisperProgress }
-  | { type: 'done'; words: WhisperWord[] }
+  | { type: 'done'; segments: WhisperWord[] }
   | { type: 'error'; message: string }
 
 self.onmessage = async (e: MessageEvent<WhisperRequest>) => {
@@ -74,7 +75,7 @@ self.onmessage = async (e: MessageEvent<WhisperRequest>) => {
     let tokens = 0
     post({ type: 'progress', progress: { phase: 'recognize', tokens } })
     const output = await transcriber(e.data.audioData, {
-      return_timestamps: 'word',
+      return_timestamps: true,
       chunk_length_s: 30,
       stride_length_s: 5,
       streamer: new TextStreamer(transcriber.tokenizer, {
@@ -86,8 +87,8 @@ self.onmessage = async (e: MessageEvent<WhisperRequest>) => {
         },
       }),
     })
-    const words = (Array.isArray(output) ? output[0]?.chunks : output.chunks) ?? []
-    post({ type: 'done', words })
+    const segments = (Array.isArray(output) ? output[0]?.chunks : output.chunks) ?? []
+    post({ type: 'done', segments })
   } catch (err) {
     post({
       type: 'error',
