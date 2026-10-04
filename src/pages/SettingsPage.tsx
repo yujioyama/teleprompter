@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../hooks/useSettings'
+import BgmSettings from '../components/BgmSettings'
+import SubtitlePositionSettings from '../components/SubtitlePositionSettings'
 import styles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
@@ -30,6 +32,20 @@ export default function SettingsPage() {
             <span className={styles.toggleTrack} />
           </label>
         </div>
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>BGM</div>
+        <BgmSettings trackId={settings.defaultBgmId} volume={settings.bgmVolume} onChange={updateSettings} />
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>字幕の位置</div>
+        <div className={styles.rowSub}>短い字幕と長い字幕のどちらも見やすい位置に合わせてください（動画ごとに調整も可）</div>
+        <SubtitlePositionSettings
+          position={settings.subtitlePosition}
+          onChange={subtitlePosition => updateSettings({ subtitlePosition })}
+        />
       </div>
 
       <div className={styles.section}>

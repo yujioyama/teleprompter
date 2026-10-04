@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste } from '../utils/subtitleCues'
 import {
   SubtitlePosition,
-  SUBTITLE_POSITION_TOP,
-  SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_BOTTOM,
+  SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
@@ -54,12 +53,6 @@ interface SubtitleWorkflowProps {
   onBurned?: (blob: Blob) => void
 }
 
-const PRESETS: { label: string; value: SubtitlePosition }[] = [
-  { label: '上部', value: SUBTITLE_POSITION_TOP },
-  { label: '中央', value: SUBTITLE_POSITION_CENTER },
-  { label: '下部', value: SUBTITLE_POSITION_BOTTOM },
-]
-
 export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, onStateChange, burn, onBurned }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -95,6 +88,14 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
 
   useEffect(() => {
     return () => burnAbortRef.current?.abort()
+  }, [])
+
+  // The English cues come straight from the script and trims, so there is
+  // nothing to wait for: build them on arrival. Only then — coming back
+  // to this step keeps the cues (and edits) already there.
+  useEffect(() => {
+    if (stage === 'idle' && cues.length === 0) handleGenerate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleGenerate() {
@@ -182,12 +183,6 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
       )}
       {notice && <p className={styles.notice}>{notice}</p>}
 
-      {stage === 'idle' && (
-        <button className={styles.genBtn} onClick={handleGenerate}>
-          📝 英語字幕を生成
-        </button>
-      )}
-
       {(stage === 'reviewing' || stage === 'burning') && cues.length > 0 && (
         <>
           <div className={styles.section}>
@@ -231,7 +226,7 @@ export default function SubtitleWorkflow({ combinedBlob, shotCueInputs, state, o
 
               <p className={styles.sectionTitle}>字幕の位置</p>
               <div className={styles.positionRow}>
-                {PRESETS.map(p => (
+                {SUBTITLE_POSITION_PRESETS.map(p => (
                   <button
                     key={p.label}
                     className={`${styles.positionBtn} ${position === p.value ? styles.positionBtnActive : ''}`}

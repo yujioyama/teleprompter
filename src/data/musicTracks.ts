@@ -16,6 +16,9 @@ export const GENRE_LABELS: Record<MusicGenre, string> = {
   corporate: 'コーポレート / モチベーション',
 }
 
+/** Order genres are offered in. */
+export const GENRE_ORDER: MusicGenre[] = ['lofi', 'pop', 'cinematic', 'corporate']
+
 // Sourced from Pixabay Music (pixabay.com/music), used under the Pixabay
 // Content License (free to use, no attribution required, modification
 // allowed) — see https://pixabay.com/service/license-summary/.

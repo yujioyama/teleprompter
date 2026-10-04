@@ -45,7 +45,6 @@ describe('SubtitleWorkflow position controls', () => {
     const onBurned = vi.fn()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
 
     // Apply a Japanese translation via the paste box so the position/burn UI appears
@@ -70,7 +69,6 @@ describe('SubtitleWorkflow position controls', () => {
     const onBurned = vi.fn()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -89,7 +87,6 @@ describe('SubtitleWorkflow position controls', () => {
   it('does not render a save button', async () => {
     seedBurnMock()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -105,7 +102,6 @@ describe('SubtitleWorkflow position controls', () => {
     const onBurned = vi.fn()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -147,7 +143,6 @@ describe('SubtitleWorkflow position controls', () => {
     }
     render(<ProgressWorkflow />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -181,7 +176,6 @@ describe('SubtitleWorkflow position controls', () => {
     }
     const { container } = render(<PauseWorkflow />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -213,7 +207,6 @@ describe('SubtitleWorkflow position controls', () => {
       />
     )
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('First shot line')
     // The blank-text second shot produced no cue, but its duration still
     // shifted the third shot's cue forward (asserted via the editor input
@@ -242,7 +235,6 @@ describe('SubtitleWorkflow position controls', () => {
     }
     render(<StuckWorkflow />)
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -276,9 +268,13 @@ describe('SubtitleWorkflow position controls', () => {
       />
     )
 
-    fireEvent.click(screen.getByText('📝 英語字幕を生成'))
-
     expect(screen.getByText(/字幕にできるテキストがありません/)).toBeInTheDocument()
-    expect(screen.getByText('📝 英語字幕を生成')).toBeInTheDocument()
+    expect(screen.queryByText('📝 英語字幕を生成')).not.toBeInTheDocument()
+  })
+
+  it('generates the English subtitles on arrival, without a button', async () => {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
+    expect(await screen.findByDisplayValue('Hello')).toBeInTheDocument()
+    expect(screen.queryByText('📝 英語字幕を生成')).not.toBeInTheDocument()
   })
 })

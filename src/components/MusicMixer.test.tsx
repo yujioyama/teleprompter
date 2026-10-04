@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import MusicMixer from './MusicMixer'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
+import { BgmPreview } from '../utils/bgmPreview'
 
 vi.mock('../utils/mixMusic')
 
@@ -133,5 +134,171 @@ describe('MusicMixer', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
 
     expect(onMixed).not.toHaveBeenCalled()
+  })
+
+  it('opens with the usual BGM and volume already picked', () => {
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" initialVolume={0.45} />,
+    )
+    expect(screen.getByRole('combobox', { name: 'ジャンル' })).toHaveValue('lofi')
+    expect(screen.getByText('Tokyo Lofi').closest('div')?.className).toMatch(/trackRowSelected/)
+    expect(screen.getByRole('slider')).toHaveValue('0.45')
+    expect(nextButton()).not.toBeDisabled()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('mixes the usual BGM on arrival when autoMix is on, then moves on', async () => {
+    const onMixed = vi.fn()
+    const onNext = vi.fn()
+    const mixed = new Blob(['auto-mixed'], { type: 'video/mp4' })
+    vi.mocked(mixModule.mixMusic).mockResolvedValueOnce(mixed)
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={onMixed}
+        onNext={onNext}
+        initialTrackId="lofi-tokyo"
+        initialVolume={0.45}
+        autoMix
+      />,
+    )
+
+    expect(screen.getByText('いつものBGM（Tokyo Lofi）を合成中…')).toBeInTheDocument()
+    expect(screen.queryByText('BGMなしで進む')).not.toBeInTheDocument()
+    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1))
+    const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
+    expect(video).toBe(VIDEO_BLOB)
+    expect(volume).toBe(0.45)
+    expect(onMixed).toHaveBeenCalledWith(mixed)
+  })
+
+  it('drops the auto mix and shows the picker on 別のBGMを選ぶ', async () => {
+    const onMixed = vi.fn()
+    const onNext = vi.fn()
+    let resolveMix: (blob: Blob) => void = () => {}
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(resolve => (resolveMix = resolve)))
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={onMixed} onNext={onNext} initialTrackId="lofi-tokyo" autoMix />,
+    )
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    resolveMix(new Blob(['late'], { type: 'video/mp4' }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(screen.getByText('Tokyo Lofi').closest('div')?.className).toMatch(/trackRowSelected/)
+    expect(onMixed).not.toHaveBeenCalled()
+    expect(onNext).not.toHaveBeenCalled()
+  })
+
+  it('shows the picker with the error when the auto mix fails', async () => {
+    const onNext = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockRejectedValueOnce(new Error('boom'))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={onNext} initialTrackId="lofi-tokyo" autoMix />)
+
+    expect(await screen.findByText(/「Tokyo Lofi」の合成に失敗しました: boom/)).toBeInTheDocument()
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(onNext).not.toHaveBeenCalled()
+  })
+
+  it('reports leaving the auto mix on 別のBGMを選ぶ', async () => {
+    const onLeaveAuto = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={vi.fn()}
+        onNext={vi.fn()}
+        initialTrackId="lofi-tokyo"
+        autoMix
+        onLeaveAuto={onLeaveAuto}
+      />,
+    )
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+    expect(onLeaveAuto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports leaving the auto mix when it fails, but not when a manual mix does', async () => {
+    const onLeaveAuto = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockRejectedValue(new Error('boom'))
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={vi.fn()}
+        onNext={vi.fn()}
+        initialTrackId="lofi-tokyo"
+        autoMix
+        onLeaveAuto={onLeaveAuto}
+      />,
+    )
+    await screen.findByText(/合成に失敗しました/)
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(nextButton())
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2))
+    await screen.findByText(/合成に失敗しました/)
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing automatically when autoMix has no usual BGM', () => {
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId={null} autoMix />)
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(nextButton()).toBeDisabled()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('mixes through the given mix function when there is one', async () => {
+    const onMixed = vi.fn()
+    const joined = new Blob(['joined'], { type: 'video/mp4' })
+    const mix = vi.fn(async () => joined)
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={onMixed} onNext={vi.fn()} initialTrackId="lofi-tokyo" mix={mix} />,
+    )
+    fireEvent.click(nextButton())
+
+    await waitFor(() => expect(onMixed).toHaveBeenCalledWith(joined))
+    const [track, trackBlob, volume] = mix.mock.calls[0] as unknown as [{ id: string }, Blob, number]
+    expect(track.id).toBe('lofi-tokyo')
+    expect(trackBlob).toBeInstanceOf(Blob)
+    expect(volume).toBe(0.3)
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('unlocks the preview audio on touchEnd and click gestures', () => {
+    const unlock = vi.spyOn(BgmPreview.prototype, 'unlock')
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" />)
+
+    fireEvent.touchEnd(document.querySelector('video')!)
+    expect(unlock).toHaveBeenCalled()
+
+    unlock.mockClear()
+    fireEvent.click(document.querySelector('video')!)
+    expect(unlock).toHaveBeenCalled()
+  })
+
+  it('unlocks the preview audio on 別のBGMを選ぶ', async () => {
+    const unlock = vi.spyOn(BgmPreview.prototype, 'unlock')
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" autoMix />)
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    expect(unlock).toHaveBeenCalled()
+  })
+
+  it('loads the preview track only once the picker shows, not while auto-mixing', async () => {
+    const setTrack = vi.spyOn(BgmPreview.prototype, 'setTrack')
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" autoMix />)
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(setTrack.mock.calls.filter(([arg]) => arg instanceof Blob)).toHaveLength(0)
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    await waitFor(() => expect(setTrack.mock.calls.some(([arg]) => arg instanceof Blob)).toBe(true))
   })
 })

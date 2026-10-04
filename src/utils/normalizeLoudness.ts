@@ -59,6 +59,14 @@ export function normalizeLoudness(videoBlob: Blob): Promise<Blob> {
   return run
 }
 
+/**
+ * Record that `blob`'s audio was built at the target loudness already (see
+ * preparedAudio.ts), so normalizeLoudness hands it back as is.
+ */
+export function markLoudnessNormalized(blob: Blob): void {
+  results.set(blob, Promise.resolve(blob))
+}
+
 async function normalizeLoudnessAuto(videoBlob: Blob): Promise<Blob> {
   if (await canUseWebCodecs()) {
     try {

@@ -17,13 +17,22 @@ export async function normalizeLoudnessWebCodecs(videoBlob: Blob): Promise<Blob>
     if (!audioTrack) return videoBlob
 
     const audio = await decodeAudioTrack(audioTrack)
-    // getChannelData returns live views, so the gain lands in `audio` itself.
-    const channels = Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c))
-    const gainDb = planLoudnessGain(channels, audio.sampleRate)
-    if (gainDb === null) return videoBlob
-    applyGainWithLimiter(channels, audio.sampleRate, gainDb)
+    if (!applyTargetLoudness(audio)) return videoBlob
     return await muxWithAudio(videoTrack, audio)
   } finally {
     input.dispose()
   }
+}
+
+/**
+ * Bring `audio` to the target loudness in place. Returns false, leaving it
+ * untouched, when it already is there (or has no audible audio).
+ */
+export function applyTargetLoudness(audio: AudioBuffer): boolean {
+  // getChannelData returns live views, so the gain lands in `audio` itself.
+  const channels = Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c))
+  const gainDb = planLoudnessGain(channels, audio.sampleRate)
+  if (gainDb === null) return false
+  applyGainWithLimiter(channels, audio.sampleRate, gainDb)
+  return true
 }

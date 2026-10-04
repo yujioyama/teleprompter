@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildDecodePcmArgs, buildReplaceAudioArgs, normalizeLoudness } from './normalizeLoudness'
+import { buildDecodePcmArgs, buildReplaceAudioArgs, normalizeLoudness, markLoudnessNormalized } from './normalizeLoudness'
 import { measureIntegratedLoudness, TARGET_LUFS } from './loudness'
 import { canUseWebCodecs } from './webcodecs/support'
 import { normalizeLoudnessWebCodecs } from './webcodecs/normalizeLoudnessWebCodecs'
@@ -136,5 +136,15 @@ describe('normalizeLoudness ffmpeg path', () => {
     expect(deleted).toEqual(expect.arrayContaining([
       'loudness-in.mp4', 'loudness-in.pcm', 'loudness-out.pcm', 'loudness-out.mp4',
     ]))
+  })
+})
+
+describe('markLoudnessNormalized', () => {
+  it('hands a blob already at the target straight back, without decoding it', async () => {
+    vi.mocked(canUseWebCodecs).mockClear()
+    const ready = new Blob(['already-normalized'], { type: 'video/mp4' })
+    markLoudnessNormalized(ready)
+    await expect(normalizeLoudness(ready)).resolves.toBe(ready)
+    expect(canUseWebCodecs).not.toHaveBeenCalled()
   })
 })

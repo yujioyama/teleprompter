@@ -1,4 +1,4 @@
-import { ALL_FORMATS, BlobSource, Input, InputAudioTrack } from 'mediabunny'
+import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 
 /**
@@ -29,22 +29,29 @@ export async function mixMusicWebCodecs(videoBlob: Blob, trackBlob: Blob, volume
     if (!videoTrack || !audioTrack) throw new Error('video has no video or audio track')
 
     const duration = await input.computeDuration()
-    const mixed = await renderMix(audioTrack, trackBlob, volume, duration)
+    const original = await decodeAudioTrack(audioTrack)
+    const mixed = await renderMix(original, trackBlob, volume, duration)
     return await muxWithAudio(videoTrack, mixed)
   } finally {
     input.dispose()
   }
 }
 
-async function renderMix(
-  audioTrack: InputAudioTrack,
+/**
+ * The BGM mixed under `original`, as the ffmpeg filtergraph would (see above).
+ * `length` (samples) is the output's, default that of `original`; the
+ * offline context cuts or pads `original` to it, so a caller needing another
+ * length needn't copy the whole buffer first.
+ */
+export async function renderMix(
+  original: AudioBuffer,
   trackBlob: Blob,
   volume: number,
   duration: number,
+  length = original.length,
 ): Promise<AudioBuffer> {
   // `amix duration=first`: the output is as long as the original audio.
-  const original = await decodeAudioTrack(audioTrack)
-  const ctx = new OfflineAudioContext(original.numberOfChannels, original.length, original.sampleRate)
+  const ctx = new OfflineAudioContext(original.numberOfChannels, length, original.sampleRate)
 
   const bgm = await ctx.decodeAudioData(await trackBlob.arrayBuffer())
 

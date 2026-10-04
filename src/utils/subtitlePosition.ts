@@ -17,3 +17,10 @@ export const SUBTITLE_POSITION_BOTTOM = 72.2917
 export function subtitleY(position: SubtitlePosition, videoHeight: number, overlayHeight: number): number {
   return Math.round((videoHeight * position) / 100 - overlayHeight / 2)
 }
+
+/** The one-tap positions offered next to the fine-tune slider. */
+export const SUBTITLE_POSITION_PRESETS: { label: string; value: SubtitlePosition }[] = [
+  { label: '上部', value: SUBTITLE_POSITION_TOP },
+  { label: '中央', value: SUBTITLE_POSITION_CENTER },
+  { label: '下部', value: SUBTITLE_POSITION_BOTTOM },
+]
