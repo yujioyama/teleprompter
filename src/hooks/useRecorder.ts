@@ -89,10 +89,8 @@ export function useRecorder(): UseRecorderResult {
     // Free ffmpeg.wasm's grown heap before the user moves on to finalize.
     if (remuxable) releaseFFmpeg()
     blobRef.current = result.blob
-    if (remuxable) {
-      // remuxMp4's output is always video/mp4, regardless of the input container.
-      mimeTypeRef.current = 'video/mp4'
-    }
+    // A normalized take is always video/mp4; an untouched one keeps its container.
+    mimeTypeRef.current = result.blob.type || mimeType
     setRemuxOk(result.ok)
     setRemuxError(result.error)
 

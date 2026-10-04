@@ -30,24 +30,15 @@ describe('processRecordedVideo', () => {
     expect(mockRemux).not.toHaveBeenCalled()
   })
 
-  it('remuxes the whole take without trimming it', async () => {
+  it('passes the take through untouched when normalization is off — no ffmpeg remux', async () => {
     const raw = makeBlob()
-    const remuxed = makeBlob('remuxed')
-    mockRemux.mockResolvedValue({ blob: remuxed, ok: true })
+    mockCanUseWebCodecs.mockResolvedValue(true)
 
-    const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: true })
+    const result = await processRecordedVideo(raw, 'video/quicktime', { normalizeAudio: false })
 
-    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: true })
-    expect(result).toEqual({ blob: remuxed, ok: true, error: null })
-  })
-
-  it('remuxes .mov (quicktime) blobs', async () => {
-    const raw = makeBlob()
-    mockRemux.mockResolvedValue({ blob: raw, ok: true })
-
-    await processRecordedVideo(raw, 'video/quicktime', { normalizeAudio: false })
-
-    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
+    expect(result).toEqual({ blob: raw, ok: true, error: null })
+    expect(mockNormalizeWebCodecs).not.toHaveBeenCalled()
+    expect(mockRemux).not.toHaveBeenCalled()
   })
 
   it('normalizes with WebCodecs instead of ffmpeg.wasm when available (issue #30)', async () => {
@@ -63,17 +54,15 @@ describe('processRecordedVideo', () => {
     expect(result).toEqual({ blob: normalized, ok: true, error: null })
   })
 
-  it('only stream-copies when WebCodecs finds the audio already on target', async () => {
+  it('keeps the take as-is when WebCodecs finds the audio already on target', async () => {
     const raw = makeBlob()
-    const remuxed = makeBlob('remuxed')
     mockCanUseWebCodecs.mockResolvedValue(true)
     mockNormalizeWebCodecs.mockResolvedValue(raw)
-    mockRemux.mockResolvedValue({ blob: remuxed, ok: true })
 
     const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: true })
 
-    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
-    expect(result).toEqual({ blob: remuxed, ok: true, error: null })
+    expect(mockRemux).not.toHaveBeenCalled()
+    expect(result).toEqual({ blob: raw, ok: true, error: null })
   })
 
   it('falls back to the ffmpeg loudnorm remux when the WebCodecs pass fails', async () => {
@@ -90,22 +79,22 @@ describe('processRecordedVideo', () => {
     expect(result).toEqual({ blob: remuxed, ok: true, error: null })
   })
 
-  it('skips WebCodecs when audio normalization is off', async () => {
+  it('normalizes with ffmpeg when WebCodecs is unavailable', async () => {
     const raw = makeBlob()
-    mockCanUseWebCodecs.mockResolvedValue(true)
-    mockRemux.mockResolvedValue({ blob: raw, ok: true })
+    const remuxed = makeBlob('remuxed')
+    mockRemux.mockResolvedValue({ blob: remuxed, ok: true })
 
-    await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: false })
+    const result = await processRecordedVideo(raw, 'video/quicktime', { normalizeAudio: true })
 
-    expect(mockNormalizeWebCodecs).not.toHaveBeenCalled()
-    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: false })
+    expect(mockRemux).toHaveBeenCalledWith(raw, { normalize: true })
+    expect(result).toEqual({ blob: remuxed, ok: true, error: null })
   })
 
-  it('surfaces a remux failure as ok:false with the error message', async () => {
+  it('surfaces an ffmpeg failure as ok:false with the error message', async () => {
     const raw = makeBlob()
     mockRemux.mockResolvedValue({ blob: raw, ok: false, error: 'boom' })
 
-    const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: false })
+    const result = await processRecordedVideo(raw, 'video/mp4', { normalizeAudio: true })
 
     expect(result).toEqual({ blob: raw, ok: false, error: 'boom' })
   })

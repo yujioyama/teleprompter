@@ -145,7 +145,7 @@ export default function RecordPage() {
     window.location.href = `teleprompter-cam://record?shots=${payload}`
   }
 
-  function handleImportFromCameraRoll(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     e.target.value = '' // allow re-selecting the same file(s)
     if (files.length === 0) return
@@ -401,7 +401,7 @@ export default function RecordPage() {
                 className={styles.importBtn}
                 onClick={() => importInputRef.current?.click()}
               >
-                🖼 カメラロールからインポート
+                📁 動画をインポート
               </button>
               <input
                 ref={importInputRef}
@@ -409,7 +409,7 @@ export default function RecordPage() {
                 accept="video/*"
                 multiple
                 aria-label="録画した動画をインポート"
-                onChange={handleImportFromCameraRoll}
+                onChange={handleImportVideos}
                 className={styles.hiddenFileInput}
               />
             </>
