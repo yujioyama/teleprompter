@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { MusicTrack, GENRE_LABELS, MusicGenre } from '../data/musicTracks'
+import { MusicTrack, GENRE_LABELS, GENRE_ORDER, MusicGenre } from '../data/musicTracks'
 import styles from './MusicPicker.module.css'
 
 interface MusicPickerProps {
@@ -10,12 +10,13 @@ interface MusicPickerProps {
   onVolumeChange: (volume: number) => void
 }
 
-const GENRE_ORDER: MusicGenre[] = ['lofi', 'pop', 'cinematic', 'corporate']
-
 export default function MusicPicker({ tracks, selectedId, onSelect, volume, onVolumeChange }: MusicPickerProps) {
   const [previewingId, setPreviewingId] = useState<string | null>(null)
   const [genre, setGenre] = useState<MusicGenre>(
-    () => GENRE_ORDER.find(g => tracks.some(t => t.genre === g)) ?? GENRE_ORDER[0]
+    () =>
+      tracks.find(t => t.id === selectedId)?.genre ??
+      GENRE_ORDER.find(g => tracks.some(t => t.genre === g)) ??
+      GENRE_ORDER[0]
   )
   const audioRef = useRef<HTMLAudioElement | null>(null)
 

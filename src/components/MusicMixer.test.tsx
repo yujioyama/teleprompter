@@ -134,4 +134,94 @@ describe('MusicMixer', () => {
 
     expect(onMixed).not.toHaveBeenCalled()
   })
+
+  it('opens with the usual BGM and volume already picked', () => {
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" initialVolume={0.45} />,
+    )
+    expect(screen.getByRole('combobox', { name: 'ジャンル' })).toHaveValue('lofi')
+    expect(screen.getByText('Tokyo Lofi').closest('div')?.className).toMatch(/trackRowSelected/)
+    expect(screen.getByRole('slider')).toHaveValue('0.45')
+    expect(nextButton()).not.toBeDisabled()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('mixes the usual BGM on arrival when autoMix is on, then moves on', async () => {
+    const onMixed = vi.fn()
+    const onNext = vi.fn()
+    const mixed = new Blob(['auto-mixed'], { type: 'video/mp4' })
+    vi.mocked(mixModule.mixMusic).mockResolvedValueOnce(mixed)
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={onMixed}
+        onNext={onNext}
+        initialTrackId="lofi-tokyo"
+        initialVolume={0.45}
+        autoMix
+      />,
+    )
+
+    expect(screen.getByText('いつものBGM（Tokyo Lofi）を合成中…')).toBeInTheDocument()
+    expect(screen.queryByText('BGMなしで進む')).not.toBeInTheDocument()
+    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1))
+    const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
+    expect(video).toBe(VIDEO_BLOB)
+    expect(volume).toBe(0.45)
+    expect(onMixed).toHaveBeenCalledWith(mixed)
+  })
+
+  it('drops the auto mix and shows the picker on 別のBGMを選ぶ', async () => {
+    const onMixed = vi.fn()
+    const onNext = vi.fn()
+    let resolveMix: (blob: Blob) => void = () => {}
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(resolve => (resolveMix = resolve)))
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={onMixed} onNext={onNext} initialTrackId="lofi-tokyo" autoMix />,
+    )
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    resolveMix(new Blob(['late'], { type: 'video/mp4' }))
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(screen.getByText('Tokyo Lofi').closest('div')?.className).toMatch(/trackRowSelected/)
+    expect(onMixed).not.toHaveBeenCalled()
+    expect(onNext).not.toHaveBeenCalled()
+  })
+
+  it('shows the picker with the error when the auto mix fails', async () => {
+    const onNext = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockRejectedValueOnce(new Error('boom'))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={onNext} initialTrackId="lofi-tokyo" autoMix />)
+
+    expect(await screen.findByText(/「Tokyo Lofi」の合成に失敗しました: boom/)).toBeInTheDocument()
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(onNext).not.toHaveBeenCalled()
+  })
+
+  it('does nothing automatically when autoMix has no usual BGM', () => {
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId={null} autoMix />)
+    expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()
+    expect(nextButton()).toBeDisabled()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('mixes through the given mix function when there is one', async () => {
+    const onMixed = vi.fn()
+    const joined = new Blob(['joined'], { type: 'video/mp4' })
+    const mix = vi.fn(async () => joined)
+    render(
+      <MusicMixer videoBlob={VIDEO_BLOB} onMixed={onMixed} onNext={vi.fn()} initialTrackId="lofi-tokyo" mix={mix} />,
+    )
+    fireEvent.click(nextButton())
+
+    await waitFor(() => expect(onMixed).toHaveBeenCalledWith(joined))
+    const [track, trackBlob, volume] = mix.mock.calls[0] as unknown as [{ id: string }, Blob, number]
+    expect(track.id).toBe('lofi-tokyo')
+    expect(trackBlob).toBeInstanceOf(Blob)
+    expect(volume).toBe(0.3)
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
 })
