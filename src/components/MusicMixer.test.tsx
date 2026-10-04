@@ -226,11 +226,15 @@ describe('MusicMixer', () => {
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
   })
 
-  it('unlocks the preview audio on any tap in the step, e.g. the video controls', () => {
+  it('unlocks the preview audio on touchEnd and click gestures', () => {
     const unlock = vi.spyOn(BgmPreview.prototype, 'unlock')
     render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" />)
 
-    fireEvent.pointerDown(document.querySelector('video')!)
+    fireEvent.touchEnd(document.querySelector('video')!)
+    expect(unlock).toHaveBeenCalled()
+
+    unlock.mockClear()
+    fireEvent.click(document.querySelector('video')!)
     expect(unlock).toHaveBeenCalled()
   })
 

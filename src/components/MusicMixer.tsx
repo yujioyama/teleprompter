@@ -106,10 +106,10 @@ export default function MusicMixer({
 
   if (MUSIC_TRACKS.length === 0) return null
 
-  async function runMix(track: MusicTrack, mixVolume: number, auto: boolean) {
+  async function runMix(track: MusicTrack, mixVolume: number, isAuto: boolean) {
     videoRef.current?.pause()
     const requestId = ++requestIdRef.current
-    setStage(auto ? 'auto' : 'mixing')
+    setStage(isAuto ? 'auto' : 'mixing')
     setErrorMessage(null)
     try {
       const trackBlob = await fetchTrack(track)
@@ -154,9 +154,9 @@ export default function MusicMixer({
   }
 
   return (
-    // iOS only starts audio inside a user gesture; a tap on the video's
-    // controls or the volume slider is one too, not just a track row.
-    <div className={styles.wrapper} onPointerDownCapture={() => previewRef.current?.unlock()}>
+    // iOS WebKit only honors click and touchEnd as audio-unlock gestures.
+    // Also unlocked by track selection and 別のBGMを選ぶ for keyboard picks and other interactions.
+    <div className={styles.wrapper} onClickCapture={() => previewRef.current?.unlock()} onTouchEndCapture={() => previewRef.current?.unlock()}>
       {auto ? (
         <div className={styles.section}>
           <p className={styles.sectionTitle}>BGM</p>
