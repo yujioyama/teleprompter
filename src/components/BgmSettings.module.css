@@ -1,0 +1,70 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.field {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.label {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.trackRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.previewBtn {
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.previewBtn:disabled {
+  opacity: 0.4;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.value {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.slider {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.disabled {
+  opacity: 0.4;
+}

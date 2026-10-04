@@ -1,0 +1,73 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.frames {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.frame {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  /* SubtitleOverlayPreview sizes itself in cqw of this box (= the video's width). */
+  container-type: inline-size;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #3a3f4b 0%, #1c1f26 100%);
+}
+
+.caption {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.presets {
+  display: flex;
+  gap: 8px;
+}
+
+.presetBtn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.presetBtnActive {
+  outline: 2px solid var(--accent);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.label {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.value {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.slider {
+  width: 100%;
+}
