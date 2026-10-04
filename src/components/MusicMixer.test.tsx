@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import MusicMixer from './MusicMixer'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
+import { BgmPreview } from '../utils/bgmPreview'
 
 vi.mock('../utils/mixMusic')
 
@@ -223,5 +224,35 @@ describe('MusicMixer', () => {
     expect(trackBlob).toBeInstanceOf(Blob)
     expect(volume).toBe(0.3)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('unlocks the preview audio on any tap in the step, e.g. the video controls', () => {
+    const unlock = vi.spyOn(BgmPreview.prototype, 'unlock')
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" />)
+
+    fireEvent.pointerDown(document.querySelector('video')!)
+    expect(unlock).toHaveBeenCalled()
+  })
+
+  it('unlocks the preview audio on 別のBGMを選ぶ', async () => {
+    const unlock = vi.spyOn(BgmPreview.prototype, 'unlock')
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" autoMix />)
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    expect(unlock).toHaveBeenCalled()
+  })
+
+  it('loads the preview track only once the picker shows, not while auto-mixing', async () => {
+    const setTrack = vi.spyOn(BgmPreview.prototype, 'setTrack')
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId="lofi-tokyo" autoMix />)
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(setTrack.mock.calls.filter(([arg]) => arg instanceof Blob)).toHaveLength(0)
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    await waitFor(() => expect(setTrack.mock.calls.some(([arg]) => arg instanceof Blob)).toBe(true))
   })
 })

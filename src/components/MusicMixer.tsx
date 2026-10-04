@@ -43,6 +43,8 @@ export default function MusicMixer({
   // BGM, so a mix still running then is discarded instead of re-adding BGM
   // afterwards.
   const requestIdRef = useRef(0)
+  const mixing = stage === 'mixing'
+  const auto = stage === 'auto'
 
   useEffect(() => {
     return () => {
@@ -82,7 +84,9 @@ export default function MusicMixer({
 
   useEffect(() => {
     const preview = previewRef.current
-    if (!preview) return
+    // The preview is hidden while auto-mixing; decoding the track for it
+    // would compete with the real mix for memory (tight on iPhone).
+    if (!preview || auto) return
     const track = MUSIC_TRACKS.find(t => t.id === selectedId)
     if (!track) {
       void preview.setTrack(null)
@@ -98,7 +102,7 @@ export default function MusicMixer({
     return () => {
       cancelled = true
     }
-  }, [selectedId])
+  }, [selectedId, auto])
 
   if (MUSIC_TRACKS.length === 0) return null
 
@@ -122,7 +126,7 @@ export default function MusicMixer({
   }
 
   function handleSelect(id: string | null) {
-    // A tap: the only moment iOS lets the preview's audio start.
+    // Also unlocked by the wrapper's pointerdown; this covers keyboard picks.
     previewRef.current?.unlock()
     setSelectedId(id)
     setErrorMessage(null)
@@ -135,6 +139,9 @@ export default function MusicMixer({
   }
 
   function handleChooseOther() {
+    // The picker opens with a track already selected, so the user may start
+    // the preview without ever tapping a track row.
+    previewRef.current?.unlock()
     requestIdRef.current += 1
     setStage('idle')
   }
@@ -146,11 +153,10 @@ export default function MusicMixer({
     onNext()
   }
 
-  const mixing = stage === 'mixing'
-  const auto = stage === 'auto'
-
   return (
-    <div className={styles.wrapper}>
+    // iOS only starts audio inside a user gesture; a tap on the video's
+    // controls or the volume slider is one too, not just a track row.
+    <div className={styles.wrapper} onPointerDownCapture={() => previewRef.current?.unlock()}>
       {auto ? (
         <div className={styles.section}>
           <p className={styles.sectionTitle}>BGM</p>
