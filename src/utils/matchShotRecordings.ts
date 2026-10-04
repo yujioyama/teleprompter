@@ -1,12 +1,11 @@
 import { Shot } from '../types'
 
-// teleprompter-cam names saved Photos assets like:
-//   TeleprompterCam-<sessionTag>-shot<paddedIndex>of<count>-<shot.id>.mov
+// teleprompter-cam saves takes to Files (このiPhone内 › TeleprompterCam) as:
+//   TeleprompterCam-<sessionTag>-shot<index>of<count>-<shot.id>.mov
 // where <shot.id> is a crypto.randomUUID() string. This pulls that UUID
-// back out so a batch of camera-roll files can be matched to shots.
-// Unverified on a real device: whether iOS's Photos picker actually
-// preserves this as `File.name` through `<input type="file">` in Safari,
-// rather than renaming it to something like IMG_XXXX.MOV.
+// back out so a batch of picked files can be matched to shots. Files hands
+// Safari the file under its own name; the Photos picker may not (older
+// takes saved to the camera roll can come back as IMG_XXXX.MOV).
 const SHOT_ID_PATTERN =
   /-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.[^./]+$/
 
