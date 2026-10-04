@@ -1,6 +1,17 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSettings } from './useSettings'
+import { useSettings, defaultBgmTrack } from './useSettings'
+import { SUBTITLE_POSITION_BOTTOM } from '../utils/subtitlePosition'
+
+const DEFAULTS = {
+  trimEnabled: true,
+  trimPaddingStart: 0.3,
+  trimPaddingEnd: 0.4,
+  normalizeAudio: true,
+  defaultBgmId: 'lofi-tokyo',
+  bgmVolume: 0.3,
+  subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -9,12 +20,7 @@ beforeEach(() => {
 describe('useSettings', () => {
   it('returns defaults when localStorage is empty', () => {
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({
-      trimEnabled: true,
-      trimPaddingStart: 0.3,
-      trimPaddingEnd: 0.4,
-      normalizeAudio: true,
-    })
+    expect(result.current[0]).toEqual(DEFAULTS)
   })
 
   it('updates trimEnabled', () => {
@@ -54,20 +60,13 @@ describe('useSettings', () => {
       JSON.stringify({ trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2, normalizeAudio: false }),
     )
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({
-      trimEnabled: false, trimPaddingStart: 0.3, trimPaddingEnd: 1.2, normalizeAudio: false,
-    })
+    expect(result.current[0]).toEqual({ ...DEFAULTS, trimEnabled: false, trimPaddingEnd: 1.2, normalizeAudio: false })
   })
 
   it('falls back to defaults when localStorage contains invalid JSON', () => {
     localStorage.setItem('teleprompter_settings', 'not-json')
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toEqual({
-      trimEnabled: true,
-      trimPaddingStart: 0.3,
-      trimPaddingEnd: 0.4,
-      normalizeAudio: true,
-    })
+    expect(result.current[0]).toEqual(DEFAULTS)
   })
 
   it('uses defaults for new fields when loading old-format data', () => {
@@ -99,5 +98,39 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current[0].normalizeAudio).toBe(true)
     expect(result.current[0].trimEnabled).toBe(false) // old value preserved
+  })
+
+  it('stores the usual BGM, its volume and the subtitle position', () => {
+    const { result } = renderHook(() => useSettings())
+    act(() => { result.current[1]({ defaultBgmId: null }) })
+    act(() => { result.current[1]({ bgmVolume: 0.55 }) })
+    act(() => { result.current[1]({ subtitlePosition: 64 }) })
+    expect(result.current[0]).toMatchObject({ defaultBgmId: null, bgmVolume: 0.55, subtitlePosition: 64 })
+    expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({
+      defaultBgmId: null,
+      bgmVolume: 0.55,
+      subtitlePosition: 64,
+    })
+  })
+
+  it('gives stored settings from before these keys their defaults', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0]).toMatchObject({
+      defaultBgmId: 'lofi-tokyo',
+      bgmVolume: 0.3,
+      subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+    })
+  })
+})
+
+describe('defaultBgmTrack', () => {
+  it('resolves the usual BGM to its track', () => {
+    expect(defaultBgmTrack({ defaultBgmId: 'lofi-tokyo' })?.title).toBe('Tokyo Lofi')
+  })
+
+  it('treats none, or a track that no longer exists, as no BGM', () => {
+    expect(defaultBgmTrack({ defaultBgmId: null })).toBeNull()
+    expect(defaultBgmTrack({ defaultBgmId: 'removed-track' })).toBeNull()
   })
 })
