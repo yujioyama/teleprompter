@@ -1,5 +1,12 @@
 import { ALL_FORMATS, BlobSource, EncodedAudioPacketSource, EncodedVideoPacketSource, Input } from 'mediabunny'
-import { copyPackets, createMp4Output, createPrimedAacSource, decodeAudioTrack, runOutput } from './audioTrack'
+import {
+  copyPackets,
+  createMp4Output,
+  createPrimedAacSource,
+  decodeAudioTrack,
+  fitAudioLength,
+  runOutput,
+} from './audioTrack'
 import { renderMix } from './mixMusicWebCodecs'
 import { applyTargetLoudness } from './normalizeLoudnessWebCodecs'
 
@@ -20,6 +27,11 @@ export function durationsMatch(audio: number, video: number): boolean {
  * `normalize`, brought to the export loudness as normalizeLoudnessWebCodecs
  * does. Returned encoded, as an audio-only M4A: the float buffer is ~23 MB a
  * minute, which iOS can't spare while burning subtitles (issue #12).
+ *
+ * Built to the length of the source's video track, not of its audio: AAC
+ * pads the audio's tail and each generation adds up to a frame (~21 ms), so
+ * the audio of an already re-encoded cut runs past its picture and would
+ * miss joinVideoAndAudio's tolerance.
  */
 export async function prepareFinalAudio(
   source: Blob,
@@ -32,8 +44,12 @@ export async function prepareFinalAudio(
   try {
     const audioTrack = await input.getPrimaryAudioTrack()
     if (!audioTrack) throw new Error('video has no audio track')
-    const duration = await input.computeDuration()
-    audio = await renderMix(await decodeAudioTrack(audioTrack), track, volume, duration)
+    const videoTrack = await input.getPrimaryVideoTrack()
+    if (!videoTrack) throw new Error('prepared audio: source has no video track')
+    const duration = await videoTrack.computeDuration()
+    const decoded = await decodeAudioTrack(audioTrack)
+    const trimmed = fitAudioLength(decoded, Math.round(duration * decoded.sampleRate))
+    audio = await renderMix(trimmed, track, volume, duration)
   } finally {
     input.dispose()
   }
@@ -61,7 +77,8 @@ async function encodeAudioOnly(audio: AudioBuffer): Promise<Blob> {
  * An MP4 with `video`'s video packets and `audio`'s audio packets, both
  * copied as they are — no decoding or encoding. Throws when the two differ
  * in length by more than MAX_DURATION_MISMATCH, so the caller can mix the
- * slow way instead.
+ * slow way instead. Audio packets from the video's end on are dropped: the
+ * AAC tail padding must not outlast the picture.
  */
 export async function joinVideoAndAudio(video: Blob, audio: Blob): Promise<Blob> {
   const videoInput = new Input({ source: new BlobSource(video), formats: ALL_FORMATS })
@@ -91,7 +108,7 @@ export async function joinVideoAndAudio(video: Blob, audio: Blob): Promise<Blob>
     const buffer = await runOutput(output, () =>
       Promise.all([
         copyPackets(videoTrack, videoSource, videoConfig),
-        copyPackets(audioTrack, audioSource, audioConfig),
+        copyPackets(audioTrack, audioSource, audioConfig, videoDuration),
       ]),
     )
     if (!buffer || buffer.byteLength < 1000) {
