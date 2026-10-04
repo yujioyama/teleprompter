@@ -20,7 +20,9 @@ import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { raceAbort } from '../utils/cancellation'
-import { useSettings } from '../hooks/useSettings'
+import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
+import { fetchTrack } from '../utils/fetchTrack'
+import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
@@ -96,6 +98,10 @@ export default function FinalizePage() {
   const { getScript } = useScripts()
   const [settings] = useSettings()
   const { normalizeAudio } = settings
+  const defaultTrack = defaultBgmTrack(settings)
+  const { bgmVolume } = settings
+  // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
+  const initialSubtitleState = (): SubtitleState => ({ ...INITIAL_SUBTITLE_STATE, position: settings.subtitlePosition })
   const script = id ? getScript(id) : undefined
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
@@ -118,9 +124,13 @@ export default function FinalizePage() {
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
   // all translation/subtitle work would be lost on back-navigation.
-  const [subtitleState, setSubtitleState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+  const [subtitleState, setSubtitleState] = useState<SubtitleState>(initialSubtitleState)
   const [step, setStep] = useState<WizardStepId>('trim')
   const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([])
+  // The BGM step was just entered from a finished burn with a usual BGM
+  // set: it mixes that straight away. Coming back to it later never does.
+  const [bgmAutoPending, setBgmAutoPending] = useState(false)
+  const [preparedAudio] = useState(() => new PreparedAudio())
   const urlsRef = useRef<string[]>([])
   const combinedUrlRef = useRef<string | null>(null)
   const finalUrlRef = useRef<string | null>(null)
@@ -294,6 +304,7 @@ export default function FinalizePage() {
     setCompletedSteps(prev => prev.filter(s => STEP_ORDER.indexOf(s) < targetIndex))
     if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurnedBlob(null)
     if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixedBlob(null)
+    setBgmAutoPending(false)
     setStep(target)
   }
 
@@ -354,6 +365,26 @@ export default function FinalizePage() {
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => clearTimeout(timer)
   }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips])
+
+  // Build the finished audio (usual BGM + loudness) while the subtitles
+  // are worked on: they only change the picture, so after the burn the
+  // BGM step just joins this audio to the burned video. Hardware path
+  // only; the ffmpeg.wasm fallback mixes after the burn as before.
+  useEffect(() => {
+    if (step !== 'subtitle' || !combinedBlob || !defaultTrack) return
+    let cancelled = false
+    void canUseWebCodecs().then(ok => {
+      if (cancelled || !ok) return
+      preparedAudio.prepare(
+        combinedBlob,
+        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio },
+        () => fetchTrack(defaultTrack),
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, preparedAudio])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -431,7 +462,8 @@ export default function FinalizePage() {
     setBurnedBlob(null)
     setMixedBlob(null)
     // A re-combined video invalidates any subtitle cues tied to the old one.
-    setSubtitleState(INITIAL_SUBTITLE_STATE)
+    setSubtitleState(initialSubtitleState())
+    preparedAudio.clear()
     try {
       const clips = availableEntries.map(clipOf)
       // Raced so 中断する frees the page even if an encode never settles.
@@ -634,6 +666,7 @@ export default function FinalizePage() {
                 }
                 onBurned={burned => {
                   setBurnedBlob(burned)
+                  setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
                 }}
               />
@@ -648,8 +681,21 @@ export default function FinalizePage() {
                 // track/volume change re-mixes onto its own previous mixed
                 // output and BGM layers stack indefinitely.
                 videoBlob={(burnedBlob ?? combinedBlob) as Blob}
+                initialTrackId={defaultTrack?.id ?? null}
+                initialVolume={bgmVolume}
+                autoMix={bgmAutoPending}
+                mix={(track, trackBlob, volume) =>
+                  mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
+                    trackId: track.id,
+                    volume,
+                    normalize: normalizeAudio,
+                  })
+                }
                 onMixed={setMixedBlob}
-                onNext={() => markStepDone('bgm', 'export')}
+                onNext={() => {
+                  setBgmAutoPending(false)
+                  markStepDone('bgm', 'export')
+                }}
               />
             </div>
           )}

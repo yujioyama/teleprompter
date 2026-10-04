@@ -11,7 +11,8 @@ import { MUSIC_TRACKS } from '../data/musicTracks'
 import { trimAndNormalizeShot, unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
-import { normalizeLoudness } from '../utils/normalizeLoudness'
+import { normalizeLoudness, markLoudnessNormalized } from '../utils/normalizeLoudness'
+import { prepareFinalAudio, joinVideoAndAudio } from '../utils/webcodecs/finalAudio'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { listShotAnalyses, updateShotAnalysis } from '../utils/shotAnalysisStore'
@@ -40,6 +41,11 @@ vi.mock('../utils/shareOrDownload', () => ({
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
   normalizeLoudness: vi.fn(),
+  markLoudnessNormalized: vi.fn(),
+}))
+vi.mock('../utils/webcodecs/finalAudio', () => ({
+  prepareFinalAudio: vi.fn(),
+  joinVideoAndAudio: vi.fn(),
 }))
 vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/detectSpeechBounds')>()),
@@ -88,6 +94,8 @@ function renderFinalizePage(scriptId: string) {
 beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
+  // The tests below predate the usual BGM; they walk the BGM step by hand.
+  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null }))
   vi.clearAllMocks()
   const script = seedScript()
   await saveShotVideo(script.id, SHOT_1, new Blob(['shot'], { type: 'video/mp4' }))
@@ -795,11 +803,101 @@ describe('FinalizePage export step: loudness normalization', () => {
   })
 
   it('skips it when 音量の自動調整 is turned off in settings', async () => {
-    localStorage.setItem('teleprompter_settings', JSON.stringify({ normalizeAudio: false }))
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, normalizeAudio: false }))
     await walkToExport()
 
     fireEvent.click(await screen.findByText('保存する'))
     expect(normalizeLoudness).not.toHaveBeenCalled()
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
+  })
+})
+
+describe('FinalizePage with a usual BGM', () => {
+  const BURNED = new Blob(['burned'], { type: 'video/mp4' })
+
+  function useSettingsOf(settings: object) {
+    localStorage.setItem('teleprompter_settings', JSON.stringify(settings))
+  }
+
+  // Trim/combine → subtitle (translated) → 次へ.
+  async function walkThroughSubtitles() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+  }
+
+  beforeEach(() => {
+    vi.mocked(burnModule.burnSubtitles).mockResolvedValue(BURNED)
+  })
+
+  it('adds the usual BGM after the burn and goes straight to export', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo', bgmVolume: 0.45 })
+    await walkThroughSubtitles()
+
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
+    const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
+    expect(video).toBe(BURNED)
+    expect(volume).toBe(0.45)
+    expect(screen.getByText('BGM').closest('button')).not.toBeDisabled()
+  })
+
+  it('opens the BGM step on the usual BGM when going back to it, without mixing again', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo' })
+    await walkThroughSubtitles()
+    await screen.findByText('保存する')
+
+    fireEvent.click(screen.getByText('BGM').closest('button')!)
+    expect(await screen.findByText('BGMなしで進む')).toBeInTheDocument()
+    expect(screen.getByText('Tokyo Lofi').closest('div')?.className).toMatch(/trackRowSelected/)
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops on the BGM step as before when the usual BGM is なし', async () => {
+    useSettingsOf({ defaultBgmId: null })
+    await walkThroughSubtitles()
+    expect(await screen.findByText('BGMなしで進む')).toBeInTheDocument()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('opens the subtitle step at the usual position, and burns with it', async () => {
+    useSettingsOf({ defaultBgmId: null, subtitlePosition: 64 })
+    await walkThroughSubtitles()
+    await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
+    expect(vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]).toBe(64)
+  })
+
+  it('joins the burned video with audio prepared during the subtitle step', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo', bgmVolume: 0.3, normalizeAudio: true })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    const prepared = new Blob(['prepared'], { type: 'audio/mp4' })
+    const joined = new Blob(['joined'], { type: 'video/mp4' })
+    vi.mocked(prepareFinalAudio).mockResolvedValue(prepared)
+    vi.mocked(joinVideoAndAudio).mockResolvedValue(joined)
+    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+
+    await walkThroughSubtitles()
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+
+    const combined = await vi.mocked(concatVideos).mock.results[0].value
+    const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
+    expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true])
+    expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
+    expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
   })
 })
