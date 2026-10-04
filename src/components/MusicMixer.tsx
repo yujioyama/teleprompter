@@ -6,9 +6,15 @@ import { BgmPreview } from '../utils/bgmPreview'
 import MusicPicker from './MusicPicker'
 import styles from './MusicMixer.module.css'
 
+/** The video with a BGM added, and which track it is. */
+export interface MixedVideo {
+  blob: Blob
+  trackTitle: string
+}
+
 interface MusicMixerProps {
   videoBlob: Blob
-  onMixed: (blob: Blob | null) => void
+  onMixed: (mix: MixedVideo | null) => void
   onNext: () => void
   /** Track and volume the picker opens with: the usual BGM from settings. */
   initialTrackId?: string | null
@@ -123,7 +129,7 @@ export default function MusicMixer({
       const trackBlob = await fetchTrack(track)
       const mixed = await (mix ? mix(track, trackBlob, mixVolume) : mixMusic(videoBlob, trackBlob, mixVolume))
       if (requestIdRef.current !== requestId) return
-      onMixed(mixed)
+      onMixed({ blob: mixed, trackTitle: track.title })
       onNext()
     } catch (err) {
       if (requestIdRef.current !== requestId) return

@@ -104,6 +104,31 @@
   opacity: 0.5;
 }
 
+.bgmRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bgmTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.removeBgmBtn {
+  flex: none;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
 .stepBody {
   display: flex;
   flex-direction: column;

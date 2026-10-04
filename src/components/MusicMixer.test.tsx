@@ -58,7 +58,7 @@ describe('MusicMixer', () => {
     const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
     expect(video).toBe(VIDEO_BLOB)
     expect(volume).toBe(0.5)
-    expect(onMixed).toHaveBeenCalledWith(mixed)
+    expect(onMixed).toHaveBeenCalledWith({ blob: mixed, trackTitle: MUSIC_TRACKS[0].title })
   })
 
   it('fetches a track once for both the preview and the mix', async () => {
@@ -169,7 +169,7 @@ describe('MusicMixer', () => {
     const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
     expect(video).toBe(VIDEO_BLOB)
     expect(volume).toBe(0.45)
-    expect(onMixed).toHaveBeenCalledWith(mixed)
+    expect(onMixed).toHaveBeenCalledWith({ blob: mixed, trackTitle: 'Tokyo Lofi' })
   })
 
   it('drops the auto mix and shows the picker on 別のBGMを選ぶ', async () => {
@@ -260,7 +260,7 @@ describe('MusicMixer', () => {
     )
     fireEvent.click(nextButton())
 
-    await waitFor(() => expect(onMixed).toHaveBeenCalledWith(joined))
+    await waitFor(() => expect(onMixed).toHaveBeenCalledWith({ blob: joined, trackTitle: 'Tokyo Lofi' }))
     const [track, trackBlob, volume] = mix.mock.calls[0] as unknown as [{ id: string }, Blob, number]
     expect(track.id).toBe('lofi-tokyo')
     expect(trackBlob).toBeInstanceOf(Blob)

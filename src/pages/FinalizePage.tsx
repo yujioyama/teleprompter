@@ -27,7 +27,7 @@ import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
 import { ShotCueInput } from '../utils/subtitleCues'
-import MusicMixer from '../components/MusicMixer'
+import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import styles from './FinalizePage.module.css'
 
@@ -119,7 +119,7 @@ export default function FinalizePage() {
   // subtitles shot by shot (trims may change afterwards without re-combining).
   const [combinedClips, setCombinedClips] = useState<ShotClip[]>([])
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
-  const [mixedBlob, setMixedBlob] = useState<Blob | null>(null)
+  const [mixed, setMixed] = useState<MixedVideo | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
@@ -303,7 +303,7 @@ export default function FinalizePage() {
     const targetIndex = STEP_ORDER.indexOf(target)
     setCompletedSteps(prev => prev.filter(s => STEP_ORDER.indexOf(s) < targetIndex))
     if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurnedBlob(null)
-    if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixedBlob(null)
+    if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixed(null)
     setBgmAutoPending(false)
     setStep(target)
   }
@@ -329,7 +329,7 @@ export default function FinalizePage() {
   const detectingCount = availableEntries.filter(e => e.autoTrimPending).length
   const canCombine =
     availableEntries.length > 0 && availableEntries.every(e => e.duration > 0) && detectingCount === 0
-  const finalBlob = mixedBlob ?? burnedBlob ?? combinedBlob
+  const finalBlob = mixed?.blob ?? burnedBlob ?? combinedBlob
 
   // Encode shots ahead while the user is still trimming, so 結合 only has
   // to join them. Waits for speech detection to finish (it decodes every
@@ -460,7 +460,7 @@ export default function FinalizePage() {
     // back here is goToStep, which already truncates completedSteps), so
     // clearing the blobs is sufficient — no completedSteps update needed.
     setBurnedBlob(null)
-    setMixedBlob(null)
+    setMixed(null)
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(initialSubtitleState())
     preparedAudio.clear()
@@ -697,7 +697,7 @@ export default function FinalizePage() {
                   preparedAudio.clear()
                   setBgmAutoPending(false)
                 }}
-                onMixed={setMixedBlob}
+                onMixed={setMixed}
                 onNext={() => {
                   setBgmAutoPending(false)
                   markStepDone('bgm', 'export')
@@ -718,6 +718,16 @@ export default function FinalizePage() {
               <video className={styles.preview} src={finalUrl} controls playsInline />
               {loudnessState === 'failed' && (
                 <p className={styles.missing}>音量の自動調整に失敗したため、元の音量のまま保存されます</p>
+              )}
+              {mixed && (
+                <div className={styles.bgmRow}>
+                  <span className={styles.bgmTitle}>BGM: {mixed.trackTitle}</span>
+                  {/* Falls back to the pre-BGM video; the BGM step stays done,
+                      since no BGM is a valid outcome of it. */}
+                  <button className={styles.removeBgmBtn} onClick={() => setMixed(null)}>
+                    BGMを外す
+                  </button>
+                </div>
               )}
               <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
                 保存する
