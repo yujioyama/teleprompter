@@ -122,3 +122,8 @@
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
