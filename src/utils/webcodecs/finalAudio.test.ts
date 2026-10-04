@@ -8,6 +8,13 @@ describe('durationsMatch', () => {
     expect(durationsMatch(11.96, 12.0)).toBe(true)
   })
 
+  it('pins the tolerance edge', () => {
+    expect(durationsMatch(12.049, 12.0)).toBe(true)
+    expect(durationsMatch(11.951, 12.0)).toBe(true)
+    expect(durationsMatch(12.051, 12.0)).toBe(false)
+    expect(durationsMatch(11.949, 12.0)).toBe(false)
+  })
+
   it('rejects audio built for a differently cut video', () => {
     expect(durationsMatch(12.2, 12.0)).toBe(false)
     expect(durationsMatch(11.0, 12.0)).toBe(false)

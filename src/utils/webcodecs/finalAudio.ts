@@ -1,20 +1,7 @@
-import {
-  ALL_FORMATS,
-  AudioBufferSource,
-  BlobSource,
-  BufferTarget,
-  EncodedAudioPacketSource,
-  EncodedPacketSink,
-  EncodedVideoPacketSource,
-  Input,
-  Mp4OutputFormat,
-  Output,
-  Quality,
-} from 'mediabunny'
-import { decodeAudioTrack } from './audioTrack'
+import { ALL_FORMATS, BlobSource, EncodedAudioPacketSource, EncodedVideoPacketSource, Input } from 'mediabunny'
+import { copyPackets, createMp4Output, createPrimedAacSource, decodeAudioTrack, runOutput } from './audioTrack'
 import { renderMix } from './mixMusicWebCodecs'
 import { applyTargetLoudness } from './normalizeLoudnessWebCodecs'
-import { aacEncoderDelay } from './support'
 
 /**
  * How far prepared audio may run from the video it's joined to. Two encodes
@@ -50,29 +37,22 @@ export async function prepareFinalAudio(
   } finally {
     input.dispose()
   }
+  // Its return value only says whether anything changed; the buffer is
+  // encoded either way.
   if (normalize) applyTargetLoudness(audio)
   return encodeAudioOnly(audio)
 }
 
 async function encodeAudioOnly(audio: AudioBuffer): Promise<Blob> {
-  // Fed early by the encoder's priming delay, as muxWithAudio does, so the
-  // audible start lands at 0 once the packets are copied next to the video.
-  const source = new AudioBufferSource(
-    { codec: 'aac', quality: new Quality('high') },
-    { startTimestamp: -(await aacEncoderDelay()) },
-  )
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
+  // Primed as muxWithAudio's is, so the audible start lands at 0 once the
+  // packets are copied next to the video.
+  const source = await createPrimedAacSource()
+  const output = createMp4Output()
   output.addAudioTrack(source)
-  await output.start()
-  try {
+  const buffer = await runOutput(output, async () => {
     await source.add(audio)
     source.close()
-    await output.finalize()
-  } catch (err) {
-    await output.cancel().catch(() => undefined)
-    throw err
-  }
-  const buffer = output.target.buffer
+  })
   if (!buffer) throw new Error('prepared audio: no output')
   return new Blob([buffer], { type: 'audio/mp4' })
 }
@@ -105,35 +85,15 @@ export async function joinVideoAndAudio(video: Blob, audio: Blob): Promise<Blob>
 
     const videoSource = new EncodedVideoPacketSource(videoCodec)
     const audioSource = new EncodedAudioPacketSource(audioCodec)
-    const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
+    const output = createMp4Output()
     output.addVideoTrack(videoSource, { rotation: await videoTrack.getRotation() })
     output.addAudioTrack(audioSource)
-    await output.start()
-    try {
-      await Promise.all([
-        (async () => {
-          let first = true
-          for await (const packet of new EncodedPacketSink(videoTrack).packets()) {
-            await videoSource.add(packet, first ? { decoderConfig: videoConfig } : undefined)
-            first = false
-          }
-          videoSource.close()
-        })(),
-        (async () => {
-          let first = true
-          for await (const packet of new EncodedPacketSink(audioTrack).packets()) {
-            await audioSource.add(packet, first ? { decoderConfig: audioConfig } : undefined)
-            first = false
-          }
-          audioSource.close()
-        })(),
-      ])
-      await output.finalize()
-    } catch (err) {
-      await output.cancel().catch(() => undefined)
-      throw err
-    }
-    const buffer = output.target.buffer
+    const buffer = await runOutput(output, () =>
+      Promise.all([
+        copyPackets(videoTrack, videoSource, videoConfig),
+        copyPackets(audioTrack, audioSource, audioConfig),
+      ]),
+    )
     if (!buffer || buffer.byteLength < 1000) {
       throw new Error(`join: suspiciously small output (${buffer?.byteLength ?? 0} bytes)`)
     }
