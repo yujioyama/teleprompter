@@ -37,15 +37,21 @@ export async function mixMusicWebCodecs(videoBlob: Blob, trackBlob: Blob, volume
   }
 }
 
-/** The BGM mixed under `original`, as the ffmpeg filtergraph would (see above). */
+/**
+ * The BGM mixed under `original`, as the ffmpeg filtergraph would (see above).
+ * `length` (samples) is the output's, default that of `original`; the
+ * offline context cuts or pads `original` to it, so a caller needing another
+ * length needn't copy the whole buffer first.
+ */
 export async function renderMix(
   original: AudioBuffer,
   trackBlob: Blob,
   volume: number,
   duration: number,
+  length = original.length,
 ): Promise<AudioBuffer> {
   // `amix duration=first`: the output is as long as the original audio.
-  const ctx = new OfflineAudioContext(original.numberOfChannels, original.length, original.sampleRate)
+  const ctx = new OfflineAudioContext(original.numberOfChannels, length, original.sampleRate)
 
   const bgm = await ctx.decodeAudioData(await trackBlob.arrayBuffer())
 

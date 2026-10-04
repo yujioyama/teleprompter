@@ -50,27 +50,6 @@ export async function decodeAudioTrack(audioTrack: InputAudioTrack): Promise<Aud
 }
 
 /**
- * `channels` resized to exactly `length` samples each: cut at the end if
- * longer, padded with silence if shorter. Pure so it can be tested without
- * an AudioBuffer.
- */
-export function fitChannelData(channels: Float32Array[], length: number): Float32Array[] {
-  return channels.map((data) => {
-    const out = new Float32Array(length)
-    out.set(data.length > length ? data.subarray(0, length) : data)
-    return out
-  })
-}
-
-/** `audio` cut or silence-padded to `length` samples; the input is left alone. */
-export function fitAudioLength(audio: AudioBuffer, length: number): AudioBuffer {
-  const channels = Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c))
-  const out = new AudioBuffer({ numberOfChannels: audio.numberOfChannels, length, sampleRate: audio.sampleRate })
-  fitChannelData(channels, length).forEach((data, c) => out.copyToChannel(data, c))
-  return out
-}
-
-/**
  * Copy every packet of `track` into `source` as-is, then close it. The
  * decoder config rides on the first packet, as the muxer expects. With
  * `endTimestamp`, packets starting at or after it (seconds) are left out.

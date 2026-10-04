@@ -202,6 +202,48 @@ describe('MusicMixer', () => {
     expect(onNext).not.toHaveBeenCalled()
   })
 
+  it('reports leaving the auto mix on 別のBGMを選ぶ', async () => {
+    const onLeaveAuto = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockImplementationOnce(() => new Promise<Blob>(() => {}))
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={vi.fn()}
+        onNext={vi.fn()}
+        initialTrackId="lofi-tokyo"
+        autoMix
+        onLeaveAuto={onLeaveAuto}
+      />,
+    )
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(1))
+    expect(onLeaveAuto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports leaving the auto mix when it fails, but not when a manual mix does', async () => {
+    const onLeaveAuto = vi.fn()
+    vi.mocked(mixModule.mixMusic).mockRejectedValue(new Error('boom'))
+    render(
+      <MusicMixer
+        videoBlob={VIDEO_BLOB}
+        onMixed={vi.fn()}
+        onNext={vi.fn()}
+        initialTrackId="lofi-tokyo"
+        autoMix
+        onLeaveAuto={onLeaveAuto}
+      />,
+    )
+    await screen.findByText(/合成に失敗しました/)
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(nextButton())
+    await waitFor(() => expect(mixModule.mixMusic).toHaveBeenCalledTimes(2))
+    await screen.findByText(/合成に失敗しました/)
+    expect(onLeaveAuto).toHaveBeenCalledTimes(1)
+  })
+
   it('does nothing automatically when autoMix has no usual BGM', () => {
     render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={vi.fn()} initialTrackId={null} autoMix />)
     expect(screen.getByText('BGMなしで進む')).toBeInTheDocument()

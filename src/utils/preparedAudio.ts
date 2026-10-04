@@ -56,12 +56,18 @@ export async function mixForExport(
   const audio = prepared.get(source, key)
   if (audio) {
     try {
+      const start = performance.now()
       const joined = await joinVideoAndAudio(video, await audio)
       if (key.normalize) markLoudnessNormalized(joined)
+      // Seen in the console when testing on a device: a silent fallback
+      // would otherwise look the same as the fast path, only slower.
+      console.info(`[mixForExport] joined prepared audio in ${Math.round(performance.now() - start)} ms`)
       return joined
     } catch (err) {
       console.warn('[mixForExport] prepared audio unusable, mixing instead:', err)
     }
+  } else {
+    console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
   return mixMusic(video, trackBlob, key.volume)
 }

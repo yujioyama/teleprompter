@@ -19,6 +19,7 @@ const KEY: FinalAudioKey = { trackId: 'lofi-tokyo', volume: 0.3, normalize: true
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.spyOn(console, 'info').mockImplementation(() => {})
   vi.mocked(prepareFinalAudio).mockResolvedValue(PREPARED)
   vi.mocked(joinVideoAndAudio).mockResolvedValue(JOINED)
   vi.mocked(mixMusic).mockResolvedValue(MIXED)
@@ -60,6 +61,7 @@ describe('mixForExport', () => {
     expect(joinVideoAndAudio).toHaveBeenCalledWith(BURNED, PREPARED)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(JOINED)
     expect(mixMusic).not.toHaveBeenCalled()
+    expect(console.info).toHaveBeenCalledWith(expect.stringMatching(/joined prepared audio in \d+ ms/))
   })
 
   it('leaves the loudness pass to the export step when the key did not normalize', async () => {
@@ -77,6 +79,7 @@ describe('mixForExport', () => {
     await expect(mixForExport(prepared, COMBINED, BURNED, TRACK, other)).resolves.toBe(MIXED)
     expect(mixMusic).toHaveBeenCalledWith(BURNED, TRACK, 0.6)
     expect(joinVideoAndAudio).not.toHaveBeenCalled()
+    expect(console.info).toHaveBeenCalledWith(expect.stringMatching(/mixing instead/))
   })
 
   it('mixes as before when preparing failed', async () => {

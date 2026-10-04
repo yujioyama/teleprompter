@@ -4,7 +4,6 @@ import {
   createMp4Output,
   createPrimedAacSource,
   decodeAudioTrack,
-  fitAudioLength,
   runOutput,
 } from './audioTrack'
 import { renderMix } from './mixMusicWebCodecs'
@@ -17,8 +16,23 @@ import { applyTargetLoudness } from './normalizeLoudnessWebCodecs'
  */
 export const MAX_DURATION_MISMATCH = 0.05
 
-export function durationsMatch(audio: number, video: number): boolean {
-  return Math.abs(audio - video) <= MAX_DURATION_MISMATCH
+/** One AAC frame (1024 samples) at `sampleRate`, in seconds. */
+function aacFrameSeconds(sampleRate: number): number {
+  return 1024 / sampleRate
+}
+
+/**
+ * Whether audio of `audio` seconds (an AAC track at `sampleRate`) fits a
+ * video of `video` seconds. The audio may run one AAC frame longer than the
+ * tolerance: the final encode's own tail padding (measured 31-36 ms) comes
+ * on top of what the cut differs by, and the join drops what's past the
+ * video's end anyway.
+ */
+export function durationsMatch(audio: number, video: number, sampleRate: number): boolean {
+  return (
+    audio >= video - MAX_DURATION_MISMATCH &&
+    audio <= video + MAX_DURATION_MISMATCH + aacFrameSeconds(sampleRate)
+  )
 }
 
 /**
@@ -48,8 +62,9 @@ export async function prepareFinalAudio(
     if (!videoTrack) throw new Error('prepared audio: source has no video track')
     const duration = await videoTrack.computeDuration()
     const decoded = await decodeAudioTrack(audioTrack)
-    const trimmed = fitAudioLength(decoded, Math.round(duration * decoded.sampleRate))
-    audio = await renderMix(trimmed, track, volume, duration)
+    // The offline context cuts or pads the decoded audio to this length, so
+    // no second full-length copy is held next to it (~23 MB a minute).
+    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate))
   } finally {
     input.dispose()
   }
@@ -76,9 +91,10 @@ async function encodeAudioOnly(audio: AudioBuffer): Promise<Blob> {
 /**
  * An MP4 with `video`'s video packets and `audio`'s audio packets, both
  * copied as they are — no decoding or encoding. Throws when the two differ
- * in length by more than MAX_DURATION_MISMATCH, so the caller can mix the
- * slow way instead. Audio packets from the video's end on are dropped: the
- * AAC tail padding must not outlast the picture.
+ * in length by more than MAX_DURATION_MISMATCH (plus one AAC frame on the
+ * long side), so the caller can mix the slow way instead. Audio packets from
+ * the video's end on are dropped: the AAC tail padding must not outlast the
+ * picture.
  */
 export async function joinVideoAndAudio(video: Blob, audio: Blob): Promise<Blob> {
   const videoInput = new Input({ source: new BlobSource(video), formats: ALL_FORMATS })
@@ -90,7 +106,7 @@ export async function joinVideoAndAudio(video: Blob, audio: Blob): Promise<Blob>
 
     const videoDuration = await videoTrack.computeDuration()
     const audioDuration = await audioTrack.computeDuration()
-    if (!durationsMatch(audioDuration, videoDuration)) {
+    if (!durationsMatch(audioDuration, videoDuration, audioTrack.sampleRate)) {
       throw new Error(`join: prepared audio is ${audioDuration.toFixed(3)}s, video is ${videoDuration.toFixed(3)}s`)
     }
 

@@ -691,6 +691,12 @@ export default function FinalizePage() {
                     normalize: normalizeAudio,
                   })
                 }
+                onLeaveAuto={() => {
+                  // The auto mix may be waiting on a prepared-audio job that
+                  // never settles; the manual mix must not wait on it too.
+                  preparedAudio.clear()
+                  setBgmAutoPending(false)
+                }}
                 onMixed={setMixedBlob}
                 onNext={() => {
                   setBgmAutoPending(false)

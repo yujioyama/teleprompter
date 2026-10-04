@@ -97,6 +97,8 @@ beforeEach(async () => {
   // The tests below predate the usual BGM; they walk the BGM step by hand.
   localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null }))
   vi.clearAllMocks()
+  // mixForExport reports which way it added the BGM.
+  vi.spyOn(console, 'info').mockImplementation(() => {})
   const script = seedScript()
   await saveShotVideo(script.id, SHOT_1, new Blob(['shot'], { type: 'video/mp4' }))
 
@@ -899,5 +901,24 @@ describe('FinalizePage with a usual BGM', () => {
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('lets 別のBGMを選ぶ escape a prepared-audio job that never settles', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo', bgmVolume: 0.3, normalizeAudio: true })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    vi.mocked(prepareFinalAudio).mockReturnValueOnce(new Promise<Blob>(() => {}))
+    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+
+    await walkThroughSubtitles()
+    expect(await screen.findByText(/いつものBGM（Tokyo Lofi）を合成中/)).toBeInTheDocument()
+    expect(mixModule.mixMusic).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('別のBGMを選ぶ'))
+    fireEvent.click(await screen.findByText('次へ'))
+
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
+    expect(joinVideoAndAudio).not.toHaveBeenCalled()
   })
 })

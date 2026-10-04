@@ -17,6 +17,13 @@ interface MusicMixerProps {
   autoMix?: boolean
   /** How a picked track is added; defaults to mixMusic onto `videoBlob`. */
   mix?: (track: MusicTrack, trackBlob: Blob, volume: number) => Promise<Blob>
+  /**
+   * The auto mix is over without having added the BGM: the user chose
+   * another or it failed. Lets the page drop whatever the auto mix waited
+   * on (a stalled prepared-audio job would otherwise hang the manual mix
+   * too) and its own auto-mix state.
+   */
+  onLeaveAuto?: () => void
 }
 
 // 'auto': mixing the usual BGM on arrival, picker hidden.
@@ -30,6 +37,7 @@ export default function MusicMixer({
   initialVolume = 0.3,
   autoMix = false,
   mix,
+  onLeaveAuto,
 }: MusicMixerProps) {
   const initialTrack = MUSIC_TRACKS.find(t => t.id === initialTrackId) ?? null
   const [selectedId, setSelectedId] = useState<string | null>(initialTrack?.id ?? null)
@@ -122,6 +130,7 @@ export default function MusicMixer({
       const detail = err instanceof Error ? err.message : String(err)
       setErrorMessage(`「${track.title}」の合成に失敗しました: ${detail}`)
       setStage('error')
+      if (isAuto) onLeaveAuto?.()
     }
   }
 
@@ -144,6 +153,7 @@ export default function MusicMixer({
     previewRef.current?.unlock()
     requestIdRef.current += 1
     setStage('idle')
+    onLeaveAuto?.()
   }
 
   function handleSkip() {
