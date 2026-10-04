@@ -26,36 +26,36 @@ export function inferMimeType(file: File): string {
   return 'video/webm'
 }
 
-// Remux to move the moov atom to the front (faststart) for editor compatibility.
-// The whole take is kept: the silence around the speech is only cut in the
-// finalize step, where the auto-detected cut can still be adjusted (issue #21).
-//
 // Audio normalization brings each take to -14 LUFS so the BGM mix, whose
 // gain is absolute, sits the same way under every shot. It goes through
 // WebCodecs when it can: ffmpeg.wasm's loudnorm re-encode was ~95% of an
-// import's time and ~10x slower than this (issue #30). The WebCodecs pass
-// writes a faststart MP4 itself, so ffmpeg.wasm isn't even loaded then.
+// import's time and ~10x slower than this (issue #30).
+//
+// Everything else keeps the take exactly as it came in. There used to be an
+// ffmpeg.wasm faststart remux on every import, a leftover from MediaRecorder's
+// fragmented MP4s: it loaded the ~30MB ffmpeg core and copied the whole take
+// through it just to move the moov atom, which nothing downstream needs — the
+// takes are only ever read from a local Blob, where the moov can sit anywhere.
+// The whole take is kept: the silence around the speech is only cut in the
+// finalize step, where the auto-detected cut can still be adjusted (issue #21).
 export async function processRecordedVideo(
   raw: Blob,
   mimeType: string,
   options: ProcessOptions,
 ): Promise<ProcessedVideo> {
-  if (!isRemuxableContainer(mimeType)) {
+  if (!isRemuxableContainer(mimeType) || !options.normalizeAudio) {
     return { blob: raw, ok: true, error: null }
   }
 
-  let normalize = options.normalizeAudio
-  if (normalize && (await canUseWebCodecs())) {
+  if (await canUseWebCodecs()) {
     try {
-      const normalized = await normalizeLoudnessWebCodecs(raw)
-      if (normalized !== raw) return { blob: normalized, ok: true, error: null }
-      // Already on target, so all that's left is the remux.
-      normalize = false
+      // Comes back as the same blob when the audio is already on target.
+      return { blob: await normalizeLoudnessWebCodecs(raw), ok: true, error: null }
     } catch (err) {
       console.warn('[processRecordedVideo] WebCodecs normalize failed, falling back to ffmpeg:', err)
     }
   }
 
-  const result = await remuxMp4(raw, { normalize })
+  const result = await remuxMp4(raw, { normalize: true })
   return { blob: result.blob, ok: result.ok, error: result.error ?? null }
 }
