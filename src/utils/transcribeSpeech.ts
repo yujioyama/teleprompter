@@ -1,13 +1,43 @@
-import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
+import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from 'mediabunny'
 import { SubtitleCue } from './subtitleCues'
-import { decodeAudioTrack } from './webcodecs/audioTrack'
 import { CancelledError, onAbort, throwIfCancelled } from './cancellation'
 import type { WhisperResponse } from '../workers/whisperWorker'
 
-/** One word as Whisper's word-level timestamps give it (text has a leading space). */
+/**
+ * One timed piece of Whisper output (text has a leading space): a segment,
+ * about a sentence, as the pipeline returns them, or a word placed inside
+ * one by wordsFromSegments.
+ */
 export interface WhisperWord {
   text: string
   timestamp: [number, number | null]
+}
+
+/**
+ * Spread each segment's time over its words in proportion to their length,
+ * so segments can be cut into short cues. Whisper's own word timestamps
+ * would be exact, but computing them keeps every decoder step's attention
+ * in memory, and the phone already runs out of it (the page reloads).
+ * Segments already end where the speaker pauses, so the guesses only have
+ * to place cuts within a sentence.
+ */
+export function wordsFromSegments(segments: WhisperWord[]): WhisperWord[] {
+  const words: WhisperWord[] = []
+  for (const segment of segments) {
+    const parts = segment.text.trim().split(/\s+/).filter(Boolean)
+    if (parts.length === 0) continue
+    const [start, rawEnd] = segment.timestamp
+    const end = rawEnd ?? start + parts.length * MIN_WORD_S
+    // Each word's share, counting the space after it.
+    const total = parts.reduce((sum, w) => sum + w.length + 1, 0)
+    let offset = 0
+    for (const w of parts) {
+      const from = start + ((end - start) * offset) / total
+      offset += w.length + 1
+      words.push({ text: ` ${w}`, timestamp: [from, start + ((end - start) * offset) / total] })
+    }
+  }
+  return words
 }
 
 /** Where transcription is: fetching the model (first time only), then recognizing. */
@@ -81,13 +111,14 @@ export function cuesFromWhisperWords(words: WhisperWord[]): SubtitleCue[] {
  * The video's audio as mono PCM at Whisper's 16kHz. Reads just the audio
  * track's packets out of the blob rather than the whole file — a long
  * one-take video can be hundreds of MB, too much to load at once on a phone
- * (issue #12) — then resamples offline, which also mixes it down to mono.
- * Falls back to decodeAudioData where WebCodecs can't decode the audio.
+ * (issue #12) — mixing each decoded chunk down to mono as it arrives, then
+ * resamples offline. Falls back to decodeAudioData where WebCodecs can't
+ * decode the audio.
  */
 async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
   let audio: AudioBuffer
   try {
-    audio = await decodeAudioTrackOf(blob)
+    audio = await decodeMonoTrack(blob)
   } catch (err) {
     console.warn('[transcribeSpeech] WebCodecs decode failed, falling back to decodeAudioData:', err)
     return decodeWithWebAudio(blob)
@@ -102,13 +133,33 @@ async function decodeToWhisperPcm(blob: Blob): Promise<Float32Array> {
   return rendered.getChannelData(0)
 }
 
-async function decodeAudioTrackOf(blob: Blob): Promise<AudioBuffer> {
+/** The video's audio track, decoded and averaged to one channel at its own rate. */
+async function decodeMonoTrack(blob: Blob): Promise<AudioBuffer> {
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
     const track = await input.getPrimaryAudioTrack()
     if (!track) throw new Error('video has no audio track')
     if (!(await track.canDecode())) throw new Error(`cannot decode ${track.codec ?? 'unknown'} audio`)
-    return await decodeAudioTrack(track)
+
+    const rate = track.sampleRate
+    const mono = new Float32Array(Math.ceil((await track.computeDuration()) * rate))
+    let end = 0
+    for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers()) {
+      const channels = buffer.numberOfChannels
+      // Anything before 0 is AAC priming, not part of the audio.
+      const first = Math.round(timestamp * rate)
+      for (let c = 0; c < channels; c++) {
+        const data = buffer.getChannelData(c)
+        for (let i = Math.max(0, -first); i < data.length && first + i < mono.length; i++) {
+          mono[first + i] += data[i] / channels
+        }
+      }
+      end = Math.min(mono.length, Math.max(end, first + buffer.length))
+    }
+    if (end <= 0) throw new Error('video has no decodable audio')
+    const out = new AudioBuffer({ numberOfChannels: 1, length: end, sampleRate: rate })
+    out.copyToChannel(mono.subarray(0, end), 0)
+    return out
   } finally {
     input.dispose()
   }
@@ -181,7 +232,7 @@ export async function transcribeSpeech(
       if (message.type === 'error') {
         reject(new Error(message.message))
       } else {
-        resolve(cuesFromWhisperWords(message.words))
+        resolve(cuesFromWhisperWords(wordsFromSegments(message.segments)))
       }
     }
     worker.onerror = (err) => {

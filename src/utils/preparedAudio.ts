@@ -35,6 +35,15 @@ export class PreparedAudio {
     return this.entry.audio
   }
 
+  /**
+   * Resolves once the audio being prepared is done (or has failed), right
+   * away when there is none. For heavy work that shouldn't run alongside it
+   * on a phone, such as transcription.
+   */
+  async settled(): Promise<void> {
+    await this.entry?.audio.catch(() => undefined)
+  }
+
   clear(): void {
     this.entry = null
   }

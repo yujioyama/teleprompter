@@ -21,6 +21,7 @@ import { shareOrDownload } from '../utils/shareOrDownload'
 import { normalizeLoudness } from '../utils/normalizeLoudness'
 import { raceAbort } from '../utils/cancellation'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
+import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import ShotTrimmer from '../components/ShotTrimmer'
@@ -668,6 +669,13 @@ export default function FinalizePage() {
                   setBurnedBlob(burned)
                   setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
+                }}
+                // The audio prepared on arrival here decodes and mixes the
+                // whole soundtrack; on top of Whisper that is more memory
+                // than an iPhone gives the page, which then reloads.
+                transcribe={async (blob, onProgress, signal) => {
+                  await preparedAudio.settled()
+                  return transcribeSpeech(blob, onProgress, signal)
                 }}
               />
             </div>
