@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
 import { GENRE_LABELS, GENRE_ORDER, MUSIC_TRACKS } from '../data/musicTracks'
+import { useTrackPreview } from '../hooks/useTrackPreview'
 import type { AppSettings } from '../hooks/useSettings'
 import styles from './BgmSettings.module.css'
 
@@ -11,30 +11,8 @@ interface BgmSettingsProps {
 
 export default function BgmSettings({ trackId, volume, onChange }: BgmSettingsProps) {
   const track = MUSIC_TRACKS.find(t => t.id === trackId) ?? null
-  const [previewing, setPreviewing] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  useEffect(() => () => audioRef.current?.pause(), [])
-
-  function stopPreview() {
-    audioRef.current?.pause()
-    setPreviewing(false)
-  }
-
-  function togglePreview() {
-    if (!track) return
-    if (previewing) {
-      stopPreview()
-      return
-    }
-    if (!audioRef.current) {
-      audioRef.current = new Audio()
-      audioRef.current.addEventListener('ended', () => setPreviewing(false))
-    }
-    audioRef.current.src = `/${track.file}`
-    void audioRef.current.play()
-    setPreviewing(true)
-  }
+  const { previewingId, toggle, stop } = useTrackPreview()
+  const previewing = previewingId !== null && previewingId === track?.id
 
   return (
     <div className={styles.wrapper}>
@@ -47,7 +25,7 @@ export default function BgmSettings({ trackId, volume, onChange }: BgmSettingsPr
             className={styles.select}
             value={track?.id ?? ''}
             onChange={e => {
-              stopPreview()
+              stop()
               onChange({ defaultBgmId: e.target.value || null })
             }}
           >
@@ -62,7 +40,7 @@ export default function BgmSettings({ trackId, volume, onChange }: BgmSettingsPr
               </optgroup>
             ))}
           </select>
-          <button type="button" className={styles.previewBtn} onClick={togglePreview} disabled={!track}>
+          <button type="button" className={styles.previewBtn} onClick={() => track && toggle(track)} disabled={!track}>
             {previewing ? '■ 停止' : '▶ 試聴'}
           </button>
         </div>

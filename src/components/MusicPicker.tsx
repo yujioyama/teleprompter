@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { MusicTrack, GENRE_LABELS, GENRE_ORDER, MusicGenre } from '../data/musicTracks'
+import { useTrackPreview } from '../hooks/useTrackPreview'
 import styles from './MusicPicker.module.css'
 
 interface MusicPickerProps {
@@ -11,29 +12,13 @@ interface MusicPickerProps {
 }
 
 export default function MusicPicker({ tracks, selectedId, onSelect, volume, onVolumeChange }: MusicPickerProps) {
-  const [previewingId, setPreviewingId] = useState<string | null>(null)
   const [genre, setGenre] = useState<MusicGenre>(
     () =>
       tracks.find(t => t.id === selectedId)?.genre ??
       GENRE_ORDER.find(g => tracks.some(t => t.genre === g)) ??
       GENRE_ORDER[0]
   )
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  function handlePreview(track: MusicTrack) {
-    if (previewingId === track.id) {
-      audioRef.current?.pause()
-      setPreviewingId(null)
-      return
-    }
-    if (!audioRef.current) {
-      audioRef.current = new Audio()
-      audioRef.current.addEventListener('ended', () => setPreviewingId(null))
-    }
-    audioRef.current.src = `/${track.file}`
-    audioRef.current.play()
-    setPreviewingId(track.id)
-  }
+  const { previewingId, toggle } = useTrackPreview()
 
   function handleGenreChange(next: MusicGenre) {
     setGenre(next)
@@ -68,7 +53,7 @@ export default function MusicPicker({ tracks, selectedId, onSelect, volume, onVo
           <button className={styles.trackTitle} onClick={() => onSelect(track.id)}>
             {track.title}
           </button>
-          <button className={styles.previewBtn} onClick={() => handlePreview(track)}>
+          <button className={styles.previewBtn} onClick={() => toggle(track)}>
             {previewingId === track.id ? '■ 停止' : '▶ 試聴'}
           </button>
         </div>
