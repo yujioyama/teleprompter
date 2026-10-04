@@ -468,7 +468,6 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('次へ')
     fireEvent.click(screen.getByText('次へ'))
 
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -505,7 +504,6 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance without changing position
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -534,7 +532,6 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -574,7 +571,6 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance (produces a burnedBlob)
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -625,7 +621,6 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, advance
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -676,7 +671,6 @@ describe('FinalizePage wizard', () => {
     fireEvent.click(screen.getByText('次へ'))
 
     // Step 2: subtitle — generate, translate, then kick off burn-in but don't resolve it yet.
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -716,7 +710,6 @@ describe('FinalizePage wizard', () => {
     await screen.findByText('次へ')
     fireEvent.click(screen.getByText('次へ'))
 
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
@@ -764,7 +757,6 @@ describe('FinalizePage export step: loudness normalization', () => {
     fireEvent.click(screen.getByText('結合する'))
     await screen.findByText('次へ')
     fireEvent.click(screen.getByText('次へ'))
-    fireEvent.click(await screen.findByText('📝 英語字幕を生成'))
     await screen.findByDisplayValue('ショット1')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
       target: { value: '1. こんにちは' },
