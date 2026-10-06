@@ -11,6 +11,7 @@ describe('buildClaudePrompt', () => {
     expect(prompt).toContain('1. Hello there')
     expect(prompt).toContain('2. This is a test')
     expect(prompt).toContain('動画に焼き込む日本語字幕')
+    expect(prompt).toContain('オネエ全開')
   })
 
   it('places the numbered lines at the end, under the 【英語セリフ】 heading', () => {
