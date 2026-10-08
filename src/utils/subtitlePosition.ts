@@ -18,6 +18,22 @@ export function subtitleY(position: SubtitlePosition, videoHeight: number, overl
   return Math.round((videoHeight * position) / 100 - overlayHeight / 2)
 }
 
+/** Height of the output video that subtitle positions are measured on. */
+export const SUBTITLE_VIDEO_HEIGHT = 1920
+
+/**
+ * The position (0-100) moved just enough that an overlay `overlayHeight`
+ * tall, centered on it, stays fully on screen.
+ */
+export function clampedSubtitlePosition(
+  position: SubtitlePosition,
+  overlayHeight: number,
+  videoHeight = SUBTITLE_VIDEO_HEIGHT,
+): SubtitlePosition {
+  const half = (overlayHeight / 2 / videoHeight) * 100
+  return Math.min(Math.max(position, half), 100 - half)
+}
+
 /** The one-tap positions offered next to the fine-tune slider. */
 export const SUBTITLE_POSITION_PRESETS: { label: string; value: SubtitlePosition }[] = [
   { label: '上部', value: SUBTITLE_POSITION_TOP },

@@ -1,6 +1,61 @@
-import { describe, it, expect } from 'vitest'
-import { buildOverlayFilterGraph, burnSubtitles, ffmpegProgressRatio } from './burnSubtitles'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import {
+  buildOverlayFilterGraph,
+  burnSubtitles,
+  cuePosition,
+  ffmpegProgressRatio,
+  renderCueImage,
+  renderSubtitleOverlays,
+  type SubtitleLook,
+} from './burnSubtitles'
 import { CancelledError } from './cancellation'
+import { layoutCue, type MeasureText } from './subtitleLayout'
+import { subtitleY } from './subtitlePosition'
+import type { StyledCue } from './subtitleHook'
+import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
+
+vi.mock('./webcodecs/support', () => ({
+  canUseWebCodecs: vi.fn(async () => true),
+  disableWebCodecs: vi.fn(),
+}))
+vi.mock('./webcodecs/burnSubtitlesWebCodecs', () => ({
+  burnSubtitlesWebCodecs: vi.fn(async () => new Blob(['burned'])),
+}))
+
+// The canvas stub's text measure: every char is half its font size wide.
+const measure: MeasureText = (text, font) => text.length * Number(/(\d+)px/.exec(font)![1]) / 2
+
+/** jsdom has no canvas: record what would be drawn. */
+function stubCanvas() {
+  const drawn: { text: string; color: string; font: string }[] = []
+  const bands: string[] = []
+  const ctx = {
+    font: '',
+    fillStyle: '',
+    textAlign: '',
+    textBaseline: '',
+    measureText(text: string) {
+      return { width: measure(text, this.font) }
+    },
+    fillText(text: string) {
+      drawn.push({ text, color: String(this.fillStyle), font: this.font })
+    },
+    beginPath() {},
+    roundRect() {},
+    fill() {
+      bands.push(String(this.fillStyle))
+    },
+  }
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never)
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(cb => cb(new Blob(['png'])))
+  return { drawn, bands }
+}
+
+const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50 }, firstShotDuration: 2 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('buildOverlayFilterGraph', () => {
   it('chains one overlay per cue, each reading the previous stage\'s output', () => {
@@ -46,13 +101,67 @@ describe('ffmpegProgressRatio', () => {
   })
 })
 
+describe('cuePosition', () => {
+  it('centers hook cues at the hook position and the rest at the subtitle position', () => {
+    const cue: StyledCue = { id: 'a', start: 0, end: 1, en: 'a', ja: 'あ', variant: 'hook' }
+    expect(cuePosition(cue, LOOK)).toBe(50)
+    expect(cuePosition({ ...cue, variant: 'normal' }, LOOK)).toBe(72)
+  })
+})
+
+describe('renderCueImage', () => {
+  it('draws an emphasized word in yellow, without its asterisks', async () => {
+    const { drawn } = stubCanvas()
+    await renderCueImage({ id: 'a', start: 0, end: 1, en: 'I *love* it', ja: 'すき' })
+    expect(drawn).toContainEqual(expect.objectContaining({ text: 'love', color: '#FFD60A' }))
+    expect(drawn.some(d => d.text.includes('*'))).toBe(false)
+  })
+
+  it('draws a hook cue bigger, on a darker band', async () => {
+    const { drawn, bands } = stubCanvas()
+    await renderCueImage({ id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ' }, 'hook')
+    expect(bands).toEqual(['rgba(0, 0, 0, 0.8)'])
+    expect(drawn[0].font).toBe('bold 100px sans-serif')
+  })
+})
+
+describe('renderSubtitleOverlays', () => {
+  it('places each cue at its variant\'s position, skipping untranslated ones', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
+    const normal: StyledCue = { id: 'b', start: 2, end: 3, en: 'Bye', ja: 'じゃあ', variant: 'normal' }
+    const untranslated: StyledCue = { id: 'c', start: 3, end: 4, en: 'Hm', ja: null, variant: 'normal' }
+    const overlays = await renderSubtitleOverlays([hook, normal, untranslated], LOOK)
+    expect(overlays.map(o => [o.start, o.end, o.y])).toEqual([
+      [0, 1, subtitleY(50, 1920, layoutCue(hook, measure, 'hook').height)],
+      [2, 3, subtitleY(72, 1920, layoutCue(normal, measure).height)],
+    ])
+  })
+})
+
 describe('burnSubtitles', () => {
   it('rejects a cancelled burn before doing any work (issue #34)', async () => {
     const controller = new AbortController()
     controller.abort()
     const cues = [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }]
     await expect(
-      burnSubtitles(new Blob(['x']), cues, 50, undefined, controller.signal),
+      burnSubtitles(new Blob(['x']), cues, LOOK, undefined, controller.signal),
     ).rejects.toBeInstanceOf(CancelledError)
+  })
+
+  it('shows the first shot\'s first cue from 0s on the whole joined video', async () => {
+    stubCanvas()
+    const cues = [
+      { id: 'speech-0', start: 0.3, end: 1.5, en: 'one', ja: 'いち' },
+      { id: 'speech-1', start: 2.4, end: 3, en: 'two', ja: 'に' },
+    ]
+    await burnSubtitles(new Blob(['x']), cues, LOOK)
+    const overlays = vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][1]
+    expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1.5], [2.4, 3]])
+  })
+
+  it('returns the video unchanged when nothing is translated', async () => {
+    const video = new Blob(['x'])
+    expect(await burnSubtitles(video, [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: null }], LOOK)).toBe(video)
   })
 })

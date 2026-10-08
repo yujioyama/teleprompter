@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   subtitleY,
+  clampedSubtitlePosition,
   SUBTITLE_POSITION_TOP,
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_BOTTOM,
@@ -38,5 +39,23 @@ describe('preset percent constants', () => {
 
   it('bottom preset matches the legacy round(videoHeight * 0.78 - overlayHeight) result', () => {
     expect(subtitleY(SUBTITLE_POSITION_BOTTOM, REF_HEIGHT, REF_OVERLAY)).toBe(1278)
+  })
+})
+
+describe('clampedSubtitlePosition', () => {
+  it('leaves a position alone when the box fits', () => {
+    expect(clampedSubtitlePosition(50, 220)).toBe(50)
+  })
+
+  it('moves a position at 0 to exactly half the box', () => {
+    expect(clampedSubtitlePosition(0, 192)).toBe(5)
+  })
+
+  it('moves a position at 100 up by half the box', () => {
+    expect(clampedSubtitlePosition(100, 192)).toBe(100 - 5)
+  })
+
+  it('puts a tall box at the very top of the video', () => {
+    expect(subtitleY(clampedSubtitlePosition(0, 745), 1920, 745)).toBeCloseTo(0, 5) // Math.round can give -0
   })
 })

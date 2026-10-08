@@ -1,9 +1,12 @@
-import { CSSProperties, useMemo } from 'react'
+import { CSSProperties, Fragment, useMemo } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { SubtitlePosition } from '../utils/subtitlePosition'
+import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
+import { styleCues, type HookOptions } from '../utils/subtitleHook'
+import { EMPHASIS_COLOR } from '../utils/subtitleEmphasis'
 import {
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_BOX_MARGIN_X,
+  SUBTITLE_BOX_OPACITY,
   SUBTITLE_BOX_PADDING_X,
   SUBTITLE_BOX_PADDING_Y,
   SUBTITLE_BOX_RADIUS,
@@ -18,6 +21,10 @@ interface SubtitleOverlayPreviewProps {
   cues: SubtitleCue[]
   position: SubtitlePosition
   currentTime: number
+  /** The first shot's hook treatment; without it every cue is a normal one. */
+  hook?: HookOptions
+  /** The first shot's length in seconds, which decides the hook cues. */
+  firstShotDuration?: number | null
 }
 
 /** Reference-video px → a length relative to the preview container's width. */
@@ -27,34 +34,64 @@ function blockStyle(block: TextBlockLayout): CSSProperties {
   return { fontSize: cqw(block.fontPx), lineHeight: cqw(block.lineHeightPx) }
 }
 
+/** A block's lines, with `*emphasized*` runs in yellow as burned in. */
+function BlockLines({ block }: { block: TextBlockLayout }) {
+  return (
+    <>
+      {block.runs.map((runs, i) => (
+        <span key={i} className={styles.line}>
+          {runs.map((run, j) =>
+            run.emphasized
+              ? <span key={j} style={{ color: EMPHASIS_COLOR }}>{run.text}</span>
+              : <Fragment key={j}>{run.text}</Fragment>,
+          )}
+        </span>
+      ))}
+    </>
+  )
+}
+
 /**
  * Cheap DOM/CSS approximation of the real burned-in subtitle box, positioned
  * at the same vertical percent the real burn-in will use and laid out with
- * the same line breaks and sizes (scaled to the preview's width). Lets the
- * user see where the subtitle will land without re-running the expensive
- * FFmpeg burn-in on every position change.
+ * the same line breaks and sizes (scaled to the preview's width). Cues go
+ * through the same styleCues as the burn, so the first shot's hook style
+ * and its 0 s start show here too. Lets the user see where the subtitle
+ * will land without re-running the expensive burn-in on every change.
  */
-export default function SubtitleOverlayPreview({ cues, position, currentTime }: SubtitleOverlayPreviewProps) {
+export default function SubtitleOverlayPreview({
+  cues,
+  position,
+  currentTime,
+  hook,
+  firstShotDuration = null,
+}: SubtitleOverlayPreviewProps) {
   const measure = useMemo(() => createCanvasMeasure(), [])
-  const cue = cues.find(c => currentTime >= c.start && currentTime < c.end)
-  const layout = useMemo(() => (cue ? layoutCue(cue, measure) : null), [cue, measure])
+  const hookStyle = hook?.style ?? false
+  const styled = useMemo(
+    () => styleCues(cues, firstShotDuration, hookStyle),
+    [cues, firstShotDuration, hookStyle],
+  )
+  const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
+  const layout = useMemo(() => (cue ? layoutCue(cue, measure, cue.variant) : null), [cue, measure])
   if (!cue || !layout) return null
 
   const wrapperStyle: CSSProperties = {
-    top: `${position}%`,
+    top: `${clampedSubtitlePosition(cue.variant === 'hook' && hook ? hook.position : position, layout.height)}%`,
     width: cqw(SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
     padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} ${cqw(SUBTITLE_BOX_PADDING_X)}`,
     borderRadius: cqw(SUBTITLE_BOX_RADIUS),
+    backgroundColor: `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[cue.variant]})`,
   }
 
   return (
-    <div className={styles.wrapper} style={wrapperStyle} data-testid="subtitle-overlay-box">
+    <div className={styles.wrapper} style={wrapperStyle} data-testid="subtitle-overlay-box" data-variant={cue.variant}>
       <p className={styles.en} style={blockStyle(layout.en)}>
-        {layout.en.lines.map((line, i) => <span key={i} className={styles.line}>{line}</span>)}
+        <BlockLines block={layout.en} />
       </p>
       {layout.ja && (
         <p className={styles.ja} style={{ ...blockStyle(layout.ja), marginTop: cqw(SUBTITLE_BLOCK_GAP) }}>
-          {layout.ja.lines.map((line, i) => <span key={i} className={styles.line}>{line}</span>)}
+          <BlockLines block={layout.ja} />
         </p>
       )}
     </div>

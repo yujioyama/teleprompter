@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MUSIC_TRACKS, MusicTrack } from '../data/musicTracks'
-import { SUBTITLE_POSITION_BOTTOM } from '../utils/subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER } from '../utils/subtitlePosition'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -13,6 +13,10 @@ export interface AppSettings {
   bgmVolume: number
   /** 0-100, where the subtitle step starts its position. */
   subtitlePosition: number
+  /** Draw the first shot's cues in the big hook style, from its first frame. */
+  hookStyleEnabled: boolean
+  /** 0-100, where the hook cues are centered. */
+  hookPosition: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -24,6 +28,8 @@ const DEFAULTS: AppSettings = {
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+  hookStyleEnabled: true,
+  hookPosition: SUBTITLE_POSITION_CENTER,
 }
 
 function loadSettings(): AppSettings {

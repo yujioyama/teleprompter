@@ -25,6 +25,14 @@ describe('buildClaudePrompt', () => {
   })
 })
 
+describe('buildClaudePrompt emphasis', () => {
+  it('sends the English without its *emphasis* markers', () => {
+    const prompt = buildClaudePrompt([{ id: 'c0', start: 0, end: 1, en: 'I *love* it', ja: null }])
+    expect(prompt).toContain('1. I love it')
+    expect(prompt).not.toContain('*love*')
+  })
+})
+
 describe('parseJapanesePaste', () => {
   it('matches numbered lines back onto cues by position', () => {
     const cues = makeCues(['Hello', 'World'])
@@ -148,5 +156,12 @@ describe('cuesForShot', () => {
 
   it('returns nothing for a shot without a cue', () => {
     expect(cuesForShot([cue('x', 0, 1), cue('y', 2, 3)], 1, 1)).toEqual([])
+  })
+})
+
+describe('cuesForShot extra fields', () => {
+  it('keeps fields beyond the cue itself, such as its style', () => {
+    const cues = [{ id: 'a', start: 0, end: 3, en: 'a', ja: 'あ', variant: 'hook' as const }]
+    expect(cuesForShot(cues, 2, 2)).toEqual([{ ...cues[0], start: 0, end: 1 }])
   })
 })

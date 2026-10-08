@@ -5,6 +5,7 @@ import {
   SUBTITLE_POSITION_BOTTOM,
   SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
+import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
@@ -53,6 +54,9 @@ interface SubtitleWorkflowProps {
   shotCueInputs: ShotCueInput[]
   state: SubtitleState
   onStateChange: (updater: SubtitleState | ((prev: SubtitleState) => SubtitleState)) => void
+  /** The first shot's hook settings, kept in useSettings by the parent. */
+  hookSettings: HookSettings
+  onHookSettingsChange: (patch: Partial<HookSettings>) => void
   /** Burn `cues` into the combined video, reporting progress 0–1; `signal` aborts it. */
   burn: (
     cues: SubtitleCue[],
@@ -79,6 +83,8 @@ export default function SubtitleWorkflow({
   shotCueInputs,
   state,
   onStateChange,
+  hookSettings,
+  onHookSettingsChange,
   burn,
   onBurned,
   transcribe = transcribeSpeech,
@@ -249,6 +255,9 @@ export default function SubtitleWorkflow({
 
   const hasAnyJapanese = cues.some(c => c.ja !== null)
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
+  const hook = hookOptionsOf(hookSettings)
+  // The first clip of the 結合: hook cues are the ones starting within it.
+  const firstShotDuration = shotCueInputs[0]?.duration ?? null
 
   return (
     <div className={styles.wrapper}>
@@ -295,6 +304,7 @@ export default function SubtitleWorkflow({
               {source === 'speech' ? '英語字幕（聞き取り違いがあれば直してください）' : '英語字幕（必要なら修正してください）'}
             </p>
             <SubtitleEditor cues={cues} onEditEn={handleEditEn} onEditJa={handleEditJa} />
+            <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
           </div>
 
           {!hasAnyJapanese && (
@@ -328,17 +338,47 @@ export default function SubtitleWorkflow({
                   playsInline
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
                 />
-                <SubtitleOverlayPreview cues={cues} position={position} currentTime={previewTime} />
+                <SubtitleOverlayPreview
+                  cues={cues}
+                  position={position}
+                  currentTime={previewTime}
+                  hook={hook}
+                  firstShotDuration={firstShotDuration}
+                />
               </div>
 
               <p className={styles.sectionTitle}>字幕の位置</p>
-              <div className={styles.positionRow}>
+              <div className={styles.positionRow} role="group" aria-label="字幕の位置">
                 {SUBTITLE_POSITION_PRESETS.map(p => (
                   <button
                     key={p.label}
                     className={`${styles.positionBtn} ${position === p.value ? styles.positionBtnActive : ''}`}
                     aria-pressed={position === p.value}
                     onClick={() => patch({ position: p.value })}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              <p className={styles.sectionTitle}>最初のショット（フック）</p>
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={hookSettings.hookStyleEnabled}
+                  onChange={e => onHookSettingsChange({ hookStyleEnabled: e.target.checked })}
+                />
+                フック字幕
+              </label>
+              <p className={styles.hint}>最初のショットの字幕を大きく濃い帯で、1フレーム目から表示します</p>
+              <div className={styles.positionRow} role="group" aria-label="フック字幕の位置">
+                {SUBTITLE_POSITION_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    className={`${styles.positionBtn} ${hookSettings.hookPosition === p.value ? styles.positionBtnActive : ''}`}
+                    aria-pressed={hookSettings.hookPosition === p.value}
+                    disabled={!hookSettings.hookStyleEnabled}
+                    onClick={() => onHookSettingsChange({ hookPosition: p.value })}
                   >
                     {p.label}
                   </button>
@@ -361,6 +401,18 @@ export default function SubtitleWorkflow({
                     step={1}
                     value={position}
                     onChange={e => patch({ position: Number(e.target.value) })}
+                  />
+                  <label htmlFor="hook-position-slider">フック字幕の上下位置</label>
+                  <input
+                    id="hook-position-slider"
+                    aria-label="フック字幕の上下位置"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={hookSettings.hookPosition}
+                    disabled={!hookSettings.hookStyleEnabled}
+                    onChange={e => onHookSettingsChange({ hookPosition: Number(e.target.value) })}
                   />
                 </div>
               )}

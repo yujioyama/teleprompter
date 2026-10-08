@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
+import { clampedSubtitlePosition } from '../utils/subtitlePosition'
+import { createCanvasMeasure, layoutCue } from '../utils/subtitleLayout'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
@@ -45,5 +47,55 @@ describe('SubtitleOverlayPreview', () => {
     expect(en.children.length).toBeGreaterThan(1)
     expect(ja.children.length).toBeGreaterThan(1)
     expect(Array.from(en.children, c => c.textContent).join(' ')).toBe(long[0].en)
+  })
+
+  const HOOK = { style: true, position: 50 }
+
+  it('shows the first shot\'s cue in hook style at the hook position', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={HOOK} firstShotDuration={2} />)
+    const box = screen.getByTestId('subtitle-overlay-box')
+    expect(box).toHaveAttribute('data-variant', 'hook')
+    expect(box.style.top).toBe('50%')
+    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.8)')
+  })
+
+  it('keeps a tall hook box on screen, as the burn does', () => {
+    const cue: SubtitleCue = {
+      id: 'c1', start: 0, end: 2,
+      en: 'I was sure the other singer would go through, and I told everyone.',
+      ja: '絶対もう一人の歌手が通ると思ってたし、みんなにもそう言ってたんだ。',
+    }
+    render(
+      <SubtitleOverlayPreview cues={[cue]} position={72} currentTime={1} hook={{ style: true, position: 0 }} firstShotDuration={2} />,
+    )
+    const box = screen.getByTestId('subtitle-overlay-box')
+    const { height } = layoutCue(cue, createCanvasMeasure(), 'hook')
+    expect(box.style.top).toBe(`${clampedSubtitlePosition(0, height)}%`)
+    expect(parseFloat(box.style.top)).toBeGreaterThan(0)
+  })
+
+  it('shows later cues normally', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={3} hook={HOOK} firstShotDuration={2} />)
+    const box = screen.getByTestId('subtitle-overlay-box')
+    expect(box).toHaveAttribute('data-variant', 'normal')
+    expect(box.style.top).toBe('72%')
+    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.55)')
+  })
+
+  it('shows a transcribed first cue from 0s with the hook style, as timed without it', () => {
+    const late: SubtitleCue[] = [{ id: 's0', start: 0.3, end: 1.2, en: 'So', ja: 'で' }]
+    const { rerender, container } = render(
+      <SubtitleOverlayPreview cues={late} position={72} currentTime={0.1} hook={HOOK} firstShotDuration={2} />,
+    )
+    expect(screen.getByText('So')).toBeInTheDocument()
+    rerender(<SubtitleOverlayPreview cues={late} position={72} currentTime={0.1} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('paints an *emphasized* word yellow, without the asterisks', () => {
+    const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 2, en: 'I *love* it', ja: 'すき' }]
+    render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)
+    expect(screen.getByText('love')).toHaveStyle({ color: '#FFD60A' })
+    expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
   })
 })

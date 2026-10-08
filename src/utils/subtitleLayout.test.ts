@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   EN_STYLE,
+  HOOK_EN_STYLE,
+  HOOK_JA_STYLE,
   JA_STYLE,
   MeasureText,
+  SUBTITLE_BOX_OPACITY,
   SUBTITLE_TEXT_WIDTH,
   layoutCue,
   tokenize,
@@ -97,5 +100,57 @@ describe('layoutCue', () => {
 
   it('omits the Japanese block when there is no translation', () => {
     expect(layoutCue({ en: 'Hi', ja: null }, measure).ja).toBeNull()
+  })
+})
+
+describe('layoutCue hook variant', () => {
+  it('uses the hook styles', () => {
+    expect(HOOK_EN_STYLE).toMatchObject({ weight: 'bold', maxPx: 100, minPx: 72, maxLines: 3 })
+    expect(HOOK_JA_STYLE).toMatchObject({ maxPx: 75, minPx: 57, maxLines: 3 })
+  })
+
+  it('lays a short hook cue out at the full hook sizes', () => {
+    const layout = layoutCue({ en: 'Hello there', ja: 'こんにちは' }, measure, 'hook')
+    expect(layout.en).toMatchObject({ fontPx: 100, lines: ['Hello there'] })
+    expect(layout.ja).toMatchObject({ fontPx: 75, lines: ['こんにちは'] })
+  })
+
+  it('shrinks a hook cue only until it fits three lines', () => {
+    // Four lines at 100px with the test measure; three fit somewhere above 72px.
+    const layout = layoutCue({ en: 'I was sure the other singer would go through.', ja: null }, measure, 'hook')
+    expect(layout.en.lines.length).toBeLessThanOrEqual(3)
+    expect(layout.en.fontPx).toBeGreaterThan(72)
+    expect(layout.en.fontPx).toBeLessThan(100)
+  })
+
+  it('never shrinks a hook cue below 72px', () => {
+    expect(layoutCue({ en: 'word '.repeat(20), ja: null }, measure, 'hook').en.fontPx).toBe(72)
+  })
+
+  it('gives a hook cue a taller box and a darker band than a normal one', () => {
+    const cue = { en: 'Hello there', ja: 'こんにちは' }
+    expect(layoutCue(cue, measure, 'hook').height).toBeGreaterThan(layoutCue(cue, measure).height)
+    expect(SUBTITLE_BOX_OPACITY).toEqual({ normal: 0.55, hook: 0.8 })
+  })
+})
+
+describe('layoutCue emphasis', () => {
+  it('wraps the text without its markers and keeps which words are emphasized', () => {
+    const layout = layoutCue({ en: 'I *carry a torch*', ja: '*本気*なの' }, measure)
+    expect(layout.en.lines).toEqual(['I carry a torch'])
+    expect(layout.en.runs).toEqual([[
+      { text: 'I ', emphasized: false },
+      { text: 'carry a torch', emphasized: true },
+    ]])
+    expect(layout.ja!.runs).toEqual([[
+      { text: '本気', emphasized: true },
+      { text: 'なの', emphasized: false },
+    ]])
+  })
+
+  it('gives plain text a single plain run per line', () => {
+    expect(layoutCue({ en: 'Hello there', ja: null }, measure).en.runs).toEqual([
+      [{ text: 'Hello there', emphasized: false }],
+    ])
   })
 })

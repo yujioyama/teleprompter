@@ -1,4 +1,5 @@
 import { SubtitleCue } from './subtitleCues'
+import { emphasisRuns, parseEmphasis, type Run } from './subtitleEmphasis'
 
 /**
  * Burned-in subtitle geometry, in pixels of the 1080px-wide output video.
@@ -14,7 +15,7 @@ export const SUBTITLE_BLOCK_GAP = 14
 export const SUBTITLE_TEXT_WIDTH =
   SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2 - SUBTITLE_BOX_PADDING_X * 2
 
-interface TextStyle {
+export interface TextStyle {
   weight: string
   maxPx: number
   minPx: number
@@ -26,6 +27,20 @@ interface TextStyle {
 export const EN_STYLE: TextStyle = { weight: 'bold', maxPx: 60, minPx: 44, maxLines: 3, lineHeight: 1.25 }
 export const JA_STYLE: TextStyle = { weight: 'normal', maxPx: 50, minPx: 38, maxLines: 3, lineHeight: 1.4 }
 
+/**
+ * The first shot's cues, drawn to stop the scroll: about 1.6x the English
+ * and 1.5x the Japanese, on a darker band (see subtitleHook).
+ */
+export type CueVariant = 'normal' | 'hook'
+export const HOOK_EN_STYLE: TextStyle = { weight: 'bold', maxPx: 100, minPx: 72, maxLines: 3, lineHeight: 1.2 }
+export const HOOK_JA_STYLE: TextStyle = { weight: 'normal', maxPx: 75, minPx: 57, maxLines: 3, lineHeight: 1.4 }
+/** Opacity of the black band behind a cue. */
+export const SUBTITLE_BOX_OPACITY: Record<CueVariant, number> = { normal: 0.55, hook: 0.8 }
+
+export function textStylesFor(variant: CueVariant): { en: TextStyle; ja: TextStyle } {
+  return variant === 'hook' ? { en: HOOK_EN_STYLE, ja: HOOK_JA_STYLE } : { en: EN_STYLE, ja: JA_STYLE }
+}
+
 /** Width in px of `text` rendered in the CSS `font` shorthand. */
 export type MeasureText = (text: string, font: string) => number
 
@@ -36,6 +51,8 @@ export function fontFor(style: TextStyle, px: number): string {
 export interface TextBlockLayout {
   fontPx: number
   lines: string[]
+  /** `lines` split into plain and emphasized (`*…*`) runs, markers removed. */
+  runs: Run[][]
   lineHeightPx: number
 }
 
@@ -199,22 +216,28 @@ export function wrapText(text: string, maxWidth: number, width: (s: string) => n
   return lines
 }
 
-function layoutBlock(text: string, style: TextStyle, measure: MeasureText): TextBlockLayout {
+function layoutBlock(raw: string, style: TextStyle, measure: MeasureText): TextBlockLayout {
+  const emphasis = parseEmphasis(raw)
   let px = style.maxPx
   let lines: string[] = []
   for (; px >= style.minPx; px -= 2) {
     const font = fontFor(style, px)
-    lines = wrapText(text, SUBTITLE_TEXT_WIDTH, s => measure(s, font))
+    lines = wrapText(emphasis.text, SUBTITLE_TEXT_WIDTH, s => measure(s, font))
     if (lines.length <= style.maxLines) break
   }
   px = Math.max(px, style.minPx)
-  return { fontPx: px, lines, lineHeightPx: Math.round(px * style.lineHeight) }
+  return { fontPx: px, lines, runs: emphasisRuns(lines, emphasis), lineHeightPx: Math.round(px * style.lineHeight) }
 }
 
 /** Lay out one cue's bilingual subtitle box at the 1080px reference width. */
-export function layoutCue(cue: Pick<SubtitleCue, 'en' | 'ja'>, measure: MeasureText): CueLayout {
-  const en = layoutBlock(cue.en, EN_STYLE, measure)
-  const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure) : null
+export function layoutCue(
+  cue: Pick<SubtitleCue, 'en' | 'ja'>,
+  measure: MeasureText,
+  variant: CueVariant = 'normal',
+): CueLayout {
+  const styles = textStylesFor(variant)
+  const en = layoutBlock(cue.en, styles.en, measure)
+  const ja = cue.ja ? layoutBlock(cue.ja, styles.ja, measure) : null
   let height = SUBTITLE_BOX_PADDING_Y * 2 + en.lines.length * en.lineHeightPx
   if (ja) height += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
   return { en, ja, height }

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
 import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
+import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 
 vi.mock('../utils/burnSubtitles')
 
@@ -15,33 +16,53 @@ function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
+const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50 }
+
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
 // to FinalizePage, so subtitle work survives the component unmounting on
-// wizard back-navigation). This wrapper mirrors how FinalizePage drives it.
+// wizard back-navigation; hook settings live in useSettings there). This
+// wrapper mirrors how FinalizePage drives it.
 function ControlledSubtitleWorkflow({
   combinedBlob,
   shotCueInputs,
   onBurned,
   transcribe,
+  onHookSettingsChange,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
   onBurned: (blob: Blob) => void
   transcribe?: (blob: Blob, onProgress: (p: WhisperProgress) => void, signal: AbortSignal) => Promise<SubtitleCue[]>
+  onHookSettingsChange?: (patch: Partial<HookSettings>) => void
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+  const [hookSettings, setHookSettings] = useState<HookSettings>(DEFAULT_HOOK_SETTINGS)
   return (
     <SubtitleWorkflow
       combinedBlob={combinedBlob}
       shotCueInputs={shotCueInputs}
       state={state}
       onStateChange={setState}
-      burn={(cues, position) => burnModule.burnSubtitles(combinedBlob, cues, position)}
+      hookSettings={hookSettings}
+      onHookSettingsChange={patch => {
+        setHookSettings(prev => ({ ...prev, ...patch }))
+        onHookSettingsChange?.(patch)
+      }}
+      burn={(cues, position) =>
+        burnModule.burnSubtitles(combinedBlob, cues, {
+          position,
+          hook: hookOptionsOf(hookSettings),
+          firstShotDuration: shotCueInputs[0]?.duration ?? null,
+        })
+      }
       onBurned={onBurned}
       transcribe={transcribe}
     />
   )
 }
+
+/** The normal subtitle's 上部/中央/下部, as opposed to the hook's. */
+const positionGroup = () => within(screen.getByRole('group', { name: '字幕の位置' }))
 
 describe('SubtitleWorkflow position controls', () => {
   it('defaults to the bottom preset and burns in with it when advancing', async () => {
@@ -57,14 +78,14 @@ describe('SubtitleWorkflow position controls', () => {
     })
     fireEvent.click(screen.getByText('日本語を反映'))
 
-    expect(screen.getByText('下部')).toHaveAttribute('aria-pressed', 'true')
+    expect(positionGroup().getByText('下部')).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(screen.getByText('次へ'))
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
     expect(burnModule.burnSubtitles).toHaveBeenCalledWith(
       BLOB,
       expect.anything(),
-      72.2917,
+      expect.objectContaining({ position: 72.2917 }),
     )
   })
 
@@ -85,7 +106,7 @@ describe('SubtitleWorkflow position controls', () => {
 
     fireEvent.click(screen.getByText('次へ'))
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
-    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(BLOB, expect.anything(), 30)
+    expect(burnModule.burnSubtitles).toHaveBeenCalledWith(BLOB, expect.anything(), expect.objectContaining({ position: 30 }))
   })
 
   it('does not render a save button', async () => {
@@ -118,7 +139,7 @@ describe('SubtitleWorkflow position controls', () => {
     // The review/position UI must still be rendered (not replaced by an
     // error-only screen), with the cues and position controls intact.
     expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
-    expect(screen.getByText('下部')).toBeInTheDocument()
+    expect(positionGroup().getByText('下部')).toBeInTheDocument()
     const nextBtn = screen.getByText('次へ')
     expect(nextBtn).not.toBeDisabled()
 
@@ -138,6 +159,8 @@ describe('SubtitleWorkflow position controls', () => {
           shotCueInputs={SHOT_CUE_INPUTS}
           state={state}
           onStateChange={setState}
+          hookSettings={DEFAULT_HOOK_SETTINGS}
+          onHookSettingsChange={() => {}}
           burn={(_cues, _position, onProgress) => {
             report = onProgress
             return new Promise(resolve => (finish = resolve))
@@ -174,6 +197,8 @@ describe('SubtitleWorkflow position controls', () => {
           shotCueInputs={SHOT_CUE_INPUTS}
           state={state}
           onStateChange={setState}
+          hookSettings={DEFAULT_HOOK_SETTINGS}
+          onHookSettingsChange={() => {}}
           burn={() => new Promise(resolve => (finish = resolve))}
         />
       )
@@ -230,6 +255,8 @@ describe('SubtitleWorkflow position controls', () => {
           shotCueInputs={SHOT_CUE_INPUTS}
           state={state}
           onStateChange={setState}
+          hookSettings={DEFAULT_HOOK_SETTINGS}
+          onHookSettingsChange={() => {}}
           burn={(_cues, _position, _onProgress, signal) => {
             seen = signal
             return new Promise(() => {})
@@ -244,7 +271,7 @@ describe('SubtitleWorkflow position controls', () => {
       target: { value: '1. こんにちは' },
     })
     fireEvent.click(screen.getByText('日本語を反映'))
-    fireEvent.click(screen.getByText('上部'))
+    fireEvent.click(positionGroup().getByText('上部'))
     fireEvent.click(screen.getByText('次へ'))
     await screen.findByText('焼き込み中... 0%')
 
@@ -256,7 +283,7 @@ describe('SubtitleWorkflow position controls', () => {
     expect(screen.getByText('次へ')).not.toBeDisabled()
     expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
     expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
-    expect(screen.getByText('上部')).toHaveAttribute('aria-pressed', 'true')
+    expect(positionGroup().getByText('上部')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByText('中断する')).not.toBeInTheDocument()
   })
 
@@ -374,5 +401,70 @@ describe('SubtitleWorkflow subtitles from speech', () => {
     expect(transcribe).not.toHaveBeenCalled()
     expect(screen.getByDisplayValue('こんにちは')).toBeInTheDocument()
     confirm.mockRestore()
+  })
+})
+
+describe('SubtitleWorkflow hook controls', () => {
+  async function renderTranslated(onHookSettingsChange = vi.fn()) {
+    seedBurnMock()
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={SHOT_CUE_INPUTS}
+        onBurned={vi.fn()}
+        onHookSettingsChange={onHookSettingsChange}
+      />,
+    )
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    return onHookSettingsChange
+  }
+
+  const hookGroup = () => within(screen.getByRole('group', { name: 'フック字幕の位置' }))
+
+  it('previews the first shot in hook style at the hook position', async () => {
+    await renderTranslated()
+    const box = screen.getByTestId('subtitle-overlay-box')
+    expect(box).toHaveAttribute('data-variant', 'hook')
+    expect(box.style.top).toBe('50%')
+    expect(hookGroup().getByText('中央')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('switches the hook style off, reporting it to be saved', async () => {
+    const onChange = await renderTranslated()
+    fireEvent.click(screen.getByLabelText('フック字幕'))
+    expect(onChange).toHaveBeenCalledWith({ hookStyleEnabled: false })
+    expect(screen.getByTestId('subtitle-overlay-box')).toHaveAttribute('data-variant', 'normal')
+    for (const button of hookGroup().getAllByRole('button')) expect(button).toBeDisabled()
+  })
+
+  it('moves the hook subtitle with its own presets and slider', async () => {
+    const onChange = await renderTranslated()
+    fireEvent.click(hookGroup().getByText('上部'))
+    expect(onChange).toHaveBeenCalledWith({ hookPosition: 13.75 })
+    expect(screen.getByTestId('subtitle-overlay-box').style.top).toBe('13.75%')
+
+    fireEvent.click(screen.getByText('細かく調整'))
+    fireEvent.change(screen.getByLabelText('フック字幕の上下位置'), { target: { value: '40' } })
+    expect(onChange).toHaveBeenLastCalledWith({ hookPosition: 40 })
+  })
+
+  it('burns with the hook settings and the first shot\'s length', async () => {
+    await renderTranslated()
+    fireEvent.click(screen.getByText('次へ'))
+    await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
+    expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
+      BLOB,
+      expect.anything(),
+      expect.objectContaining({ hook: { style: true, position: 50 }, firstShotDuration: 2 }),
+    )
+  })
+
+  it('explains *emphasis* under the English subtitles', async () => {
+    await renderTranslated()
+    expect(screen.getByText(/で囲んだ語は黄色/)).toBeInTheDocument()
   })
 })
