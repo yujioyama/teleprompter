@@ -33,6 +33,7 @@ import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
+import { hookOptionsOf } from '../utils/subtitleHook'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
@@ -134,7 +135,10 @@ export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { getScript } = useScripts()
-  const [settings] = useSettings()
+  // One settings instance for the page: the subtitle step changes the hook
+  // settings through it, so the burn below always sees the current ones.
+  const [settings, updateSettings] = useSettings()
+  const { hookStyleEnabled, hookPosition } = settings
   const { normalizeAudio } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
@@ -490,12 +494,13 @@ export default function FinalizePage() {
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
-      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition)) {
+      const hook = hookOptionsOf({ hookStyleEnabled, hookPosition })
+      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook)) {
         cache.prefetch(request)
       }
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips])
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hookStyleEnabled, hookPosition])
 
   // Build the finished audio (usual BGM + loudness) while the subtitles
   // are worked on: they only change the picture, so after the burn the
@@ -790,8 +795,19 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
+                hookSettings={{ hookStyleEnabled, hookPosition }}
+                onHookSettingsChange={updateSettings}
                 burn={(cues, position, onProgress, signal) =>
-                  burnSubtitlesByShot(getEncodeCache(), combinedClips, combinedBlob, cues, position, onProgress, signal)
+                  burnSubtitlesByShot(
+                    getEncodeCache(),
+                    combinedClips,
+                    combinedBlob,
+                    cues,
+                    position,
+                    hookOptionsOf({ hookStyleEnabled, hookPosition }),
+                    onProgress,
+                    signal,
+                  )
                 }
                 onBurned={burned => {
                   setBurnedBlob(burned)

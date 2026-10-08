@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
@@ -399,7 +399,7 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
       target: { value: '1. こんにちは' },
     })
     fireEvent.click(screen.getByText('日本語を反映'))
-    fireEvent.click(screen.getByRole('button', { name: '上部' }))
+    fireEvent.click(within(screen.getByRole('group', { name: '字幕の位置' })).getByRole('button', { name: '上部' }))
     await waitFor(async () =>
       expect((await loadFinalizeProgress('script-1')).subtitles?.cues[0]).toMatchObject({
         en: 'Hello there',
@@ -416,7 +416,7 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
     renderFinalizePage('script-1')
     expect(await screen.findByLabelText('英語字幕 1')).toHaveValue('Hello there')
     expect(screen.getByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
-    expect(screen.getByRole('button', { name: '上部' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByRole('group', { name: '字幕の位置' })).getByRole('button', { name: '上部' })).toHaveAttribute('aria-pressed', 'true')
     expect(trimAndNormalizeShot).not.toHaveBeenCalled()
   })
 
@@ -1021,7 +1021,7 @@ describe('FinalizePage with a usual BGM', () => {
     useSettingsOf({ defaultBgmId: null, subtitlePosition: 64 })
     await walkThroughSubtitles()
     await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
-    expect(vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]).toBe(64)
+    expect(vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]).toMatchObject({ position: 64 })
   })
 
   it('joins the burned video with audio prepared during the subtitle step', async () => {
@@ -1064,5 +1064,37 @@ describe('FinalizePage with a usual BGM', () => {
     expect(await screen.findByText('保存する')).toBeInTheDocument()
     expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
     expect(joinVideoAndAudio).not.toHaveBeenCalled()
+  })
+})
+
+describe('FinalizePage subtitle step: hook on the first shot', () => {
+  it('burns the first shot in hook style, and remembers switching it off', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    const [, , , cues, look] = vi.mocked(burnModule.burnShotSubtitles).mock.calls[0]
+    expect(cues).toEqual([expect.objectContaining({ variant: 'hook', start: 0 })])
+    expect(look).toMatchObject({ hook: { style: true, position: 50 }, firstShotDuration: 5 })
+
+    fireEvent.click(screen.getByLabelText('フック字幕'))
+    await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    expect(vi.mocked(burnModule.burnShotSubtitles).mock.calls[1][3]).toEqual([
+      expect.objectContaining({ variant: 'normal' }),
+    ])
+    expect(JSON.parse(localStorage.getItem('teleprompter_settings')!).hookStyleEnabled).toBe(false)
   })
 })
