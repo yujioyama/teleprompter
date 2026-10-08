@@ -7,11 +7,19 @@ export interface ShotTrimSettings {
   trimPaddingEnd: number
 }
 
-/** A shot's own auto-trim override, falling back to the global settings. */
-export function resolveShotTrimSettings(shot: Shot | undefined, global: AppSettings): ShotTrimSettings {
+/**
+ * A shot's own auto-trim override, falling back to the global settings.
+ * The first shot opens the video, where viewers decide within a second
+ * whether to stay, so it has a lead-in of its own (almost none).
+ */
+export function resolveShotTrimSettings(
+  shot: Shot | undefined,
+  global: AppSettings,
+  isFirstShot = false,
+): ShotTrimSettings {
   return {
     trimEnabled: shot?.trimEnabled ?? global.trimEnabled,
-    trimPaddingStart: shot?.trimPaddingStart ?? global.trimPaddingStart,
+    trimPaddingStart: shot?.trimPaddingStart ?? (isFirstShot ? global.firstShotPaddingStart : global.trimPaddingStart),
     trimPaddingEnd: shot?.trimPaddingEnd ?? global.trimPaddingEnd,
   }
 }

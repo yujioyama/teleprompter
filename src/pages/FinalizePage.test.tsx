@@ -96,7 +96,8 @@ beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   // The tests below predate the usual BGM; they walk the BGM step by hand.
-  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null }))
+  // They also predate the first shot's own lead-in, so it is the usual 0.3s.
+  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.3 }))
   vi.clearAllMocks()
   // mixForExport reports which way it added the BGM.
   vi.spyOn(console, 'info').mockImplementation(() => {})
@@ -325,6 +326,17 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     expect(screen.getByText('結合する')).not.toBeDisabled()
     expect(probeVideoDuration).not.toHaveBeenCalled()
     expect(detectSpeech).not.toHaveBeenCalled()
+  })
+
+  it('opens the first shot with its own, shorter lead-in', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.1 }))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
+    renderFinalizePage('script-1')
+
+    // 1.0s - 0.1s, rather than the usual 0.3s before.
+    await screen.findByText('開始 0.9秒')
+    expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
   })
 })
 

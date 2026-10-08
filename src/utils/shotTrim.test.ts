@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { clampTrimRange } from './shotTrim'
+import { clampTrimRange, resolveShotTrimSettings } from './shotTrim'
+import type { AppSettings } from '../hooks/useSettings'
 
 describe('clampTrimRange', () => {
   it('leaves a valid range untouched', () => {
@@ -25,5 +26,38 @@ describe('clampTrimRange', () => {
 
   it('respects a custom minLength', () => {
     expect(clampTrimRange(0, 0.5, 10, 1)).toEqual({ start: 0, end: 1 })
+  })
+})
+
+describe('resolveShotTrimSettings', () => {
+  const GLOBAL: AppSettings = {
+    trimEnabled: true,
+    trimPaddingStart: 0.3,
+    trimPaddingEnd: 0.4,
+    normalizeAudio: true,
+    defaultBgmId: null,
+    bgmVolume: 0.3,
+    subtitlePosition: 72,
+    hookStyleEnabled: true,
+    hookPosition: 50,
+    hookHeadlineEnabled: true,
+    punchInEnabled: true,
+    firstShotPaddingStart: 0.05,
+  }
+
+  it('gives the first shot its own lead-in before the speech', () => {
+    expect(resolveShotTrimSettings({ id: 'a', text: '' }, GLOBAL, true)).toEqual({
+      trimEnabled: true,
+      trimPaddingStart: 0.05,
+      trimPaddingEnd: 0.4,
+    })
+  })
+
+  it('keeps the usual lead-in for the other shots', () => {
+    expect(resolveShotTrimSettings({ id: 'b', text: '' }, GLOBAL).trimPaddingStart).toBe(0.3)
+  })
+
+  it('lets a shot\'s own lead-in win, first shot or not', () => {
+    expect(resolveShotTrimSettings({ id: 'a', text: '', trimPaddingStart: 0.6 }, GLOBAL, true).trimPaddingStart).toBe(0.6)
   })
 })

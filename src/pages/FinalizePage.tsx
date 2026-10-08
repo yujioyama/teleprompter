@@ -230,7 +230,11 @@ export default function FinalizePage() {
       if (cancelled) return
       takesRef.current = takes
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
-      const trimSettings = new Map(script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings)]))
+      // The first shot with a take opens the video, and gets its own lead-in.
+      const firstShotId = script.shots.find(shot => byShotId.has(shot.id))?.id
+      const trimSettings = new Map(
+        script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings, shot.id === firstShotId)]),
+      )
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
         const url = blob ? URL.createObjectURL(blob) : null
