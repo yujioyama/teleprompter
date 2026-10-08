@@ -46,4 +46,39 @@ describe('SubtitleOverlayPreview', () => {
     expect(ja.children.length).toBeGreaterThan(1)
     expect(Array.from(en.children, c => c.textContent).join(' ')).toBe(long[0].en)
   })
+
+  const HOOK = { style: true, position: 50 }
+
+  it('shows the first shot\'s cue in hook style at the hook position', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={HOOK} firstShotDuration={2} />)
+    const box = screen.getByTestId('subtitle-overlay-box')
+    expect(box).toHaveAttribute('data-variant', 'hook')
+    expect(box.style.top).toBe('50%')
+    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.8)')
+  })
+
+  it('shows later cues normally', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={3} hook={HOOK} firstShotDuration={2} />)
+    const box = screen.getByTestId('subtitle-overlay-box')
+    expect(box).toHaveAttribute('data-variant', 'normal')
+    expect(box.style.top).toBe('72%')
+    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.55)')
+  })
+
+  it('shows a transcribed first cue from 0s with the hook style, as timed without it', () => {
+    const late: SubtitleCue[] = [{ id: 's0', start: 0.3, end: 1.2, en: 'So', ja: 'で' }]
+    const { rerender, container } = render(
+      <SubtitleOverlayPreview cues={late} position={72} currentTime={0.1} hook={HOOK} firstShotDuration={2} />,
+    )
+    expect(screen.getByText('So')).toBeInTheDocument()
+    rerender(<SubtitleOverlayPreview cues={late} position={72} currentTime={0.1} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('paints an *emphasized* word yellow, without the asterisks', () => {
+    const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 2, en: 'I *love* it', ja: 'すき' }]
+    render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)
+    expect(screen.getByText('love')).toHaveStyle({ color: '#FFD60A' })
+    expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
+  })
 })
