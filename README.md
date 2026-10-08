@@ -35,6 +35,7 @@ iPhoneのSafariで「ホーム画面に追加」するとPWAとして動作し�
 - **動画を仕上げる**（「仕上げる」画面） — トリミング → 結合 → 字幕 → BGM → 書き出しのウィザードで、1 本の動画に仕上げる（下記「撮影後の仕上げ手順」参照）
 - **途中から再開** — 手動トリム・結合結果・字幕の作業内容は端末内に保存され、画面を離れても iPhone がメモリ不足でページを再読み込みしても続きから再開できる
 - **設定** — 音量の自動調整、字幕の位置、自動トリミングの余白、いつもの BGM とその音量
+- **バックアップ** — スクリプトを JSON ファイルに書き出し、あとで読み込める（撮影した動画は含まない）。読み込むと新しいスクリプトは追加、同じスクリプトは新しい方が残る
 - **PWA** — ホーム画面に追加するとネイティブアプリのように全画面で起動。撮影した動画はブラウザに消されないよう永続ストレージを要求する
 
 ---
@@ -284,6 +285,7 @@ Add to iPhone home screen via Safari for the full PWA experience.
 - **Finalize** — A trim → combine → subtitles → BGM → export wizard that produces one finished video (see below)
 - **Pick up where you left off** — Hand-set trims, the combined video and subtitle work are stored on the device, so leaving the page, or iOS reloading it for memory, doesn't lose them
 - **Settings** — Loudness normalization, subtitle position, auto-trim padding, the usual BGM and its volume
+- **Backup** — Export the scripts to a JSON file and import them later (takes aren't included). Importing adds new scripts and keeps the newer copy of any script already on the device
 - **PWA** — Installable to the home screen, runs fullscreen, and requests persistent storage so stored takes aren't evicted
 
 ---

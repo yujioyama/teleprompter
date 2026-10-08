@@ -78,4 +78,23 @@ describe('useScripts', () => {
     const missing = result.current.getScript('nonexistent')
     expect(missing).toBeUndefined()
   })
+
+  it('imports a backup, adding new scripts and keeping the newer copy of each', () => {
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([
+      { id: 'a', title: '端末', shots: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-05T00:00:00.000Z' },
+    ]))
+    const { result } = renderHook(() => useScripts())
+
+    let counts: ReturnType<typeof result.current.importScripts> | undefined
+    act(() => {
+      counts = result.current.importScripts([
+        { id: 'a', title: '古い', shots: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'b', title: '追加', shots: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' },
+      ])
+    })
+
+    expect(counts).toEqual({ added: 1, updated: 0, unchanged: 1 })
+    expect(result.current.scripts.map(s => s.title)).toEqual(['端末', '追加'])
+    expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!).map((s: { title: string }) => s.title)).toEqual(['端末', '追加'])
+  })
 })

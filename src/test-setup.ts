@@ -14,3 +14,15 @@ if (typeof HTMLMediaElement !== 'undefined') {
   HTMLMediaElement.prototype.pause = () => {}
   HTMLMediaElement.prototype.load = () => {}
 }
+
+// jsdom's Blob has no text(); real browsers (iOS Safari 14+) do.
+if (typeof Blob !== 'undefined' && !Blob.prototype.text) {
+  Blob.prototype.text = function (this: Blob) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(this)
+    })
+  }
+}

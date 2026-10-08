@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Script, Shot } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
+import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
 
 const STORAGE_KEY = 'teleprompter_scripts'
 
@@ -61,9 +62,17 @@ export function useScripts() {
     clearShotVideos(id).catch(err => console.error('Failed to clear stored shot videos', err))
   }
 
+  // A backup's scripts, merged in without losing anything (see mergeScripts).
+  function importScripts(imported: Script[]): Omit<MergeResult, 'scripts'> {
+    const { scripts: updated, ...counts } = mergeScripts(scripts, imported)
+    saveToStorage(updated)
+    setScripts(updated)
+    return counts
+  }
+
   function getScript(id: string): Script | undefined {
     return scripts.find(s => s.id === id)
   }
 
-  return { scripts, createScript, updateScript, deleteScript, getScript }
+  return { scripts, createScript, updateScript, deleteScript, getScript, importScripts }
 }
