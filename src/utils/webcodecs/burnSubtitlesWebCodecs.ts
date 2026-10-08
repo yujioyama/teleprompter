@@ -9,7 +9,7 @@ import {
   Quality,
 } from 'mediabunny'
 import { assertUsable } from './normalizeShot'
-import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
+import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
 export type { SubtitleOverlay } from './subtitleOverlay'
@@ -28,9 +28,10 @@ export async function burnSubtitlesWebCodecs(
   overlays: SubtitleOverlay[],
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  options: OverlayOptions = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
-  const overlay = await createOverlayProcess(overlays)
+  const overlay = await createOverlayProcess(overlays, options)
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
     const output = new Output({

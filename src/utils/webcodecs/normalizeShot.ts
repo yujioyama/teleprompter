@@ -17,7 +17,7 @@ import {
   OUTPUT_WIDTH,
 } from './support'
 import { guardAgainstStall } from './stallGuard'
-import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
+import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
 /**
@@ -42,6 +42,8 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  * conversion ends, so nothing outlives this call (see issue #12).
  *
  * `signal` cancels the conversion (中断する, issue #34).
+ *
+ * `options.punchInUntil` zooms the first shot's picture in during the same encode.
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
@@ -50,10 +52,14 @@ export async function normalizeShotWebCodecs(
   onProgress?: (ratio: number) => void,
   overlays: SubtitleOverlay[] = [],
   signal?: AbortSignal,
+  options: OverlayOptions = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
-  const overlay = overlays.length > 0 ? await createOverlayProcess(overlays) : null
+  const punchInUntil = options.punchInUntil ?? null
+  const overlay = overlays.length > 0 || punchInUntil !== null
+    ? await createOverlayProcess(overlays, { punchInUntil })
+    : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
     const output = new Output({
