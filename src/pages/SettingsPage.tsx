@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../hooks/useSettings'
 import BgmSettings from '../components/BgmSettings'
 import SubtitlePositionSettings from '../components/SubtitlePositionSettings'
+import ScriptBackup from '../components/ScriptBackup'
 import styles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
@@ -105,6 +106,11 @@ export default function SettingsPage() {
             disabled={!settings.trimEnabled}
           />
         </div>
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>バックアップ</div>
+        <ScriptBackup />
       </div>
     </div>
   )

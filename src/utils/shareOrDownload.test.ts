@@ -35,6 +35,18 @@ describe('shareOrDownload', () => {
     expect(files[0].name).toBe('my-shot.mp4')
   })
 
+  it('shares a JSON file (a script backup) with a .json extension', async () => {
+    const shareMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: shareMock, configurable: true })
+
+    await shareOrDownload(new Blob(['{}'], { type: 'application/json' }), 'backup')
+
+    const [{ files }] = shareMock.mock.calls[0]
+    expect(files[0].name).toBe('backup.json')
+    expect(files[0].type).toBe('application/json')
+  })
+
   it('returns false without downloading when the user cancels the share sheet', async () => {
     const abortError = new DOMException('cancelled', 'AbortError')
     Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })

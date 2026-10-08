@@ -1,9 +1,10 @@
 function getExtension(mimeType: string): string {
+  if (mimeType === 'application/json') return 'json'
   return mimeType.includes('mp4') ? 'mp4' : 'webm'
 }
 
 /**
- * Share a finished video via the Web Share API (saves to camera roll on iOS
+ * Share a finished video (or a script backup) via the Web Share API (saves to camera roll on iOS
  * Safari 15+), falling back to a plain download when sharing isn't
  * available. Returns false only when the user explicitly cancelled the
  * native share sheet, so callers can distinguish "cancelled" from "saved".

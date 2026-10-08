@@ -1,0 +1,38 @@
+.sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 0;
+}
+
+.btn {
+  background: var(--surface2);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.message {
+  font-size: 0.85rem;
+  color: var(--success);
+}
+
+.error {
+  font-size: 0.85rem;
+  color: var(--danger);
+}

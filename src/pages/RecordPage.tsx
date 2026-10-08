@@ -20,7 +20,7 @@ export default function RecordPage() {
   const script = id ? getScript(id) : undefined
 
   const [shotIndex, setShotIndex] = useState(0)
-  const { state, importFile, shareOrDownload, reset, blobRef } = useRecorder()
+  const { state, importFile, reset, blobRef } = useRecorder()
   const importInputRef = useRef<HTMLInputElement>(null)
   const mainScrollRef = useRef<HTMLDivElement>(null)
 
@@ -81,22 +81,9 @@ export default function RecordPage() {
     currentShot?.trimPaddingStart !== undefined ||
     currentShot?.trimPaddingEnd !== undefined
 
-  function getFilename() {
-    const safeTitle = safeScript.title.replace(/[^a-zA-Z0-9ぁ-ん一-龯ァ-ン]/g, '-')
-    const num = String(shotIndex + 1).padStart(3, '0')
-    return `${safeTitle}-shot-${num}`
-  }
-
-  async function handleSaveAndNext() {
-    const saved = await shareOrDownload(getFilename())
-    if (!saved) return  // user cancelled — stay on current shot
-    closeModal()
-    reset()
-    setShotSettingsOpen(false)
-    setShotIndex(i => i + 1)
-  }
-
-  function handleSkipAndNext() {
+  // The take is already stored (see the effect above) and came from Files
+  // or the camera roll, so there is nothing to save — just move on.
+  function handleNext() {
     closeModal()
     reset()
     setShotSettingsOpen(false)
@@ -439,14 +426,9 @@ export default function RecordPage() {
               <button className={styles.retryBtn} onClick={handleRetry}>
                 もう一度
               </button>
-              <div className={styles.saveGroup}>
-                <button className={styles.nextBtn} onClick={handleSaveAndNext}>
-                  {isLast ? '保存して完了 ✓' : '保存して次へ →'}
-                </button>
-                <button className={styles.skipBtn} onClick={handleSkipAndNext}>
-                  {isLast ? '保存せずに完了' : '保存せずに次へ'}
-                </button>
-              </div>
+              <button className={styles.nextBtn} onClick={handleNext}>
+                {isLast ? '完了 ✓' : '次へ →'}
+              </button>
               {persistError && (
                 <p className={styles.persistError}>{persistError}</p>
               )}
