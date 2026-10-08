@@ -156,20 +156,6 @@
   text-align: center;
 }
 
-.remuxError {
-  font-size: 0.8rem;
-  color: #e74c3c;
-  text-align: center;
-  padding: 4px 0;
-}
-
-.remuxSuccess {
-  font-size: 0.8rem;
-  color: #27ae60;
-  text-align: center;
-  padding: 4px 0;
-}
-
 .persistError {
   font-size: 0.8rem;
   color: #e74c3c;
