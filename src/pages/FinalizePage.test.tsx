@@ -385,6 +385,66 @@ describe('FinalizePage trim step: picks up where it was left', () => {
   })
 })
 
+describe('FinalizePage subtitle step: picks up where it was left', () => {
+  async function combineAndTranslate() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: 5, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+    fireEvent.click(await screen.findByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    fireEvent.change(await screen.findByLabelText('英語字幕 1'), { target: { value: 'Hello there' } })
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByRole('button', { name: '上部' }))
+    await waitFor(async () =>
+      expect((await loadFinalizeProgress('script-1')).subtitles?.cues[0]).toMatchObject({
+        en: 'Hello there',
+        ja: 'こんにちは',
+      }),
+    )
+  }
+
+  it('reopens on the subtitle step with the edits, translation and position kept', async () => {
+    await combineAndTranslate()
+    cleanup()
+    vi.mocked(trimAndNormalizeShot).mockClear()
+
+    renderFinalizePage('script-1')
+    expect(await screen.findByLabelText('英語字幕 1')).toHaveValue('Hello there')
+    expect(screen.getByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    expect(screen.getByRole('button', { name: '上部' })).toHaveAttribute('aria-pressed', 'true')
+    expect(trimAndNormalizeShot).not.toHaveBeenCalled()
+  })
+
+  it('forgets the subtitles once the video is combined again', async () => {
+    await combineAndTranslate()
+    fireEvent.click(screen.getByRole('button', { name: /トリミング/ }))
+    fireEvent.click(await screen.findByText('結合する'))
+    await screen.findByText('結合結果')
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).subtitles?.cues ?? []).toEqual([]))
+    cleanup()
+
+    renderFinalizePage('script-1')
+    expect(await screen.findByText('結合結果')).toBeInTheDocument()
+    expect(screen.queryByLabelText('日本語字幕 1')).not.toBeInTheDocument()
+  })
+
+  it('does not bring back subtitles for a shot retaken since', async () => {
+    await combineAndTranslate()
+    cleanup()
+    await new Promise(r => setTimeout(r, 5))
+    await saveShotVideo('script-1', SHOT_1, new Blob(['retake'], { type: 'video/mp4' }))
+
+    renderFinalizePage('script-1')
+    await screen.findByText('結合する')
+    expect(screen.queryByLabelText('英語字幕 1')).not.toBeInTheDocument()
+  })
+})
+
 describe('FinalizePage wizard', () => {
   it('enables 結合 from probed durations, without any shot player reporting one (issue #12)', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)

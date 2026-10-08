@@ -4,10 +4,13 @@ import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { listShotAnalyses, updateShotAnalysis, type ShotAnalysis } from '../utils/shotAnalysisStore'
 import {
+  combinedClipsSignature,
   combinedForTakes,
   loadFinalizeProgress,
   updateFinalizeProgress,
   type FinalizeProgress,
+  type SavedCombinedClip,
+  type SavedSubtitles,
 } from '../utils/finalizeProgressStore'
 import { unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
@@ -66,9 +69,9 @@ const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 // encoding in the background, so a drag or a burst of typing doesn't queue
 // an encode per intermediate value.
 const BACKGROUND_ENCODE_DELAY_MS = 800
-// Likewise for saving hand-set cuts, but short: leaving the page right
-// after a drag must not lose it.
-const TRIM_SAVE_DELAY_MS = 300
+// Likewise for saving hand-set cuts and subtitle work, but short: leaving
+// the page right after a drag or an edit must not lose it.
+const PROGRESS_SAVE_DELAY_MS = 300
 
 function clipOf(entry: ShotEntry): ShotClip {
   return { shotId: entry.shotId, blob: entry.blob!, start: entry.trimStart, end: entry.trimEnd || entry.duration }
@@ -108,6 +111,16 @@ function handSetTrimsOf(entries: ShotEntry[]): Pick<ShotClip, 'shotId' | 'start'
   return entries
     .filter(e => e.blob && e.trimEdited)
     .map(e => ({ shotId: e.shotId, start: e.trimStart, end: e.trimEnd }))
+}
+
+// Compared to skip writing subtitle work that hasn't changed since loaded or saved.
+function subtitlesSignatureOf(subtitles: SavedSubtitles): string {
+  return JSON.stringify(subtitles)
+}
+
+// The clips of a 結合 tied to the takes they were cut from, for saving.
+function savedClipsOf(clips: ShotClip[], takes: Map<string, string>): SavedCombinedClip[] {
+  return clips.map(({ shotId, start, end }) => ({ shotId, start, end, videoUpdatedAt: takes.get(shotId)! }))
 }
 
 function findLastIndexBefore(entries: ShotEntry[], index: number): number {
@@ -172,6 +185,8 @@ export default function FinalizePage() {
   const takesRef = useRef<Map<string, string>>(new Map())
   // The hand-set cuts as last loaded or saved, so they're only written on a change.
   const savedTrimsRef = useRef<string | null>(null)
+  // Likewise the subtitle work.
+  const savedSubtitlesRef = useRef<string | null>(null)
 
   // Encodes run in the background only on the hardware (WebCodecs) path:
   // ffmpeg.wasm's memory use made iOS drop the on-screen previews (issue #12).
@@ -204,7 +219,7 @@ export default function FinalizePage() {
       // Likewise an unreadable save only means trimming and combining again.
       const progress = await loadFinalizeProgress(script.id).catch((err): FinalizeProgress => {
         console.warn('[FinalizePage] could not read the saved trims and 結合:', err)
-        return { trims: {}, combined: null }
+        return { trims: {}, combined: null, subtitles: null }
       })
       return { stored, takes, analyses, progress }
     }).then(({ stored, takes, analyses, progress }) => {
@@ -240,6 +255,17 @@ export default function FinalizePage() {
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
         showCombined(combined.blob, clips, cueInputsOf(withVideo, clips))
+        // And the subtitles made on that very 結合, back on their step.
+        const subtitles = progress.subtitles
+        if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
+          const { cues, pasteText, position, source } = subtitles
+          savedSubtitlesRef.current = subtitlesSignatureOf(subtitles)
+          setSubtitleState({ stage: cues.length > 0 ? 'reviewing' : 'idle', cues, pasteText, position, source })
+          if (cues.length > 0) {
+            setCompletedSteps(['trim'])
+            setStep('subtitle')
+          }
+        }
       }
       setLoading(false)
 
@@ -423,11 +449,36 @@ export default function FinalizePage() {
       updateFinalizeProgress(script.id, { trims }).catch(err =>
         console.warn('[FinalizePage] could not save the trims:', err),
       )
-    }, TRIM_SAVE_DELAY_MS)
+    }, PROGRESS_SAVE_DELAY_MS)
     return () => clearTimeout(timer)
     // handSetTrims is captured through handSetTrimSignature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [script?.id, handSetTrimSignature])
+
+  // Keep the subtitle work on the current 結合 the same way.
+  const subtitlesToSave: SavedSubtitles | null =
+    combinedClips.length === 0
+      ? null
+      : {
+          combinedClips: combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current)),
+          cues: subtitleState.cues,
+          pasteText: subtitleState.pasteText,
+          position: subtitleState.position,
+          source: subtitleState.source,
+        }
+  const subtitlesSignature = subtitlesToSave && subtitlesSignatureOf(subtitlesToSave)
+  useEffect(() => {
+    if (!script || !subtitlesToSave || subtitlesSignature === savedSubtitlesRef.current) return
+    const timer = setTimeout(() => {
+      savedSubtitlesRef.current = subtitlesSignature
+      updateFinalizeProgress(script.id, { subtitles: subtitlesToSave }).catch(err =>
+        console.warn('[FinalizePage] could not save the subtitles:', err),
+      )
+    }, PROGRESS_SAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+    // subtitlesToSave is captured through subtitlesSignature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [script?.id, subtitlesSignature])
 
   // Likewise burn subtitles into each shot once every cue is translated,
   // while the user checks the preview and position, so 次へ only has to
@@ -578,10 +629,9 @@ export default function FinalizePage() {
       // combined output by construction, not by keeping two formulas in sync.
       showCombined(combined, clips, cueInputsOf(availableEntries, clips))
       if (script) {
-        const saved = clips.map(({ shotId, start, end }) => ({
-          shotId, start, end, videoUpdatedAt: takesRef.current.get(shotId)!,
-        }))
-        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved } }).catch(err =>
+        const saved = savedClipsOf(clips, takesRef.current)
+        // Subtitles made on the previous 結合 no longer line up with this one.
+        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved }, subtitles: null }).catch(err =>
           console.warn('[FinalizePage] could not save the 結合:', err),
         )
       }
