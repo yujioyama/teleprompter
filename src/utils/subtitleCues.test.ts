@@ -25,6 +25,14 @@ describe('buildClaudePrompt', () => {
   })
 })
 
+describe('buildClaudePrompt emphasis', () => {
+  it('sends the English without its *emphasis* markers', () => {
+    const prompt = buildClaudePrompt([{ id: 'c0', start: 0, end: 1, en: 'I *love* it', ja: null }])
+    expect(prompt).toContain('1. I love it')
+    expect(prompt).not.toContain('*love*')
+  })
+})
+
 describe('parseJapanesePaste', () => {
   it('matches numbered lines back onto cues by position', () => {
     const cues = makeCues(['Hello', 'World'])

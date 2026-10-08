@@ -1,3 +1,5 @@
+import { stripEmphasis } from './subtitleEmphasis'
+
 export interface SubtitleCue {
   id: string
   start: number
@@ -7,7 +9,8 @@ export interface SubtitleCue {
 }
 
 export function buildClaudePrompt(cues: SubtitleCue[]): string {
-  const lines = cues.map((cue, i) => `${i + 1}. ${cue.en}`).join('\n')
+  // The *emphasis* markers are for the burn-in only, not for translating.
+  const lines = cues.map((cue, i) => `${i + 1}. ${stripEmphasis(cue.en)}`).join('\n')
   return `以下は、僕（Yuji）のショート動画の英語セリフです。動画に焼き込む日本語字幕を作ってください。
 
 【話し手】
