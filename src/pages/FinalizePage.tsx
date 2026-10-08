@@ -3,6 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { listShotAnalyses, updateShotAnalysis, type ShotAnalysis } from '../utils/shotAnalysisStore'
+import {
+  combinedForTakes,
+  loadFinalizeProgress,
+  updateFinalizeProgress,
+  type FinalizeProgress,
+} from '../utils/finalizeProgressStore'
 import { unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { ShotEncodeCache } from '../utils/shotEncodeCache'
@@ -60,9 +66,21 @@ const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 // encoding in the background, so a drag or a burst of typing doesn't queue
 // an encode per intermediate value.
 const BACKGROUND_ENCODE_DELAY_MS = 800
+// Likewise for saving hand-set cuts, but short: leaving the page right
+// after a drag must not lose it.
+const TRIM_SAVE_DELAY_MS = 300
 
 function clipOf(entry: ShotEntry): ShotClip {
   return { shotId: entry.shotId, blob: entry.blob!, start: entry.trimStart, end: entry.trimEnd || entry.duration }
+}
+
+function trimSignatureOf(clips: Pick<ShotClip, 'shotId' | 'start' | 'end'>[]): string {
+  return clips.map(c => `${c.shotId}:${c.start}:${c.end}`).join('|')
+}
+
+// The text each shot of a combined video is subtitled with, and for how long.
+function cueInputsOf(entries: ShotEntry[], clips: ShotClip[]): ShotCueInput[] {
+  return entries.map((entry, i) => ({ text: entry.text, duration: clips[i].end - clips[i].start }))
 }
 
 function combineLabel(phase: CombinePhase, progress: number): string {
@@ -84,6 +102,12 @@ function autoTrimRange(entry: ShotEntry): Pick<ShotEntry, 'trimStart' | 'trimEnd
   if (!entry.autoTrim) return { trimStart: 0, trimEnd: entry.duration }
   const { start, end } = clampTrimRange(entry.autoTrim.start, entry.autoTrim.end, entry.duration)
   return { trimStart: start, trimEnd: end }
+}
+
+function handSetTrimsOf(entries: ShotEntry[]): Pick<ShotClip, 'shotId' | 'start' | 'end'>[] {
+  return entries
+    .filter(e => e.blob && e.trimEdited)
+    .map(e => ({ shotId: e.shotId, start: e.trimStart, end: e.trimEnd }))
 }
 
 function findLastIndexBefore(entries: ShotEntry[], index: number): number {
@@ -143,6 +167,11 @@ export default function FinalizePage() {
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
   // Aborted by 中断する (issue #34) or when the page goes away mid-combine.
   const combineAbortRef = useRef<AbortController | null>(null)
+  // Each shot's current take (StoredShotVideo.updatedAt), which saved cuts
+  // and the saved 結合 are tied to.
+  const takesRef = useRef<Map<string, string>>(new Map())
+  // The hand-set cuts as last loaded or saved, so they're only written on a change.
+  const savedTrimsRef = useRef<string | null>(null)
 
   // Encodes run in the background only on the hardware (WebCodecs) path:
   // ffmpeg.wasm's memory use made iOS drop the on-screen previews (issue #12).
@@ -172,9 +201,15 @@ export default function FinalizePage() {
         console.warn('[FinalizePage] could not read stored shot analyses:', err)
         return new Map<string, ShotAnalysis>()
       })
-      return { stored, takes, analyses }
-    }).then(({ stored, takes, analyses }) => {
+      // Likewise an unreadable save only means trimming and combining again.
+      const progress = await loadFinalizeProgress(script.id).catch((err): FinalizeProgress => {
+        console.warn('[FinalizePage] could not read the saved trims and 結合:', err)
+        return { trims: {}, combined: null }
+      })
+      return { stored, takes, analyses, progress }
+    }).then(({ stored, takes, analyses, progress }) => {
       if (cancelled) return
+      takesRef.current = takes
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
       const trimSettings = new Map(script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings)]))
       const next = script.shots.map(shot => {
@@ -185,15 +220,27 @@ export default function FinalizePage() {
         // What earlier visits already found for this take (see shotAnalysisStore).
         const known = analyses.get(shot.id)
         const speech = trim.trimEnabled ? known?.speech : null
+        // A cut set by hand on an earlier visit, unless the shot was retaken since.
+        const saved = progress.trims[shot.id]
+        const handSet = blob && saved?.videoUpdatedAt === takes.get(shot.id) ? saved : undefined
         const entry: ShotEntry = {
-          shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0, trimStart: 0, trimEnd: 0,
+          shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0,
+          trimStart: handSet?.start ?? 0, trimEnd: handSet?.end ?? 0,
           autoTrim: speech ? speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd) : null,
           autoTrimPending: blob !== null && speech === undefined,
-          trimEdited: false,
+          trimEdited: handSet !== undefined,
         }
-        return entry.duration > 0 ? { ...entry, ...autoTrimRange(entry) } : entry
+        return entry.duration > 0 && !entry.trimEdited ? { ...entry, ...autoTrimRange(entry) } : entry
       })
       setEntries(next)
+      savedTrimsRef.current = trimSignatureOf(handSetTrimsOf(next))
+      // Back where 結合 left off, as long as it's still these takes.
+      const withVideo = next.filter(e => e.blob)
+      const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
+      if (combined) {
+        const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
+        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips))
+      }
       setLoading(false)
 
       const remember = (shotId: string, changes: ShotAnalysis) => {
@@ -274,7 +321,7 @@ export default function FinalizePage() {
       prev.map(e => {
         if (e.shotId !== shotId || e.duration !== 0) return e
         const withDuration = { ...e, duration }
-        return { ...withDuration, ...autoTrimRange(withDuration) }
+        return withDuration.trimEdited ? withDuration : { ...withDuration, ...autoTrimRange(withDuration) }
       }),
     )
   }
@@ -287,6 +334,17 @@ export default function FinalizePage() {
         return next.duration > 0 && !next.trimEdited ? { ...next, ...autoTrimRange(next) } : next
       }),
     )
+  }
+
+  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[]) {
+    if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
+    const url = URL.createObjectURL(blob)
+    combinedUrlRef.current = url
+    setCombinedBlob(blob)
+    setCombinedUrl(url)
+    setCombinedClips(clips)
+    setShotCueInputs(cueInputs)
+    setCombineState('done')
   }
 
   function updateEntry(shotId: string, changes: Partial<ShotEntry>) {
@@ -336,11 +394,13 @@ export default function FinalizePage() {
   // to join them. Waits for speech detection to finish (it decodes every
   // shot too) and for the trims to settle; a shot re-trimmed later is
   // re-queued and its stale queued encode skipped (see ShotEncodeCache).
-  const trimSignature = availableEntries
-    .map(e => `${e.shotId}:${e.trimStart}:${e.trimEnd || e.duration}`)
-    .join('|')
+  const trimSignature = trimSignatureOf(availableEntries.map(clipOf))
+  // Nothing to encode ahead when 結合 already has these exact cuts — e.g.
+  // reopened from a save, where encoding every shot again would only cost
+  // memory iOS reloads the page over.
+  const combinedIsCurrent = combineState === 'done' && trimSignatureOf(combinedClips) === trimSignature
   useEffect(() => {
-    if (step !== 'trim' || !canCombine || combineState === 'combining') return
+    if (step !== 'trim' || !canCombine || combineState === 'combining' || combinedIsCurrent) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
       for (const entry of availableEntries) cache.prefetch(normalizeRequest(clipOf(entry)))
@@ -348,7 +408,26 @@ export default function FinalizePage() {
     return () => clearTimeout(timer)
     // availableEntries is captured through trimSignature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, canCombine, combineState, trimSignature])
+  }, [step, canCombine, combineState, trimSignature, combinedIsCurrent])
+
+  // Keep the hand-set cuts, so they survive leaving the page or iOS reloading it.
+  const handSetTrims = handSetTrimsOf(entries)
+  const handSetTrimSignature = trimSignatureOf(handSetTrims)
+  useEffect(() => {
+    if (!script || savedTrimsRef.current === null || handSetTrimSignature === savedTrimsRef.current) return
+    const timer = setTimeout(() => {
+      const trims = Object.fromEntries(
+        handSetTrims.map(t => [t.shotId, { videoUpdatedAt: takesRef.current.get(t.shotId)!, start: t.start, end: t.end }]),
+      )
+      savedTrimsRef.current = handSetTrimSignature
+      updateFinalizeProgress(script.id, { trims }).catch(err =>
+        console.warn('[FinalizePage] could not save the trims:', err),
+      )
+    }, TRIM_SAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+    // handSetTrims is captured through handSetTrimSignature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [script?.id, handSetTrimSignature])
 
   // Likewise burn subtitles into each shot once every cue is translated,
   // while the user checks the preview and position, so 次へ only has to
@@ -494,19 +573,18 @@ export default function FinalizePage() {
         })(),
         signal,
       )
-      if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
-      const url = URL.createObjectURL(combined)
-      combinedUrlRef.current = url
-      setCombinedBlob(combined)
-      setCombinedUrl(url)
       // Same clips, same order, same trim values used just above to build
       // `normalized` — keeps subtitle timing aligned with the actual
       // combined output by construction, not by keeping two formulas in sync.
-      setCombinedClips(clips)
-      setShotCueInputs(
-        availableEntries.map((entry, i) => ({ text: entry.text, duration: clips[i].end - clips[i].start }))
-      )
-      setCombineState('done')
+      showCombined(combined, clips, cueInputsOf(availableEntries, clips))
+      if (script) {
+        const saved = clips.map(({ shotId, start, end }) => ({
+          shotId, start, end, videoUpdatedAt: takesRef.current.get(shotId)!,
+        }))
+        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved } }).catch(err =>
+          console.warn('[FinalizePage] could not save the 結合:', err),
+        )
+      }
     } catch (err) {
       if (signal.aborted) {
         setCombineState('cancelled')

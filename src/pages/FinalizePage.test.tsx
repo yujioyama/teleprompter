@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
@@ -16,6 +16,7 @@ import { prepareFinalAudio, joinVideoAndAudio } from '../utils/webcodecs/finalAu
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { listShotAnalyses, updateShotAnalysis } from '../utils/shotAnalysisStore'
+import { loadFinalizeProgress } from '../utils/finalizeProgressStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
@@ -206,18 +207,18 @@ describe('FinalizePage trim step: one player for the selected shot', () => {
   })
 })
 
-describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () => {
-  // jsdom has no layout, so give the trim bar a width the handles can be dragged across.
-  function dragEndHandleTo(clientX: number) {
-    const timeline = document.querySelector('[class*="timeline"]') as HTMLElement
-    timeline.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect
-    const endHandle = document.querySelectorAll('[class*="handle"]')[1]
-    fireEvent.pointerDown(endHandle)
-    // jsdom has no PointerEvent, and fireEvent.pointerMove would drop clientX.
-    fireEvent(timeline, new MouseEvent('pointermove', { bubbles: true, clientX }))
-    fireEvent.pointerUp(timeline)
-  }
+// jsdom has no layout, so give the trim bar a width the handles can be dragged across.
+function dragEndHandleTo(clientX: number) {
+  const timeline = document.querySelector('[class*="timeline"]') as HTMLElement
+  timeline.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect
+  const endHandle = document.querySelectorAll('[class*="handle"]')[1]
+  fireEvent.pointerDown(endHandle)
+  // jsdom has no PointerEvent, and fireEvent.pointerMove would drop clientX.
+  fireEvent(timeline, new MouseEvent('pointermove', { bubbles: true, clientX }))
+  fireEvent.pointerUp(timeline)
+}
 
+describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () => {
   it('opens each shot already trimmed to its speech, and combines that cut', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
@@ -324,6 +325,63 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     expect(screen.getByText('結合する')).not.toBeDisabled()
     expect(probeVideoDuration).not.toHaveBeenCalled()
     expect(detectSpeech).not.toHaveBeenCalled()
+  })
+})
+
+describe('FinalizePage trim step: picks up where it was left', () => {
+  // The only player reports its duration, as it would once loaded.
+  function loadShotDuration(duration: number) {
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: duration, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+  }
+
+  async function combineOnce() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    loadShotDuration(5)
+    fireEvent.click(await screen.findByText('結合する'))
+    await screen.findByText('結合結果')
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).combined).not.toBeNull())
+    cleanup()
+    vi.mocked(trimAndNormalizeShot).mockClear()
+  }
+
+  it('reopens a hand-set cut after leaving the page', async () => {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    loadShotDuration(5)
+    await screen.findByText('終了 5.0秒')
+    dragEndHandleTo(80)
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).trims[SHOT_1]).toBeDefined())
+    cleanup()
+
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    // The player loading again must not reset the cut to the whole shot.
+    loadShotDuration(5)
+    expect(await screen.findByText('終了 4.0秒')).toBeInTheDocument()
+  })
+
+  it('reopens the 結合 result without combining again, ready for 次へ', async () => {
+    await combineOnce()
+
+    renderFinalizePage('script-1')
+    expect(await screen.findByText('結合結果')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('次へ'))
+    expect(await screen.findByDisplayValue('ショット1')).toBeInTheDocument()
+    expect(trimAndNormalizeShot).not.toHaveBeenCalled()
+  })
+
+  it('drops the saved 結合 once a shot has been retaken', async () => {
+    await combineOnce()
+    // A later take gets a later updatedAt.
+    await new Promise(r => setTimeout(r, 5))
+    await saveShotVideo('script-1', SHOT_1, new Blob(['retake'], { type: 'video/mp4' }))
+
+    renderFinalizePage('script-1')
+    await screen.findByText('結合する')
+    expect(screen.queryByText('結合結果')).not.toBeInTheDocument()
   })
 })
 
