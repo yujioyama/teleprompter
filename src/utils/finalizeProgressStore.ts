@@ -1,3 +1,6 @@
+import type { SubtitleCue } from './subtitleCues'
+import type { SubtitlePosition } from './subtitlePosition'
+
 // A database of its own, for the same reason as shotAnalysisStore's: adding
 // a store to an existing database means a version upgrade, which an older
 // copy of the app left open in the background blocks.
@@ -27,20 +30,36 @@ export interface SavedCombined {
 }
 
 /**
- * Where the finalize page's trim step was left, so going away — or iOS
- * reloading the page for memory — doesn't throw away the cuts and the 結合.
+ * The subtitle work on one 結合: the cues as edited and translated, the
+ * paste box and the position. Transcribing and translating are the slow,
+ * hand-made part, and Whisper is what most often runs an iPhone out of
+ * memory and reloads the page.
+ */
+export interface SavedSubtitles {
+  /** combinedClipsSignature() of the 結合 they were made on. */
+  combinedClips: string
+  cues: SubtitleCue[]
+  pasteText: string
+  position: SubtitlePosition
+  source: 'script' | 'speech'
+}
+
+/**
+ * Where the finalize page was left, so going away — or iOS reloading the
+ * page for memory — doesn't throw away the cuts, the 結合 and its subtitles.
  */
 export interface FinalizeProgress {
   /** Only the shots cut by hand; the rest reopen at their detected cut. */
   trims: Record<string, SavedTrim>
   combined: SavedCombined | null
+  subtitles: SavedSubtitles | null
 }
 
 interface StoredFinalizeProgress extends FinalizeProgress {
   scriptId: string
 }
 
-const EMPTY: FinalizeProgress = { trims: {}, combined: null }
+const EMPTY: FinalizeProgress = { trims: {}, combined: null, subtitles: null }
 
 /** Open the database, run `body` in one transaction, and close it again. */
 function withStore<T>(
@@ -75,7 +94,8 @@ export function loadFinalizeProgress(scriptId: string): Promise<FinalizeProgress
     const req = store.get(scriptId)
     req.onsuccess = () => {
       const record = req.result as StoredFinalizeProgress | undefined
-      done(record ? { trims: record.trims, combined: record.combined } : EMPTY)
+      // Saved before subtitles were kept, a record has none.
+      done(record ? { trims: record.trims, combined: record.combined, subtitles: record.subtitles ?? null } : EMPTY)
     }
   })
 }
@@ -89,6 +109,7 @@ export function updateFinalizeProgress(scriptId: string, changes: Partial<Finali
       const record: StoredFinalizeProgress = {
         trims: existing.trims,
         combined: existing.combined,
+        subtitles: existing.subtitles ?? null,
         ...changes,
         scriptId,
       }
@@ -118,4 +139,9 @@ export function combinedForTakes(
     (clip, i) => clip.shotId === takes[i][0] && clip.videoUpdatedAt === takes[i][1],
   )
   return matches ? combined : null
+}
+
+/** Identifies a 結合 by the takes and cuts it was made from. */
+export function combinedClipsSignature(clips: SavedCombinedClip[]): string {
+  return clips.map(c => `${c.shotId}:${c.videoUpdatedAt}:${c.start}:${c.end}`).join('|')
 }

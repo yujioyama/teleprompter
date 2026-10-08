@@ -7,6 +7,7 @@ import {
   loadFinalizeProgress,
   updateFinalizeProgress,
   type SavedCombined,
+  type SavedSubtitles,
 } from './finalizeProgressStore'
 
 beforeEach(() => {
@@ -21,9 +22,43 @@ const COMBINED: SavedCombined = {
   ],
 }
 
+const SUBTITLES: SavedSubtitles = {
+  combinedClips: 'shot-a:take-1:0.5:3|shot-b:take-1:0:4',
+  cues: [{ id: 'cue-1', start: 0, end: 2.5, en: 'Hello', ja: 'こんにちは' }],
+  pasteText: '1. こんにちは',
+  position: 70,
+  source: 'speech',
+}
+
 describe('finalizeProgressStore', () => {
   it('starts empty', async () => {
-    expect(await loadFinalizeProgress('script-1')).toEqual({ trims: {}, combined: null })
+    expect(await loadFinalizeProgress('script-1')).toEqual({ trims: {}, combined: null, subtitles: null })
+  })
+
+  it('keeps the subtitles alongside the 結合', async () => {
+    await updateFinalizeProgress('script-1', { combined: COMBINED })
+    await updateFinalizeProgress('script-1', { subtitles: SUBTITLES })
+
+    const progress = await loadFinalizeProgress('script-1')
+    expect(progress.subtitles).toEqual(SUBTITLES)
+    expect(progress.combined!.clips).toEqual(COMBINED.clips)
+  })
+
+  it('reads progress saved before subtitles were kept as having none', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('teleprompter-finalize-progress', 1)
+      open.onupgradeneeded = () => open.result.createObjectStore('finalizeProgress', { keyPath: 'scriptId' })
+      open.onsuccess = () => {
+        const tx = open.result.transaction('finalizeProgress', 'readwrite')
+        tx.objectStore('finalizeProgress').put({ scriptId: 'script-1', trims: {}, combined: null })
+        tx.oncomplete = () => {
+          open.result.close()
+          resolve()
+        }
+        tx.onerror = () => reject(tx.error)
+      }
+    })
+    expect((await loadFinalizeProgress('script-1')).subtitles).toBeNull()
   })
 
   it('keeps the trims and the 結合 saved separately', async () => {
