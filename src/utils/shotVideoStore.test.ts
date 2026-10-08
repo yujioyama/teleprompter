@@ -7,6 +7,8 @@ import {
   listShotVideos,
   deleteShotVideo,
   clearShotVideos,
+  listStoredShots,
+  pruneRemovedShotVideos,
 } from './shotVideoStore'
 
 function makeBlob(content: string) {
@@ -66,5 +68,51 @@ describe('shotVideoStore', () => {
 
     expect(await listShotVideos('script-1')).toHaveLength(0)
     expect(await listShotVideos('script-2')).toHaveLength(1)
+  })
+
+  it('lists which shots have a video, across scripts', async () => {
+    await saveShotVideo('script-1', 'shot-a', makeBlob('a'))
+    await saveShotVideo('script-2', 'shot-c', makeBlob('c'))
+
+    const stored = await listStoredShots()
+    expect(stored).toEqual(expect.arrayContaining([
+      { scriptId: 'script-1', shotId: 'shot-a' },
+      { scriptId: 'script-2', shotId: 'shot-c' },
+    ]))
+    expect(stored).toHaveLength(2)
+  })
+
+  it('closes its connections, so the database can be deleted right after', async () => {
+    await saveShotVideo('script-1', 'shot-a', makeBlob('a'))
+    await listShotVideos('script-1')
+    await listStoredShots()
+    await deleteShotVideo('script-1', 'shot-a')
+
+    const outcome = await new Promise<string>(resolve => {
+      const req = indexedDB.deleteDatabase('teleprompter-shot-videos')
+      req.onblocked = () => resolve('blocked')
+      req.onsuccess = () => resolve('deleted')
+    })
+    expect(outcome).toBe('deleted')
+  })
+})
+
+describe('pruneRemovedShotVideos', () => {
+  it('deletes the videos of shots a script no longer has', async () => {
+    await saveShotVideo('script-1', 'shot-a', makeBlob('a'))
+    await saveShotVideo('script-1', 'shot-gone', makeBlob('gone'))
+    await saveShotVideo('script-2', 'shot-c', makeBlob('c'))
+
+    await pruneRemovedShotVideos([{ id: 'script-1', shots: [{ id: 'shot-a' }] }])
+
+    expect((await listShotVideos('script-1')).map(v => v.shotId)).toEqual(['shot-a'])
+    // Scripts not listed are left alone, so an unreadable script list deletes nothing.
+    expect(await listShotVideos('script-2')).toHaveLength(1)
+  })
+
+  it('deletes nothing when every shot is still there', async () => {
+    await saveShotVideo('script-1', 'shot-a', makeBlob('a'))
+    await pruneRemovedShotVideos([{ id: 'script-1', shots: [{ id: 'shot-a' }, { id: 'shot-b' }] }])
+    expect(await listShotVideos('script-1')).toHaveLength(1)
   })
 })

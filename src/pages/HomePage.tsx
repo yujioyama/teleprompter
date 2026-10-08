@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
-import { listShotVideos } from '../utils/shotVideoStore'
+import { listStoredShots, pruneRemovedShotVideos } from '../utils/shotVideoStore'
 import styles from './HomePage.module.css'
 
 export default function HomePage() {
@@ -13,22 +13,23 @@ export default function HomePage() {
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   )
 
-  // Small personal app with few scripts — one IndexedDB query per script on
-  // mount is acceptable to find which ones have a Finalize entry point.
+  // Drop the videos of shots no longer in their script first (shot
+  // editing's undo is gone once the user is back here), then find which
+  // scripts have a video for 仕上げ — from the keys alone, without reading
+  // any video.
   useEffect(() => {
     let cancelled = false
-    Promise.all(
-      scripts.map(async script => {
-        const stored = await listShotVideos(script.id)
-        return stored.length > 0 ? script.id : null
+    pruneRemovedShotVideos(scripts)
+      .catch(err => console.error('Failed to delete videos of removed shots', err))
+      .then(() => listStoredShots())
+      .then(stored => {
+        if (cancelled) return
+        setScriptsWithVideos(new Set(stored.map(v => v.scriptId)))
       })
-    ).then(ids => {
-      if (cancelled) return
-      setScriptsWithVideos(new Set(ids.filter((id): id is string => id !== null)))
-    }).catch(err => {
-      if (cancelled) return
-      console.error('Failed to check for stored shot videos', err)
-    })
+      .catch(err => {
+        if (cancelled) return
+        console.error('Failed to check for stored shot videos', err)
+      })
     return () => {
       cancelled = true
     }

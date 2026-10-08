@@ -27,36 +27,36 @@ iPhoneのSafariで「ホーム画面に追加」するとPWAとして動作し�
 
 ## 機能
 
-- **スクリプト管理** — タイトルと本文を入力し、区切り単位（句点・感嘆符・改行など）を選択して自動分割
-- **ショット編集** — ドラッグ＆ドロップで並び替え、テキスト個別編集
-- **テレプロンプター録画** — ショットのテキストを見ながら1ショットずつ録画
-- **録画プレビュー＆やり直し** — 停止後に即座に再生確認、やり直しも可能
-- **カメラロール保存** — Web Share APIでカメラロールに直接保存、キャンセル時は誤遷移しない
-- **自動トリミング** — Web Audio APIで無音区間を検出し、発話前後を自動カット（前後で異なるパディング設定可）
-- **ショットジャンプ** — カウンターをタップするとショット一覧が開き、任意のショットに戻って再撮影可能
-- **縦型カメラプレビュー** — 録画中の自分の映像を縦長で表示、タップで拡大確認
-- **外部マイク対応** — USB-Cマイク接続後に「マイク再接続」ボタンで切り替え
-- **動画の結合・字幕・BGM合成**（「仕上げる」画面） — 撮影済みショットを1本に結合し、英語字幕の自動生成・日本語訳の反映・BGM合成まで行える（下記「撮影後の仕上げ手順」参照）
-- **PWA** — ホーム画面追加でネイティブアプリ風の起動・全画面表示
+- **スクリプト管理** — タイトルと本文を入力し、区切り単位（句点・感嘆符・英語ピリオド・改行）を選んで自動でショットに分割
+- **ショット編集** — タップでテキストを編集、長押しで別のショットに重ねると合体。削除・合体はトーストの「元に戻す」で取り消せる。変更はその場で保存
+- **撮影はネイティブアプリで** — 「🔴 撮影開始」で、残りのショットを Cinematic 撮影用のコンパニオンアプリ [teleprompter-cam](https://github.com/yujioyama/teleprompter-cam) に渡す。ブラウザ内での録画はしない
+- **動画のインポート** — 「📁 動画をインポート」でファイルアプリから撮影済みの動画を複数まとめて選択し、ファイル名に含まれるショット ID で各ショットに自動で割り当てる
+- **ショットジャンプ・ショット別設定** — カウンターをタップしてショット一覧から任意のショットへ移動。自動トリミングの余白はショットごとに上書きできる
+- **動画を仕上げる**（「仕上げる」画面） — トリミング → 結合 → 字幕 → BGM → 書き出しのウィザードで、1 本の動画に仕上げる（下記「撮影後の仕上げ手順」参照）
+- **途中から再開** — 手動トリム・結合結果・字幕の作業内容は端末内に保存され、画面を離れても iPhone がメモリ不足でページを再読み込みしても続きから再開できる
+- **設定** — 音量の自動調整、字幕の位置、自動トリミングの余白、いつもの BGM とその音量
+- **PWA** — ホーム画面に追加するとネイティブアプリのように全画面で起動。撮影した動画はブラウザに消されないよう永続ストレージを要求する
 
 ---
 
-## 撮影後の仕上げ手順（動画結合・字幕・BGM）
+## 撮影後の仕上げ手順（トリミング・字幕・BGM）
 
-全ショットを撮り終えたら、ショット一覧画面の「仕上げる」ボタン（またはホーム画面のスクリプトから「仕上げる」）から仕上げ画面（`/scripts/:id/finalize`）に進みます。
+全ショットを撮り終えたら、撮影画面の「🎬 動画を仕上げる」（またはホーム画面のスクリプトの 🎬）から仕上げ画面（`/scripts/:id/finalize`）に進みます。
 
-1. **各ショットのトリム確認**
-   仕上げ画面を開くと、撮影済みの各ショットがプレビューとトリムバー付きで並びます。自動トリミングで前後の無音がカットされていますが、必要ならスライダーで開始・終了位置を調整できます。動画が保存されていないショットは「このショットは保存された動画がありません」と表示されるので、録画画面に戻って撮り直してください。
-2. **「結合する」ボタン**
-   全ショットのトリム区間を切り出した上で1本の動画に結合します（`concatVideos`）。処理には少し時間がかかります。完了すると結合結果のプレビューが表示され、「保存する」でカメラロール保存・ダウンロードができます。
-3. **英語字幕（任意）**
-   字幕ステップに進むと、各ショットの台本テキストから英語字幕が自動で作られます。「字幕の作り方」で「話した音声から」を選ぶと、端末内の音声認識（Whisper base.en）で実際に話した言葉から英語字幕を作り直します。アドリブや言い直しを含む動画向けで、数秒ごとの短い字幕に区切られます（初回のみ約80MBのモデルをダウンロード）。生成された字幕は行ごとに編集可能です。
-   - 日本語訳が必要な場合は「📋 Claude用プロンプトをコピー」でプロンプトをコピーし、Claude（や他のLLM）に貼り付けて翻訳結果を取得、その返信をテキストエリアに貼り付けて「日本語を反映」で反映できます。
-   - 字幕の表示位置（上/下など）を選び、「字幕を焼き込む」（burn-in）を実行すると、字幕が動画に焼き込まれた新しい動画が生成されます。この字幕付き動画は以降の手順（BGM合成）にも使われます。
-4. **BGMを追加（任意）**
-   一番下の「BGMを追加」セクションで、ジャンル（Lo-fi / ポップ / シネマチック / コーポレート、各5曲）からBGMを選び、音量スライダーで調整して「BGMを合成する」を押すと、動画の音声にBGMをミックスした最終動画が生成されます。字幕を焼き込んでいる場合は字幕付き動画にBGMが合成されます。完成したら「保存する」でカメラロール保存・ダウンロードができます。
+1. **トリミング**
+   各ショットの音声から発話区間を検出し、前後の無音をあらかじめカットした状態で開きます。ショットはセレクトと ‹ › ボタンで切り替え、プレイヤーは 1 つだけです（iPhone のデコーダー数の上限対策）。ハンドルで範囲を調整でき、「自動カットに戻す」で検出結果に戻せます。トリムが落ち着くと、各ショットのエンコードをバックグラウンドで先に進めます。
+2. **結合する**
+   トリム済みのショットを 1 本に結合します。処理が止まったときは「中断する」で止めて、同じトリムのままやり直せます。
+3. **字幕**
+   英語字幕は「台本から」（ショットのテキストをそのまま使う）か、「話した音声から」（Whisper で文字起こし。初回のみ約 80MB のモデルをダウンロード）のどちらかで作ります。アドリブや言い直しがある動画は「話した音声から」が向いています。
+   - 「📋 Claude用プロンプトをコピー」で翻訳用のプロンプトをコピーし、Claude の返信を貼り付けて「日本語を反映」すると日本語字幕が入ります。
+   - プレビューを見ながら字幕の位置（上部・中央・下部、または細かく調整）を決め、「次へ」で字幕を動画に焼き込みます。
+4. **BGM**
+   設定で「いつもの BGM」を選んでおくと、焼き込み後に自動で合成します。4 ジャンル（Lo-fi / ポップ / シネマチック / コーポレート）各 5 曲から選び直したり、音量を変えたり、BGM なしで進んだりもできます。
+5. **書き出し**
+   音量を Instagram / TikTok で再生されるレベルに自動で揃えたうえで（設定でオフにできます）、「保存する」で共有シートから保存します。ここで「BGMを外す」こともできます。
 
-いずれの処理も `@ffmpeg/ffmpeg`（WASM）でブラウザ内で行われるため、サーバーへのアップロードは発生しません。
+処理はすべてブラウザ内で行い、サーバーへのアップロードは発生しません。エンコード・結合・焼き込みは対応端末では WebCodecs（ハードウェアエンコード）を使い、使えない場合は ffmpeg.wasm にフォールバックします。
 
 ---
 
@@ -67,18 +67,21 @@ iPhoneのSafariで「ホーム画面に追加」するとPWAとして動作し�
 | フレームワーク | React 18 + TypeScript + Vite |
 | ルーティング | react-router-dom v6 |
 | ドラッグ&ドロップ | @dnd-kit |
-| 動画処理 | @ffmpeg/ffmpeg (WASM) |
+| 動画処理 | WebCodecs + Mediabunny（ハードウェアエンコード）、@ffmpeg/ffmpeg (WASM) をフォールバックに |
 | 音声解析 | Web Audio API |
-| 録画 | MediaRecorder API |
+| 音声認識 | Whisper（@huggingface/transformers、Web Worker で実行） |
+| 撮影 | ネイティブアプリ [teleprompter-cam](https://github.com/yujioyama/teleprompter-cam) |
 | ファイル共有 | Web Share API |
-| ストレージ | localStorage |
-| テスト | Vitest |
+| ストレージ | localStorage（スクリプト・設定）、IndexedDB（動画・解析結果・仕上げの進捗） |
+| テスト | Vitest + Testing Library |
 | PWA | Service Worker + Web App Manifest |
 | ホスティング | Vercel |
 
 ---
 
 ## 技術的課題
+
+開発の途中で直面した課題と、その時点での解決策です（当時の実装を含みます）。
 
 ### 1. Service Worker によるキャッシュ問題（デプロイ後に画面真っ暗）
 
@@ -259,7 +262,7 @@ Vercel に自動デプロイ。`main` ブランチへの push で更新。
 
 When recording videos for social media, I wanted to read from a script — but most teleprompter apps show the entire script at once. I needed something that would let me **split a script into 2–3 sentence segments and record each one individually**, then move on.
 
-So I built a PWA that runs directly in iPhone Safari, can be added to the home screen, and handles the full workflow: write script → split into shots → record each shot → save to camera roll.
+So I built a PWA that runs directly in iPhone Safari, can be added to the home screen, and handles the full workflow: write script → split into shots → record each shot (in the companion app) → trim, subtitle, add BGM and export one finished video.
 
 ---
 
@@ -273,16 +276,27 @@ Add to iPhone home screen via Safari for the full PWA experience.
 
 ## Features
 
-- **Script management** — Enter a script and auto-split by delimiter (Japanese period, exclamation mark, newline, etc.)
-- **Shot editing** — Reorder shots with drag-and-drop, edit text per shot
-- **Teleprompter recording** — Read from the script while recording each shot individually
-- **Playback & retry** — Immediately review the recording after stopping; retry if needed
-- **Camera roll save** — Save to camera roll via Web Share API; cancel is detected and won't advance to the next shot
-- **Auto-trimming** — Detect speech start/end via Web Audio API and trim silence automatically (asymmetric padding for start/end)
-- **Shot jump** — Tap the counter to open a shot list and jump back to any shot for re-recording
-- **Portrait camera preview** — See yourself in portrait orientation during recording; tap to expand fullscreen
-- **External microphone** — Reconnect button for USB-C microphones
-- **PWA** — Installable to home screen, runs fullscreen like a native app
+- **Script management** — Enter a script and auto-split it into shots by delimiter (Japanese period, exclamation/question marks, English period, newline)
+- **Shot editing** — Tap to edit a shot; long-press and drop it onto another to merge them. Deleting or merging can be undone from a toast. Every change is saved as it's made
+- **Recording in a native app** — "🔴 撮影開始" hands the remaining shots to the Cinematic-capture companion app [teleprompter-cam](https://github.com/yujioyama/teleprompter-cam). The PWA doesn't record in the browser
+- **Import** — Pick several takes at once from the Files app; each is matched to its shot by the shot ID in its filename
+- **Shot jump & per-shot settings** — Tap the counter to jump to any shot; auto-trim padding can be overridden per shot
+- **Finalize** — A trim → combine → subtitles → BGM → export wizard that produces one finished video (see below)
+- **Pick up where you left off** — Hand-set trims, the combined video and subtitle work are stored on the device, so leaving the page, or iOS reloading it for memory, doesn't lose them
+- **Settings** — Loudness normalization, subtitle position, auto-trim padding, the usual BGM and its volume
+- **PWA** — Installable to the home screen, runs fullscreen, and requests persistent storage so stored takes aren't evicted
+
+---
+
+## Finalizing a Video
+
+1. **Trim** — Each shot opens already cut to its detected speech. One player for all shots (iOS limits live video decoders); shots are picked from a select or with ‹ ›. Shots start encoding in the background once the trims settle.
+2. **Combine** — Joins the trimmed shots into one video. A stuck combine can be cancelled and retried with the same trims.
+3. **Subtitles** — English cues come from the script, or from what was actually said, transcribed by Whisper in the browser (a ~80MB model downloaded once). Copy a prompt for Claude, paste its Japanese translation back, pick a position, and burn the subtitles in.
+4. **BGM** — The usual BGM (set in Settings) is mixed in automatically; otherwise pick from 20 tracks in 4 genres, adjust the volume, or skip.
+5. **Export** — Loudness is brought to the level Instagram/TikTok play at, the BGM can still be removed, and the video is saved through the share sheet.
+
+Everything runs in the browser — nothing is uploaded. Encoding, joining and burning use WebCodecs (hardware encoding) where available, falling back to ffmpeg.wasm.
 
 ---
 
@@ -293,18 +307,21 @@ Add to iPhone home screen via Safari for the full PWA experience.
 | Framework | React 18 + TypeScript + Vite |
 | Routing | react-router-dom v6 |
 | Drag & Drop | @dnd-kit |
-| Video Processing | @ffmpeg/ffmpeg (WASM) |
+| Video Processing | WebCodecs + Mediabunny (hardware encoding), @ffmpeg/ffmpeg (WASM) as fallback |
 | Audio Analysis | Web Audio API |
-| Recording | MediaRecorder API |
+| Speech Recognition | Whisper (@huggingface/transformers, in a Web Worker) |
+| Recording | Native companion app [teleprompter-cam](https://github.com/yujioyama/teleprompter-cam) |
 | File Sharing | Web Share API |
-| Storage | localStorage |
-| Testing | Vitest |
+| Storage | localStorage (scripts, settings), IndexedDB (takes, analyses, finalize progress) |
+| Testing | Vitest + Testing Library |
 | PWA | Service Worker + Web App Manifest |
 | Hosting | Vercel |
 
 ---
 
 ## Technical Challenges
+
+Problems hit along the way and how they were solved at the time (some describe earlier implementations).
 
 ### 1. Service Worker Cache Invalidation (Blank Screen After Deploy)
 

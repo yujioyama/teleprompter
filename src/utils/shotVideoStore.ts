@@ -16,71 +16,119 @@ function makeKey(scriptId: string, shotId: string): string {
   return `${scriptId}::${shotId}`
 }
 
-function openDb(): Promise<IDBDatabase> {
+// Both ids are UUIDs, so the first '::' is the separator.
+function parseKey(key: IDBValidKey): { scriptId: string; shotId: string } {
+  const text = String(key)
+  const at = text.indexOf('::')
+  return { scriptId: text.slice(0, at), shotId: text.slice(at + 2) }
+}
+
+/**
+ * Open the database, run `body` in one transaction, and close it again —
+ * a connection left open blocks any later version upgrade (see
+ * shotAnalysisStore).
+ */
+function withStore<T>(
+  mode: IDBTransactionMode,
+  body: (store: IDBObjectStore, done: (value: T) => void) => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
+    const open = indexedDB.open(DB_NAME, DB_VERSION)
+    open.onupgradeneeded = () => {
+      const db = open.result
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' })
         store.createIndex('byScript', 'scriptId', { unique: false })
       }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const conn = open.result
+      let result: T
+      const tx = conn.transaction(STORE_NAME, mode)
+      tx.oncomplete = () => {
+        conn.close()
+        resolve(result)
+      }
+      tx.onerror = () => {
+        conn.close()
+        reject(tx.error)
+      }
+      body(tx.objectStore(STORE_NAME), value => (result = value))
+    }
   })
 }
 
-export async function saveShotVideo(scriptId: string, shotId: string, blob: Blob): Promise<void> {
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).put({
+export function saveShotVideo(scriptId: string, shotId: string, blob: Blob): Promise<void> {
+  return withStore('readwrite', store => {
+    store.put({
       key: makeKey(scriptId, shotId),
       scriptId,
       shotId,
       blob,
       updatedAt: new Date().toISOString(),
     })
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
   })
 }
 
-export async function getShotVideo(scriptId: string, shotId: string): Promise<Blob | null> {
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly')
-    const req = tx.objectStore(STORE_NAME).get(makeKey(scriptId, shotId))
-    req.onsuccess = () => resolve(req.result ? (req.result as StoredShotVideo).blob : null)
-    req.onerror = () => reject(req.error)
+export function getShotVideo(scriptId: string, shotId: string): Promise<Blob | null> {
+  return withStore('readonly', (store, done) => {
+    const req = store.get(makeKey(scriptId, shotId))
+    req.onsuccess = () => done(req.result ? (req.result as StoredShotVideo).blob : null)
   })
 }
 
-export async function listShotVideos(scriptId: string): Promise<StoredShotVideo[]> {
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly')
-    const index = tx.objectStore(STORE_NAME).index('byScript')
-    const req = index.getAll(scriptId)
-    req.onsuccess = () => resolve(req.result as StoredShotVideo[])
-    req.onerror = () => reject(req.error)
+export function listShotVideos(scriptId: string): Promise<StoredShotVideo[]> {
+  return withStore('readonly', (store, done) => {
+    const req = store.index('byScript').getAll(scriptId)
+    req.onsuccess = () => done(req.result as StoredShotVideo[])
   })
 }
 
-export async function deleteShotVideo(scriptId: string, shotId: string): Promise<void> {
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).delete(makeKey(scriptId, shotId))
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+/** Which shots of every script have a video, without reading the videos. */
+export function listStoredShots(): Promise<{ scriptId: string; shotId: string }[]> {
+  return withStore('readonly', (store, done) => {
+    const req = store.getAllKeys()
+    req.onsuccess = () => done(req.result.map(parseKey))
+  })
+}
+
+export function deleteShotVideo(scriptId: string, shotId: string): Promise<void> {
+  return withStore('readwrite', store => {
+    store.delete(makeKey(scriptId, shotId))
+  })
+}
+
+/**
+ * Delete the videos of shots these scripts no longer have — deleted, merged
+ * away, or dropped by re-splitting the script. Only the scripts passed are
+ * touched, so a script list that failed to load deletes nothing.
+ */
+export function pruneRemovedShotVideos(scripts: { id: string; shots: { id: string }[] }[]): Promise<void> {
+  return withStore('readwrite', store => {
+    for (const script of scripts) {
+      const shotIds = new Set(script.shots.map(shot => shot.id))
+      const req = store.index('byScript').openKeyCursor(script.id)
+      req.onsuccess = () => {
+        const cursor = req.result
+        if (!cursor) return
+        if (!shotIds.has(parseKey(cursor.primaryKey).shotId)) store.delete(cursor.primaryKey)
+        cursor.continue()
+      }
+    }
   })
 }
 
 export async function clearShotVideos(scriptId: string): Promise<void> {
-  const videos = await listShotVideos(scriptId)
-  await Promise.all(videos.map(v => deleteShotVideo(v.scriptId, v.shotId)))
+  await withStore<void>('readwrite', store => {
+    const req = store.index('byScript').openKeyCursor(scriptId)
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return
+      store.delete(cursor.primaryKey)
+      cursor.continue()
+    }
+  })
   await clearShotAnalyses(scriptId)
   await clearFinalizeProgress(scriptId)
 }
