@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSettings, defaultBgmTrack } from './useSettings'
-import { SUBTITLE_POSITION_BOTTOM } from '../utils/subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER } from '../utils/subtitlePosition'
 
 const DEFAULTS = {
   trimEnabled: true,
@@ -11,6 +11,8 @@ const DEFAULTS = {
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+  hookStyleEnabled: true,
+  hookPosition: SUBTITLE_POSITION_CENTER,
 }
 
 beforeEach(() => {
@@ -120,6 +122,17 @@ describe('useSettings', () => {
       defaultBgmId: 'lofi-tokyo',
       bgmVolume: 0.3,
       subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+    })
+  })
+
+  it('stores the hook settings, defaulting older stored settings to them', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0]).toMatchObject({ hookStyleEnabled: true, hookPosition: SUBTITLE_POSITION_CENTER })
+    act(() => { result.current[1]({ hookStyleEnabled: false, hookPosition: 30 }) })
+    expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({
+      hookStyleEnabled: false,
+      hookPosition: 30,
     })
   })
 })
