@@ -1,7 +1,8 @@
 import { blobId, type EncodeRequest, type ShotEncodeCache } from './shotEncodeCache'
 import { trimAndNormalizeShot } from './trimAndNormalizeShot'
-import { burnShotSubtitles, burnSubtitles } from './burnSubtitles'
+import { burnShotSubtitles, burnSubtitles, type SubtitleLook } from './burnSubtitles'
 import { cuesForShot, type SubtitleCue } from './subtitleCues'
+import { styleCues, type HookOptions, type StyledCue } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
@@ -28,37 +29,50 @@ export function normalizeRequest(clip: ShotClip): EncodeRequest {
   }
 }
 
+/** How long the joined video's first shot is, or null with no shots. */
+function firstShotDurationOf(clips: ShotClip[]): number | null {
+  return clips.length > 0 ? clips[0].end - clips[0].start : null
+}
+
 /**
- * The shot trimmed and normalized with `cues` (in the shot's own timeline)
- * burned in by the same encode. A shot with nothing to burn is just its
- * normalized clip, so it's shared with the combine step's cache entry.
+ * The shot trimmed and normalized with `cues` (styled, in the shot's own
+ * timeline) burned in by the same encode. A shot with nothing to burn is
+ * just its normalized clip, so it's shared with the combine step's cache
+ * entry. The key holds everything that changes the pixels, so switching
+ * the hook style re-encodes only the shots that have hook cues.
  */
-export function burnRequest(clip: ShotClip, cues: SubtitleCue[], position: SubtitlePosition): EncodeRequest {
+export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLook): EncodeRequest {
   const translated = cues.filter(c => c.ja !== null)
   if (translated.length === 0) return normalizeRequest(clip)
-  const look = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja]))
+  const hasHookCue = translated.some(c => c.variant === 'hook')
+  const placement = JSON.stringify([look.position, hasHookCue ? look.hook.position : null])
+  const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   return {
     slot: `burn:${clip.shotId}`,
-    key: `burn|${clipKey(clip)}|${position}|${look}`,
+    key: `burn|${clipKey(clip)}|${placement}|${text}`,
     run: (onProgress, signal) =>
-      burnShotSubtitles(clip.blob, clip.start, clip.end, translated, position, onProgress, signal),
+      burnShotSubtitles(clip.blob, clip.start, clip.end, translated, look, onProgress, signal),
   }
 }
 
 /**
  * One burn request per shot, each given the cues that fall within it.
  * Shots start where the previous one ended — the same running offset
- * cuesFromShotEntries times the cues by.
+ * cuesFromShotEntries times the cues by. Cues are styled on the joined
+ * timeline first, so one running on past the first shot stays a hook cue.
  */
 export function shotBurnRequests(
   clips: ShotClip[],
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  hook: HookOptions,
 ): EncodeRequest[] {
+  const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
   let offset = 0
-  return clips.map(clip => {
+  return clips.map((clip, i) => {
     const duration = clip.end - clip.start
-    const request = burnRequest(clip, cuesForShot(cues, offset, duration), position)
+    const look: SubtitleLook = { position, hook, firstShotDuration: i === 0 ? duration : null }
+    const request = burnRequest(clip, cuesForShot(styled, offset, duration), look)
     offset += duration
     return request
   })
@@ -125,6 +139,7 @@ export async function burnSubtitlesByShot(
   combinedBlob: Blob,
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  hook: HookOptions,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
@@ -132,7 +147,7 @@ export async function burnSubtitlesByShot(
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook), onProgress, signal)
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -148,5 +163,5 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  return burnSubtitles(combinedBlob, cues, position, onProgress, signal)
+  return burnSubtitles(combinedBlob, cues, { position, hook, firstShotDuration: firstShotDurationOf(clips) }, onProgress, signal)
 }

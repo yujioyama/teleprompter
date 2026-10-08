@@ -121,9 +121,9 @@ export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
  * shot begins in the joined video. Cues touching the shot by less than a
  * rounding error are left out.
  */
-export function cuesForShot(cues: SubtitleCue[], shotStart: number, shotDuration: number): SubtitleCue[] {
+export function cuesForShot<T extends SubtitleCue>(cues: T[], shotStart: number, shotDuration: number): T[] {
   const shotEnd = shotStart + shotDuration
-  const out: SubtitleCue[] = []
+  const out: T[] = []
   for (const cue of cues) {
     const start = Math.max(cue.start, shotStart)
     const end = Math.min(cue.end, shotEnd)

@@ -9,17 +9,20 @@ import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
+import { styleCues, type HookOptions, type StyledCue } from './subtitleHook'
+import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
-  EN_STYLE,
-  JA_STYLE,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_BOX_MARGIN_X,
+  SUBTITLE_BOX_OPACITY,
   SUBTITLE_BOX_PADDING_Y,
   SUBTITLE_BOX_RADIUS,
   SUBTITLE_REFERENCE_WIDTH,
   TextBlockLayout,
   fontFor,
   layoutCue,
+  textStylesFor,
+  type CueVariant,
 } from './subtitleLayout'
 
 /**
@@ -45,21 +48,53 @@ export function buildOverlayFilterGraph(ys: number[]): { filterGraph: string; ou
   return { filterGraph: stages.join(';'), outputLabel: `[v${ys.length - 1}]` }
 }
 
+/** How subtitles look beyond the cues themselves. */
+export interface SubtitleLook {
+  /** 0-100, where normal cues are centered. */
+  position: SubtitlePosition
+  hook: HookOptions
+  /**
+   * The first shot's length, when this video starts with it (the whole
+   * joined video, or the first shot's own clip); null for any other shot.
+   */
+  firstShotDuration: number | null
+}
+
+/** Where a cue is centered: hook cues have a position of their own. */
+export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePosition {
+  return cue.variant === 'hook' ? look.hook.position : look.position
+}
+
+/** Draw one line's runs centered on `centerX`, emphasized ones in yellow. */
+function fillRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, color: string) {
+  const widths = runs.map(run => ctx.measureText(run.text).width)
+  let x = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
+  runs.forEach((run, i) => {
+    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : color
+    ctx.fillText(run.text, x, y)
+    x += widths[i]
+  })
+}
+
 /**
  * Render one cue's bilingual subtitle (English bold/larger above, Japanese
  * smaller below, on a semi-transparent rounded background) as a transparent
  * PNG as wide as the video and exactly as tall as its box. Text is wrapped
  * onto balanced lines (see subtitleLayout) rather than shrunk until it fits
  * one line, which left long cues unreadably small and still overflowing.
+ * A hook cue is bigger on a darker band; `*emphasized*` words are yellow.
  */
-export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; height: number }> {
+export async function renderCueImage(
+  cue: SubtitleCue,
+  variant: CueVariant = 'normal',
+): Promise<{ image: Blob; height: number }> {
   const measureCanvas = document.createElement('canvas')
   const measureCtx = measureCanvas.getContext('2d')
   if (!measureCtx) throw new Error('Canvas 2D context unavailable')
   const layout = layoutCue(cue, (text, font) => {
     measureCtx.font = font
     return measureCtx.measureText(text).width
-  })
+  }, variant)
 
   const width = SUBTITLE_REFERENCE_WIDTH
   const height = layout.height
@@ -69,26 +104,27 @@ export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; h
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D context unavailable')
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+  ctx.fillStyle = `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[variant]})`
   ctx.beginPath()
   ctx.roundRect(SUBTITLE_BOX_MARGIN_X, 0, width - SUBTITLE_BOX_MARGIN_X * 2, height, SUBTITLE_BOX_RADIUS)
   ctx.fill()
 
-  ctx.textAlign = 'center'
+  // Runs are laid side by side from the left, centered as a whole line.
+  ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   let top = SUBTITLE_BOX_PADDING_Y
   const drawBlock = (block: TextBlockLayout, font: string, color: string) => {
     ctx.font = font
-    ctx.fillStyle = color
-    for (const line of block.lines) {
-      ctx.fillText(line, width / 2, top + block.lineHeightPx / 2)
+    for (const runs of block.runs) {
+      fillRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, color)
       top += block.lineHeightPx
     }
   }
-  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx), '#ffffff')
+  const styles = textStylesFor(variant)
+  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx), '#ffffff')
   if (layout.ja) {
     top += SUBTITLE_BLOCK_GAP
-    drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
+    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
   }
 
   const image = await new Promise<Blob>((resolve, reject) => {
@@ -104,22 +140,20 @@ const VIDEO_HEIGHT = 1920
 
 /**
  * Render each cue that has a `ja` translation to its PNG and place it:
- * shown over [start, start + duration), centered on the chosen position but
- * kept fully on screen. Cues without a translation aren't burned in.
+ * shown over [start, start + duration), centered on its position (the
+ * hook position for hook cues) but kept fully on screen. Cues without a
+ * translation aren't burned in.
  */
-export async function renderSubtitleOverlays(
-  cues: SubtitleCue[],
-  position: SubtitlePosition,
-): Promise<SubtitleOverlay[]> {
+export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
-    const { image, height } = await renderCueImage(cue)
+    const { image, height } = await renderCueImage(cue, cue.variant)
     overlays.push({
       start: cue.start,
       end: cue.start + cueDuration(cue),
       image,
-      y: Math.min(Math.max(subtitleY(position, VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height),
+      y: Math.min(Math.max(subtitleY(cuePosition(cue, look), VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height),
     })
   }
   return overlays
@@ -134,21 +168,24 @@ export async function renderSubtitleOverlays(
  * Re-encodes the whole joined video, so FinalizePage only falls back to it
  * when burning shot by shot (burnShotSubtitles) isn't possible. That can
  * take minutes on a phone, hence `onProgress` (0–1) on both backends.
+ * Cues are styled here (see styleCues), so pass them as edited.
  */
 export async function burnSubtitles(
   videoBlob: Blob,
   cues: SubtitleCue[],
-  position: SubtitlePosition,
+  look: SubtitleLook,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
   throwIfCancelled(signal)
-  const translated = cues.filter(c => c.ja !== null)
+  // The whole joined video starts with the first shot, so hook cues are
+  // those starting within its length, as in the per-shot path.
+  const translated = styleCues(cues, look.firstShotDuration, look.hook.style).filter(c => c.ja !== null)
   if (translated.length === 0) {
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }
-  const overlays = await renderSubtitleOverlays(translated, position)
+  const overlays = await renderSubtitleOverlays(translated, look)
 
   if (await canUseWebCodecs()) {
     try {
@@ -172,23 +209,23 @@ export async function burnSubtitles(
 
 /**
  * Trim and normalize one shot with its subtitles composited in the same
- * hardware encode (see normalizeShotWebCodecs). `cues` are in the trimmed
- * shot's own timeline (see cuesForShot). WebCodecs only — throws when it's
- * unavailable, so the caller can fall back to burnSubtitles on the joined
- * video.
+ * hardware encode (see normalizeShotWebCodecs). `cues` are already styled
+ * on the joined timeline and moved into the trimmed shot's own (see
+ * shotBurnRequests). WebCodecs only — throws when it's unavailable, so the
+ * caller can fall back to burnSubtitles on the joined video.
  */
 export async function burnShotSubtitles(
   blob: Blob,
   start: number,
   end: number,
-  cues: SubtitleCue[],
-  position: SubtitlePosition,
+  cues: StyledCue[],
+  look: SubtitleLook,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
   throwIfCancelled(signal)
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
-  const overlays = await renderSubtitleOverlays(cues, position)
+  const overlays = await renderSubtitleOverlays(cues, look)
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal)
 }
 
