@@ -78,6 +78,13 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], at30).key).toBe(burnRequest(shot, [cue], at50).key)
   })
 
+  it('ignores the normal position when every cue in the shot is a hook cue', () => {
+    const hookCue: StyledCue = { ...cue, variant: 'hook' }
+    const HOOK = { style: true, position: 30 }
+    expect(burnRequest(shot, [hookCue], look(50, { hook: HOOK })).key)
+      .toBe(burnRequest(shot, [hookCue], look(72, { hook: HOOK })).key)
+  })
+
   it('shares a slot per shot so a newer look replaces the older one', () => {
     expect(burnRequest(shot, [cue], look(50)).slot).toBe(burnRequest(shot, [cue], look(72)).slot)
     expect(burnRequest(shot, [cue], look(50)).slot).not.toBe(normalizeRequest(shot).slot)

@@ -4,7 +4,7 @@ import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { SubtitleCue } from './subtitleCues'
-import { SubtitlePosition, subtitleY } from './subtitlePosition'
+import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, clampedSubtitlePosition, subtitleY } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
@@ -136,8 +136,6 @@ export async function renderCueImage(
   return { image, height }
 }
 
-const VIDEO_HEIGHT = 1920
-
 /**
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
@@ -153,7 +151,7 @@ export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLo
       start: cue.start,
       end: cue.start + cueDuration(cue),
       image,
-      y: Math.min(Math.max(subtitleY(cuePosition(cue, look), VIDEO_HEIGHT, height), 0), VIDEO_HEIGHT - height),
+      y: subtitleY(clampedSubtitlePosition(cuePosition(cue, look), height), SUBTITLE_VIDEO_HEIGHT, height),
     })
   }
   return overlays

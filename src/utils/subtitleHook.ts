@@ -43,6 +43,8 @@ export function styleCues(
 ): StyledCue[] {
   const isHook = (c: SubtitleCue) =>
     hookStyle && firstShotDuration !== null && c.start < firstShotDuration - EPSILON
+  // The earliest is picked among all cues, untranslated ones included; fine,
+  // because every burn waits for all cues to be translated.
   let earliest = -1
   cues.forEach((c, i) => {
     if (isHook(c) && (earliest < 0 || c.start < cues[earliest].start)) earliest = i

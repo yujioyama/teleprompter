@@ -45,7 +45,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   const translated = cues.filter(c => c.ja !== null)
   if (translated.length === 0) return normalizeRequest(clip)
   const hasHookCue = translated.some(c => c.variant === 'hook')
-  const placement = JSON.stringify([look.position, hasHookCue ? look.hook.position : null])
+  const hasNormalCue = translated.some(c => c.variant === 'normal')
+  const placement = JSON.stringify([hasNormalCue ? look.position : null, hasHookCue ? look.hook.position : null])
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   return {
     slot: `burn:${clip.shotId}`,

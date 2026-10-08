@@ -133,7 +133,7 @@ export function emphasisRuns(lines: string[], emphasis: Emphasis): Run[][]
 export function stripEmphasis(raw: string): string
 ```
 
-- **Markers:** `*…*` pairs, matched by `/\*(?!\s)([^*\n]+?)(?<!\s)\*/g`. The
+- **Markers:** `*…*` pairs, matched by `/\*([^\s*](?:[^*\n]*[^\s*])?)\*/g` (no lookbehind: it throws on Safari < 16.4). The
   content must not start or end with whitespace, so `5 * 3 * 2` stays
   literal. Unpaired `*` stay as literal characters.
 - **Wrapping is untouched:** `layoutBlock` passes `parseEmphasis(raw).text`

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
@@ -489,18 +489,18 @@ export default function FinalizePage() {
   // join them. Editing a cue or moving the subtitles re-queues just the
   // shots that changed.
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
+  const hook = useMemo(() => hookOptionsOf({ hookStyleEnabled, hookPosition }), [hookStyleEnabled, hookPosition])
   useEffect(() => {
     if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
-      const hook = hookOptionsOf({ hookStyleEnabled, hookPosition })
       for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook)) {
         cache.prefetch(request)
       }
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hookStyleEnabled, hookPosition])
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook])
 
   // Build the finished audio (usual BGM + loudness) while the subtitles
   // are worked on: they only change the picture, so after the burn the
@@ -804,7 +804,7 @@ export default function FinalizePage() {
                     combinedBlob,
                     cues,
                     position,
-                    hookOptionsOf({ hookStyleEnabled, hookPosition }),
+                    hook,
                     onProgress,
                     signal,
                   )

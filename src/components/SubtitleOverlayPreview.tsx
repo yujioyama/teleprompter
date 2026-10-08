@@ -1,6 +1,6 @@
 import { CSSProperties, Fragment, useMemo } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { SubtitlePosition } from '../utils/subtitlePosition'
+import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, type HookOptions } from '../utils/subtitleHook'
 import { EMPHASIS_COLOR } from '../utils/subtitleEmphasis'
 import {
@@ -77,7 +77,7 @@ export default function SubtitleOverlayPreview({
   if (!cue || !layout) return null
 
   const wrapperStyle: CSSProperties = {
-    top: `${cue.variant === 'hook' && hook ? hook.position : position}%`,
+    top: `${clampedSubtitlePosition(cue.variant === 'hook' && hook ? hook.position : position, layout.height)}%`,
     width: cqw(SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
     padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} ${cqw(SUBTITLE_BOX_PADDING_X)}`,
     borderRadius: cqw(SUBTITLE_BOX_RADIUS),

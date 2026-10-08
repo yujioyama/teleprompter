@@ -19,9 +19,10 @@ export interface Run {
 
 export const EMPHASIS_COLOR = '#FFD60A'
 
-// A `*…*` pair whose content neither starts nor ends with whitespace, so
-// "5 * 3 * 2" or a lone "5*" stays as typed.
-const MARKER = /\*(?!\s)([^*\n]+?)(?<!\s)\*/g
+// A `*…*` pair whose content is non-empty, has no `*` or newline inside, and
+// neither starts nor ends with whitespace, so "5 * 3 * 2" or a lone "5*"
+// stays as typed. No lookbehind: it throws at load on Safari < 16.4.
+const MARKER = /\*([^\s*](?:[^*\n]*[^\s*])?)\*/g
 
 export function parseEmphasis(raw: string): Emphasis {
   let text = ''
