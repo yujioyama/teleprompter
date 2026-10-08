@@ -51,7 +51,7 @@ function stubCanvas() {
   return { drawn, bands }
 }
 
-const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50 }, firstShotDuration: 2 }
+const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, headline: '', punchIn: false }, firstShotDuration: 2 }
 
 afterEach(() => {
   vi.restoreAllMocks()

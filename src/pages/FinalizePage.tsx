@@ -138,7 +138,7 @@ export default function FinalizePage() {
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
-  const { hookStyleEnabled, hookPosition } = settings
+  const { hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled } = settings
   const { normalizeAudio } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
@@ -489,7 +489,10 @@ export default function FinalizePage() {
   // join them. Editing a cue or moving the subtitles re-queues just the
   // shots that changed.
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
-  const hook = useMemo(() => hookOptionsOf({ hookStyleEnabled, hookPosition }), [hookStyleEnabled, hookPosition])
+  const hook = useMemo(
+    () => hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }),
+    [hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled],
+  )
   useEffect(() => {
     if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
@@ -795,7 +798,7 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
-                hookSettings={{ hookStyleEnabled, hookPosition }}
+                hookSettings={{ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }}
                 onHookSettingsChange={updateSettings}
                 burn={(cues, position, onProgress, signal) =>
                   burnSubtitlesByShot(

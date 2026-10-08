@@ -16,7 +16,7 @@ function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
-const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50 }
+const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50, hookHeadlineEnabled: true, punchInEnabled: true }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
 // to FinalizePage, so subtitle work survives the component unmounting on
@@ -459,7 +459,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50 }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, headline: '', punchIn: true }, firstShotDuration: 2 }),
     )
   })
 

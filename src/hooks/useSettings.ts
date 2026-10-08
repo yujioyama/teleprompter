@@ -17,6 +17,12 @@ export interface AppSettings {
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
+  /** Show the per-video hook headline above the first shot's subtitle. */
+  hookHeadlineEnabled: boolean
+  /** Slowly zoom the first shot's picture in. */
+  punchInEnabled: boolean
+  /** Seconds of silence auto-trim keeps before the first shot's speech. */
+  firstShotPaddingStart: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -30,6 +36,9 @@ const DEFAULTS: AppSettings = {
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_CENTER,
+  hookHeadlineEnabled: true,
+  punchInEnabled: true,
+  firstShotPaddingStart: 0.05,
 }
 
 function loadSettings(): AppSettings {

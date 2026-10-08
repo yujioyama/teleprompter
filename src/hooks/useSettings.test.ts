@@ -13,6 +13,9 @@ const DEFAULTS = {
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_CENTER,
+  hookHeadlineEnabled: true,
+  punchInEnabled: true,
+  firstShotPaddingStart: 0.05,
 }
 
 beforeEach(() => {
@@ -145,5 +148,15 @@ describe('defaultBgmTrack', () => {
   it('treats none, or a track that no longer exists, as no BGM', () => {
     expect(defaultBgmTrack({ defaultBgmId: null })).toBeNull()
     expect(defaultBgmTrack({ defaultBgmId: 'removed-track' })).toBeNull()
+  })
+
+  it('gives older stored settings the headline, punch-in and first-shot lead-in defaults', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0]).toMatchObject({
+      hookHeadlineEnabled: true,
+      punchInEnabled: true,
+      firstShotPaddingStart: 0.05,
+    })
   })
 })

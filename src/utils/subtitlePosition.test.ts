@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   subtitleY,
   clampedSubtitlePosition,
+  clampedSubtitleY,
   SUBTITLE_POSITION_TOP,
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_BOTTOM,
@@ -57,5 +58,16 @@ describe('clampedSubtitlePosition', () => {
 
   it('puts a tall box at the very top of the video', () => {
     expect(subtitleY(clampedSubtitlePosition(0, 745), 1920, 745)).toBeCloseTo(0, 5) // Math.round can give -0
+  })
+})
+
+describe('clampedSubtitleY', () => {
+  it('is subtitleY on the 1920px video while the box fits', () => {
+    expect(clampedSubtitleY(50, 220)).toBe(850)
+  })
+
+  it('keeps the whole box on screen', () => {
+    expect(clampedSubtitleY(0, 220)).toBeCloseTo(0, 5)
+    expect(clampedSubtitleY(100, 220)).toBeCloseTo(1700, 5)
   })
 })

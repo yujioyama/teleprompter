@@ -4,7 +4,7 @@ import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { SubtitleCue } from './subtitleCues'
-import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, clampedSubtitlePosition, subtitleY } from './subtitlePosition'
+import { SubtitlePosition, clampedSubtitleY } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
@@ -151,7 +151,7 @@ export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLo
       start: cue.start,
       end: cue.start + cueDuration(cue),
       image,
-      y: subtitleY(clampedSubtitlePosition(cuePosition(cue, look), height), SUBTITLE_VIDEO_HEIGHT, height),
+      y: clampedSubtitleY(cuePosition(cue, look), height),
     })
   }
   return overlays

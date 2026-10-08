@@ -30,8 +30,8 @@ vi.mock('./webcodecs/concatClips', () => ({
 }))
 
 const JOINED = new Blob(['joined'])
-const NO_HOOK: HookOptions = { style: false, position: 50 }
-const HOOK: HookOptions = { style: true, position: 50 }
+const NO_HOOK: HookOptions = { style: false, position: 50, headline: '', punchIn: false }
+const HOOK: HookOptions = { style: true, position: 50, headline: '', punchIn: false }
 
 function look(position: number, extra: Partial<SubtitleLook> = {}): SubtitleLook {
   return { position, hook: NO_HOOK, firstShotDuration: null, ...extra }
@@ -71,8 +71,8 @@ describe('burnRequest', () => {
 
   it('changes key with the cue style, and with the hook position only for a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
-    const at50 = look(50, { hook: { style: true, position: 50 } })
-    const at30 = look(50, { hook: { style: true, position: 30 } })
+    const at50 = look(50, { hook: { ...HOOK, position: 50 } })
+    const at30 = look(50, { hook: { ...HOOK, position: 30 } })
     expect(burnRequest(shot, [hookCue], at50).key).not.toBe(burnRequest(shot, [cue], at50).key)
     expect(burnRequest(shot, [hookCue], at30).key).not.toBe(burnRequest(shot, [hookCue], at50).key)
     expect(burnRequest(shot, [cue], at30).key).toBe(burnRequest(shot, [cue], at50).key)
@@ -80,7 +80,7 @@ describe('burnRequest', () => {
 
   it('ignores the normal position when every cue in the shot is a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
-    const HOOK = { style: true, position: 30 }
+    const HOOK = { style: true, position: 30, headline: '', punchIn: false }
     expect(burnRequest(shot, [hookCue], look(50, { hook: HOOK })).key)
       .toBe(burnRequest(shot, [hookCue], look(72, { hook: HOOK })).key)
   })
