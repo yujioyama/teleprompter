@@ -1,4 +1,5 @@
 import { clearShotAnalyses } from './shotAnalysisStore'
+import { clearFinalizeProgress } from './finalizeProgressStore'
 
 const DB_NAME = 'teleprompter-shot-videos'
 const DB_VERSION = 1
@@ -81,4 +82,5 @@ export async function clearShotVideos(scriptId: string): Promise<void> {
   const videos = await listShotVideos(scriptId)
   await Promise.all(videos.map(v => deleteShotVideo(v.scriptId, v.shotId)))
   await clearShotAnalyses(scriptId)
+  await clearFinalizeProgress(scriptId)
 }
