@@ -29,8 +29,9 @@ export default function ShotEditPage() {
 
   const [shots, setShots] = useState<Shot[]>(script?.shots ?? [])
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
-  const [lastMergeSnapshot, setLastMergeSnapshot] = useState<Shot[] | null>(null)
-  const [undoVisible, setUndoVisible] = useState(false)
+  // The shots from before the last merge or delete, and what the toast
+  // offering to put them back says.
+  const [undo, setUndo] = useState<{ snapshot: Shot[]; message: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // All hooks MUST be called before any conditional return (React rules of hooks)
@@ -68,6 +69,29 @@ export default function ShotEditPage() {
   // Capture narrowed script reference for use in inner functions
   const safeScript = script
 
+  // Every change is saved as it's made, so leaving by 戻る (or the app
+  // being closed) never drops edits that 撮影開始 would have saved.
+  function commit(next: Shot[]) {
+    setShots(next)
+    updateScript(safeScript.id, { shots: next })
+  }
+
+  // Changes from here on can't be undone by the toast's snapshot, so it goes.
+  function dismissUndo() {
+    clearUndoTimer()
+    setUndo(null)
+  }
+
+  function commitUndoable(next: Shot[], message: string) {
+    commit(next)
+    clearUndoTimer()
+    setUndo({ snapshot: shots, message })
+    undoTimerRef.current = setTimeout(() => {
+      setUndo(null)
+      undoTimerRef.current = null
+    }, 5000)
+  }
+
   function mergeShots(activeId: string, targetId: string) {
     const activeIndex = shots.findIndex(s => s.id === activeId)
     const targetIndex = shots.findIndex(s => s.id === targetId)
@@ -83,17 +107,7 @@ export default function ShotEditPage() {
       .filter(s => s.id !== activeId)
       .map(s => s.id === targetId ? { ...s, text: mergedText } : s)
 
-    setLastMergeSnapshot([...shots])
-    setShots(next)
-    updateScript(safeScript.id, { shots: next })
-
-    clearUndoTimer()
-    setUndoVisible(true)
-    undoTimerRef.current = setTimeout(() => {
-      setUndoVisible(false)
-      setLastMergeSnapshot(null)
-      undoTimerRef.current = null
-    }, 5000)
+    commitUndoable(next, 'ショットを合体しました')
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -105,23 +119,21 @@ export default function ShotEditPage() {
   }
 
   function handleUpdate(shotId: string, text: string) {
-    setShots(prev => prev.map(s => (s.id === shotId ? { ...s, text } : s)))
+    if (shots.find(s => s.id === shotId)?.text === text) return
+    dismissUndo()
+    commit(shots.map(s => (s.id === shotId ? { ...s, text } : s)))
   }
 
   function handleDelete(shotId: string) {
-    clearUndoTimer()
-    setUndoVisible(false)
-    setShots(prev => prev.filter(s => s.id !== shotId))
+    commitUndoable(shots.filter(s => s.id !== shotId), 'ショットを削除しました')
   }
 
   function handleAdd() {
-    clearUndoTimer()
-    setUndoVisible(false)
-    setShots(prev => [...prev, { id: generateId(), text: '新しいショット' }])
+    dismissUndo()
+    commit([...shots, { id: generateId(), text: '新しいショット' }])
   }
 
   function handleSave() {
-    updateScript(safeScript.id, { shots })
     // Jump straight to the native Cinematic-capture companion app
     // (github.com/yujioyama/teleprompter-cam) instead of making the user
     // press a second "record" button on the next screen.
@@ -131,12 +143,9 @@ export default function ShotEditPage() {
   }
 
   function handleUndo() {
-    if (!lastMergeSnapshot) return
-    clearUndoTimer()
-    setShots(lastMergeSnapshot)
-    updateScript(safeScript.id, { shots: lastMergeSnapshot })
-    setUndoVisible(false)
-    setLastMergeSnapshot(null)
+    if (!undo) return
+    commit(undo.snapshot)
+    dismissUndo()
   }
 
   return (
@@ -189,9 +198,9 @@ export default function ShotEditPage() {
         </button>
       </div>
 
-      {undoVisible && (
+      {undo && (
         <div className={styles.undoToast}>
-          <span>ショットを合体しました</span>
+          <span>{undo.message}</span>
           <button className={styles.undoBtn} onClick={handleUndo}>
             元に戻す
           </button>
