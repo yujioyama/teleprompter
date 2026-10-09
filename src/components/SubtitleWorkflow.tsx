@@ -401,7 +401,7 @@ export default function SubtitleWorkflow({
                 />
                 フック字幕
               </label>
-              <p className={styles.hint}>最初のショットの字幕を大きく濃い帯で、1フレーム目から表示します</p>
+              <p className={styles.hint}>最初のショットの字幕を大きく、英語だけで、1フレーム目から表示します</p>
               <div className={styles.positionRow} role="group" aria-label="フック字幕の位置">
                 {SUBTITLE_POSITION_PRESETS.map(p => (
                   <button

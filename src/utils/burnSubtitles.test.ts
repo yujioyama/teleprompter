@@ -11,7 +11,7 @@ import {
   type SubtitleLook,
 } from './burnSubtitles'
 import { CancelledError } from './cancellation'
-import { layoutCue, type MeasureText } from './subtitleLayout'
+import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLayout'
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
@@ -36,28 +36,45 @@ const measure: MeasureText = (text, font) => text.length * Number(/(\d+)px/.exec
 
 /** jsdom has no canvas: record what would be drawn. */
 function stubCanvas() {
-  const drawn: { text: string; color: string; font: string }[] = []
-  const bands: string[] = []
+  const drawn: { text: string; color: string; font: string; shadowBlur: number }[] = []
+  const stroked: { text: string; lineWidth: number; shadowBlur: number; color: string }[] = []
+  const boxes: unknown[] = []
+  const saved: Record<string, unknown>[] = []
   const ctx = {
     font: '',
     fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    lineJoin: '',
+    shadowColor: '',
+    shadowBlur: 0,
+    shadowOffsetY: 0,
     textAlign: '',
     textBaseline: '',
     measureText(text: string) {
       return { width: measure(text, this.font) }
     },
+    save() {
+      saved.push({ shadowColor: this.shadowColor, shadowBlur: this.shadowBlur, shadowOffsetY: this.shadowOffsetY })
+    },
+    restore() {
+      Object.assign(this, saved.pop())
+    },
+    strokeText(text: string) {
+      stroked.push({ text, lineWidth: this.lineWidth, shadowBlur: this.shadowBlur, color: String(this.strokeStyle) })
+    },
     fillText(text: string) {
-      drawn.push({ text, color: String(this.fillStyle), font: this.font })
+      drawn.push({ text, color: String(this.fillStyle), font: this.font, shadowBlur: this.shadowBlur })
+    },
+    roundRect() {
+      boxes.push(1)
     },
     beginPath() {},
-    roundRect() {},
-    fill() {
-      bands.push(String(this.fillStyle))
-    },
+    fill() {},
   }
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never)
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(cb => cb(new Blob(['png'])))
-  return { drawn, bands }
+  return { drawn, stroked, boxes }
 }
 
 const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null }, firstShotDuration: 2 }
@@ -126,11 +143,20 @@ describe('renderCueImage', () => {
     expect(drawn.some(d => d.text.includes('*'))).toBe(false)
   })
 
-  it('draws a hook cue bigger, on a darker band', async () => {
-    const { drawn, bands } = stubCanvas()
+  it('outlines each run in black under a soft shadow, then fills it white without one, on no box', async () => {
+    const { drawn, stroked, boxes } = stubCanvas()
+    await renderCueImage({ id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ' })
+    expect(boxes).toHaveLength(0)
+    expect(stroked[0]).toEqual({ text: 'Hi', lineWidth: 7, shadowBlur: expect.closeTo(9), color: '#000' })
+    expect(drawn[0]).toMatchObject({ text: 'Hi', color: '#ffffff', shadowBlur: 0, font: `800 60px ${SUBTITLE_FONT_FAMILY}` })
+    expect(drawn[1]).toMatchObject({ text: 'やあ', color: '#ffffff' })
+  })
+
+  it('draws a hook cue at 80px, English only', async () => {
+    const { drawn } = stubCanvas()
     await renderCueImage({ id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ' }, 'hook')
-    expect(bands).toEqual(['rgba(0, 0, 0, 0.8)'])
-    expect(drawn[0].font).toBe('bold 100px sans-serif')
+    expect(drawn.map(d => d.text)).toEqual(['Hi'])
+    expect(drawn[0].font).toBe(`800 80px ${SUBTITLE_FONT_FAMILY}`)
   })
 })
 

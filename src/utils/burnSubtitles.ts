@@ -22,14 +22,13 @@ import {
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
   SUBTITLE_BLOCK_GAP,
-  SUBTITLE_BOX_MARGIN_X,
-  SUBTITLE_BOX_OPACITY,
-  SUBTITLE_BOX_PADDING_Y,
-  SUBTITLE_BOX_RADIUS,
+  SUBTITLE_PADDING_Y,
   SUBTITLE_REFERENCE_WIDTH,
+  SUBTITLE_SHADOW,
   TextBlockLayout,
   fontFor,
   layoutCue,
+  outlineWidth,
   textStylesFor,
   type CueVariant,
   type MeasureText,
@@ -95,12 +94,32 @@ export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePositio
   return cue.variant === 'hook' ? look.hook.position : look.position
 }
 
-/** Draw one line's runs centered on `centerX`, emphasized ones in yellow. */
-function fillRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, color: string) {
+/**
+ * Draw one line's runs centered on `centerX`: first every run's black
+ * outline under a soft shadow, then the fills (white, emphasis yellow)
+ * without one, so the outline sits under the letters and never thins them.
+ */
+function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, fontPx: number) {
   const widths = runs.map(run => ctx.measureText(run.text).width)
-  let x = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
+  const left = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
+
+  ctx.save()
+  ctx.shadowColor = SUBTITLE_SHADOW.color
+  ctx.shadowBlur = fontPx * SUBTITLE_SHADOW.blurRatio
+  ctx.shadowOffsetY = fontPx * SUBTITLE_SHADOW.offsetYRatio
+  ctx.strokeStyle = '#000'
+  ctx.lineWidth = outlineWidth(fontPx)
+  ctx.lineJoin = 'round'
+  let x = left
   runs.forEach((run, i) => {
-    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : color
+    ctx.strokeText(run.text, x, y)
+    x += widths[i]
+  })
+  ctx.restore()
+
+  x = left
+  runs.forEach((run, i) => {
+    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : '#ffffff'
     ctx.fillText(run.text, x, y)
     x += widths[i]
   })
@@ -139,12 +158,11 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 /**
- * Render one cue's bilingual subtitle (English bold/larger above, Japanese
- * smaller below, on a semi-transparent rounded background) as a transparent
- * PNG as wide as the video and exactly as tall as its box. Text is wrapped
- * onto balanced lines (see subtitleLayout) rather than shrunk until it fits
- * one line, which left long cues unreadably small and still overflowing.
- * A hook cue is bigger on a darker band; `*emphasized*` words are yellow.
+ * Render one cue's subtitle (English above, Japanese smaller below; a hook
+ * cue is English only, bigger) as a transparent PNG as wide as the video and
+ * exactly as tall as its layout: white outlined text, no box. Text is
+ * wrapped onto balanced lines (see subtitleLayout); `*emphasized*` words are
+ * yellow.
  */
 export async function renderCueImage(
   cue: SubtitleCue,
@@ -152,29 +170,23 @@ export async function renderCueImage(
 ): Promise<{ image: Blob; height: number }> {
   const layout = layoutCue(cue, canvasMeasure(), variant)
   const width = SUBTITLE_REFERENCE_WIDTH
-  const height = layout.height
-  const { canvas, ctx } = overlayCanvas(height)
+  const { canvas, ctx } = overlayCanvas(layout.height)
 
-  ctx.fillStyle = `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[variant]})`
-  ctx.beginPath()
-  ctx.roundRect(SUBTITLE_BOX_MARGIN_X, 0, width - SUBTITLE_BOX_MARGIN_X * 2, height, SUBTITLE_BOX_RADIUS)
-  ctx.fill()
-
-  let top = SUBTITLE_BOX_PADDING_Y
-  const drawBlock = (block: TextBlockLayout, font: string, color: string) => {
+  let top = SUBTITLE_PADDING_Y
+  const drawBlock = (block: TextBlockLayout, font: string) => {
     ctx.font = font
     for (const runs of block.runs) {
-      fillRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, color)
+      drawOutlinedRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, block.fontPx)
       top += block.lineHeightPx
     }
   }
   const styles = textStylesFor(variant)
-  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx), '#ffffff')
-  if (layout.ja) {
+  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx))
+  if (layout.ja && styles.ja) {
     top += SUBTITLE_BLOCK_GAP
-    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
+    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx))
   }
-  return { image: await toPng(canvas), height }
+  return { image: await toPng(canvas), height: layout.height }
 }
 
 /**

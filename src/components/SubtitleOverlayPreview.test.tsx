@@ -56,7 +56,9 @@ describe('SubtitleOverlayPreview', () => {
     const box = screen.getByTestId('subtitle-overlay-box')
     expect(box).toHaveAttribute('data-variant', 'hook')
     expect(box.style.top).toBe('50%')
-    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.8)')
+    expect(box.style.backgroundColor).toBe('')
+    expect(screen.queryByText('こんにちは')).not.toBeInTheDocument()
+    expect(box.querySelectorAll('p')).toHaveLength(1)
   })
 
   it('keeps a tall hook box on screen, as the burn does', () => {
@@ -79,7 +81,8 @@ describe('SubtitleOverlayPreview', () => {
     const box = screen.getByTestId('subtitle-overlay-box')
     expect(box).toHaveAttribute('data-variant', 'normal')
     expect(box.style.top).toBe('72%')
-    expect(box.style.backgroundColor).toBe('rgba(0, 0, 0, 0.55)')
+    expect(box.style.backgroundColor).toBe('')
+    expect(screen.getByText('ケノービ将軍')).toBeInTheDocument()
   })
 
   it('shows a transcribed first cue from 0s with the hook style, as timed without it', () => {

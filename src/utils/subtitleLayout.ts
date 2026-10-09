@@ -7,13 +7,31 @@ import { emphasisRuns, parseEmphasis, type Run } from './subtitleEmphasis'
  * preview's own width so it matches what gets burned in.
  */
 export const SUBTITLE_REFERENCE_WIDTH = 1080
-export const SUBTITLE_BOX_MARGIN_X = 90
-export const SUBTITLE_BOX_PADDING_X = 40
-export const SUBTITLE_BOX_PADDING_Y = 28
-export const SUBTITLE_BOX_RADIUS = 24
+/** Room kept clear on either side of the text. */
+export const SUBTITLE_MARGIN_X = 90
+/** Room above and below the text for its outline and shadow. */
+export const SUBTITLE_PADDING_Y = 20
 export const SUBTITLE_BLOCK_GAP = 14
-export const SUBTITLE_TEXT_WIDTH =
-  SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2 - SUBTITLE_BOX_PADDING_X * 2
+export const SUBTITLE_TEXT_WIDTH = SUBTITLE_REFERENCE_WIDTH - SUBTITLE_MARGIN_X * 2
+
+/**
+ * Native, current faces on the iPhone that burns and previews them (SF Pro
+ * and Hiragino Sans), with nothing to download. Shared by the canvas and
+ * the preview's CSS, so both measure alike.
+ */
+export const SUBTITLE_FONT_FAMILY = 'system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif'
+
+/**
+ * No box: white text with a crisp black outline (`OUTLINE_WIDTH_RATIO` of
+ * the font size, centered on the glyph edge, under the fill) and a soft
+ * diffuse shadow for depth, readable over any picture without covering it.
+ */
+export const OUTLINE_WIDTH_RATIO = 0.12
+export const SUBTITLE_SHADOW = { color: 'rgba(0,0,0,0.35)', blurRatio: 0.15, offsetYRatio: 0.04 }
+
+export function outlineWidth(fontPx: number): number {
+  return Math.round(fontPx * OUTLINE_WIDTH_RATIO)
+}
 
 export interface TextStyle {
   weight: string
@@ -24,28 +42,26 @@ export interface TextStyle {
   lineHeight: number
 }
 
-export const EN_STYLE: TextStyle = { weight: 'bold', maxPx: 60, minPx: 44, maxLines: 3, lineHeight: 1.25 }
-export const JA_STYLE: TextStyle = { weight: 'normal', maxPx: 50, minPx: 38, maxLines: 3, lineHeight: 1.4 }
+// Heavy rather than bold, and bold Japanese: a thin weight smudges under an outline.
+export const EN_STYLE: TextStyle = { weight: '800', maxPx: 60, minPx: 44, maxLines: 3, lineHeight: 1.25 }
+export const JA_STYLE: TextStyle = { weight: 'bold', maxPx: 50, minPx: 38, maxLines: 3, lineHeight: 1.4 }
 
 /**
- * The first shot's cues, drawn to stop the scroll: about 1.6x the English
- * and 1.5x the Japanese, on a darker band (see subtitleHook).
+ * The first shot's cues: bigger English only, so the frame stays clear for
+ * the face and the snap zoom (see subtitleHook).
  */
 export type CueVariant = 'normal' | 'hook'
-export const HOOK_EN_STYLE: TextStyle = { weight: 'bold', maxPx: 100, minPx: 72, maxLines: 3, lineHeight: 1.2 }
-export const HOOK_JA_STYLE: TextStyle = { weight: 'normal', maxPx: 75, minPx: 57, maxLines: 3, lineHeight: 1.4 }
-/** Opacity of the black band behind a cue. */
-export const SUBTITLE_BOX_OPACITY: Record<CueVariant, number> = { normal: 0.55, hook: 0.8 }
+export const HOOK_EN_STYLE: TextStyle = { weight: '800', maxPx: 80, minPx: 64, maxLines: 3, lineHeight: 1.2 }
 
-export function textStylesFor(variant: CueVariant): { en: TextStyle; ja: TextStyle } {
-  return variant === 'hook' ? { en: HOOK_EN_STYLE, ja: HOOK_JA_STYLE } : { en: EN_STYLE, ja: JA_STYLE }
+export function textStylesFor(variant: CueVariant): { en: TextStyle; ja: TextStyle | null } {
+  return variant === 'hook' ? { en: HOOK_EN_STYLE, ja: null } : { en: EN_STYLE, ja: JA_STYLE }
 }
 
 /** Width in px of `text` rendered in the CSS `font` shorthand. */
 export type MeasureText = (text: string, font: string) => number
 
 export function fontFor(style: TextStyle, px: number): string {
-  return `${style.weight} ${px}px sans-serif`
+  return `${style.weight} ${px}px ${SUBTITLE_FONT_FAMILY}`
 }
 
 export interface TextBlockLayout {
@@ -59,7 +75,7 @@ export interface TextBlockLayout {
 export interface CueLayout {
   en: TextBlockLayout
   ja: TextBlockLayout | null
-  /** Height of the background box, which is also the rendered image height. */
+  /** Height of the rendered image: the lines plus outline room. */
   height: number
 }
 
@@ -229,7 +245,7 @@ function layoutBlock(raw: string, style: TextStyle, measure: MeasureText): TextB
   return { fontPx: px, lines, runs: emphasisRuns(lines, emphasis), lineHeightPx: Math.round(px * style.lineHeight) }
 }
 
-/** Lay out one cue's bilingual subtitle box at the 1080px reference width. */
+/** Lay out one cue's subtitle (English, plus Japanese unless it's a hook cue) at the 1080px reference width. */
 export function layoutCue(
   cue: Pick<SubtitleCue, 'en' | 'ja'>,
   measure: MeasureText,
@@ -237,8 +253,8 @@ export function layoutCue(
 ): CueLayout {
   const styles = textStylesFor(variant)
   const en = layoutBlock(cue.en, styles.en, measure)
-  const ja = cue.ja ? layoutBlock(cue.ja, styles.ja, measure) : null
-  let height = SUBTITLE_BOX_PADDING_Y * 2 + en.lines.length * en.lineHeightPx
+  const ja = cue.ja && styles.ja ? layoutBlock(cue.ja, styles.ja, measure) : null
+  let height = SUBTITLE_PADDING_Y * 2 + en.lines.length * en.lineHeightPx
   if (ja) height += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
   return { en, ja, height }
 }
