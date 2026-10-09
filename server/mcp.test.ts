@@ -75,6 +75,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools).toHaveLength(1)
     expect(result.tools[0].name).toBe(TOOL_NAME)
     expect(result.tools[0].description).toContain('1ショット＝1行')
+    expect(result.tools[0].description).toContain('*…*')
     expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption'])
   })
 
