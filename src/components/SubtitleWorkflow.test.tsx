@@ -604,6 +604,40 @@ describe('SubtitleWorkflow Japanese sent back by Claude', () => {
     expect(fetchSubtitles).not.toHaveBeenCalled()
   })
 
+  it('stops looking once the Japanese is in', async () => {
+    renderWith('secret')
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは\n2. 世界' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    vi.mocked(fetchSubtitles).mockClear()
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(fetchSubtitles).not.toHaveBeenCalled()
+  })
+
+  it('waits for the English to settle before asking about edited lines', async () => {
+    renderWith('secret')
+    const english = await screen.findByDisplayValue('Hello')
+    await waitFor(() => expect(fetchSubtitles).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(english, { target: { value: 'Hell' } })
+    fireEvent.change(english, { target: { value: 'Hel' } })
+    fireEvent.change(english, { target: { value: 'Help' } })
+    expect(fetchSubtitles).toHaveBeenCalledTimes(1)
+
+    await waitFor(() => expect(fetchSubtitles).toHaveBeenCalledTimes(2))
+    const edited = subtitleRequestId([
+      { id: 'a', start: 0, end: 2, en: 'Help', ja: null },
+      { id: 'b', start: 2, end: 4, en: 'World', ja: null },
+    ])
+    expect(fetchSubtitles).toHaveBeenLastCalledWith('secret', edited)
+  })
+
   it('shows the paste error instead of applying lines that do not line up', async () => {
     vi.mocked(fetchSubtitles).mockResolvedValue(['こんにちは'])
     renderWith('secret')

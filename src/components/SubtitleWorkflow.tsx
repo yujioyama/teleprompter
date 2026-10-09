@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   SubtitlePosition,
   SUBTITLE_POSITION_BOTTOM,
@@ -219,13 +220,23 @@ export default function SubtitleWorkflow({
 
   // Lines Claude sent back through the connector for exactly these English
   // cues: looked for on arrival and whenever the user returns from Claude.
+  // While the English is being edited, wait for it to settle rather than
+  // asking about every keystroke's version.
   const requestId = subtitleRequestId(cues)
+  const settledRequestId = useDebouncedValue(requestId, 500)
   const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !hasAnyJapanese
-  useForegroundCheck(awaitingClaude ? requestId : null, (id, isStale) => {
+  // The cues as they are when an answer arrives, not when the check began.
+  const latestCuesRef = useRef(cues)
+  useLayoutEffect(() => {
+    latestCuesRef.current = cues
+  })
+  useForegroundCheck(awaitingClaude ? settledRequestId : null, (id, isStale) => {
     fetchSubtitles(inboxKey, id)
       .then(lines => {
-        if (!lines || isStale()) return
-        const result = withJapaneseLines(cues, lines)
+        const current = latestCuesRef.current
+        // The English may have moved on while the check was out.
+        if (!lines || isStale() || subtitleRequestId(current) !== id) return
+        const result = withJapaneseLines(current, lines)
         if (!result.ok) {
           setPasteError(result.error)
           return

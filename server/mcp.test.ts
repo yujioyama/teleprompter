@@ -161,6 +161,15 @@ describe('send_subtitles', () => {
     expect(await subtitles.get('k3x9-2')).toBeNull()
   })
 
+  it('asks for the lines again without numbers when they are numbered', async () => {
+    const res = await sendSubtitles({ request_id: 'k3x9-2', lines: ['1. 一行目', '2. 二行目'] })
+    const { result } = await res.json()
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('番号')
+    expect(await subtitles.get('k3x9-2')).toBeNull()
+  })
+
   it('reports a misconfigured store as a tool error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await handleMcpRequest(callTool({ request_id: 'k3x9-1', lines: ['一行'] }, undefined, SUBTITLES_TOOL_NAME), {

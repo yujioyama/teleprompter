@@ -60,6 +60,8 @@ export default function HomePage() {
       </header>
 
       <ClaudeInbox
+        // A new key starts from an empty list, never one fetched with the old key.
+        key={settings.inboxKey}
         inboxKey={settings.inboxKey}
         onOpen={item => navigate('/scripts/new', { state: { inboxItem: item } })}
       />

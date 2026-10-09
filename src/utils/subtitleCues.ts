@@ -59,9 +59,10 @@ ${lines}`
 function sendBackSection(requestId: string, lineCount: number): string {
   return `
 【teleprompterへの送信】
-send_subtitles ツールが使えるときは、訳を出力したあとに必ず呼び出してteleprompterに送ってください。
+まず teleprompter コネクタの send_subtitles ツールを呼び出して、翻訳した各行を送ってください。そのあとで、上の【出力】の形式で訳を表示してください。
 - request_id: ${requestId}
-- lines: 上の訳を番号なしで1行ずつ、順番どおりに（${lineCount}行）
+- lines: 翻訳した各行を番号なしで1行ずつ、英語セリフと同じ順番で（${lineCount}行）
+ツールが見つからないときは、【出力】の形式で表示するだけで構いません。
 `
 }
 

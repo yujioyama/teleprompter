@@ -28,6 +28,9 @@ const SUBTITLES_DESCRIPTION = [
 
 // The app's request id ends in its English line count (e.g. "1x9kq2c-6").
 const REQUEST_ID = /^[0-9a-z]{1,13}-([1-9][0-9]{0,2})$/
+// "1. 訳" — the prompt's numbered output, which would end up on screen. The
+// space is required so a line like "3.5倍" or "3、4回" still goes through.
+const NUMBERED = /^\d+[.．]\s/
 
 function textResult(text: string, isError = false) {
   return { ...(isError ? { isError: true } : {}), content: [{ type: 'text' as const, text }] }
@@ -77,6 +80,9 @@ function buildServer({ inbox, subtitles }: McpDeps): McpServer {
       },
     },
     async ({ request_id, lines }) => {
+      if (lines.some(line => NUMBERED.test(line))) {
+        return textResult('lines には番号を付けず、訳だけを1行ずつ入れて送り直してください。', true)
+      }
       const expected = Number(REQUEST_ID.exec(request_id)![1])
       if (lines.length !== expected) {
         return textResult(

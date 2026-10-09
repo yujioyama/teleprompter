@@ -40,6 +40,9 @@ describe('buildClaudePrompt with a request id', () => {
     expect(prompt).toContain('send_subtitles')
     expect(prompt).toContain('request_id: k3x9-2')
     expect(prompt).toContain('（2行）')
+    // Sent before the list appears, so the lines are there by the time the user goes back.
+    expect(prompt).toContain('まず teleprompter コネクタの send_subtitles')
+    expect(prompt.indexOf('send_subtitles')).toBeLessThan(prompt.indexOf('そのあと'))
     // The English still comes last, numbered as before.
     expect(prompt.trimEnd().endsWith('2. This is a test')).toBe(true)
   })
