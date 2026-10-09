@@ -5,7 +5,7 @@ import {
   SUBTITLE_POSITION_BOTTOM,
   SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
-import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, punchInScale, type HookSettings } from '../utils/subtitleHook'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
@@ -39,6 +39,8 @@ export interface SubtitleState {
   pasteText: string
   position: SubtitlePosition
   source: SubtitleSource
+  /** On-screen-only text above the first shot's subtitle; per video. */
+  hookHeadline: string
 }
 
 export const INITIAL_SUBTITLE_STATE: SubtitleState = {
@@ -47,6 +49,7 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
   pasteText: '',
   position: SUBTITLE_POSITION_BOTTOM,
   source: 'script',
+  hookHeadline: '',
 }
 
 interface SubtitleWorkflowProps {
@@ -89,7 +92,7 @@ export default function SubtitleWorkflow({
   onBurned,
   transcribe = transcribeSpeech,
 }: SubtitleWorkflowProps) {
-  const { stage, cues, pasteText, position, source } = state
+  const { stage, cues, pasteText, position, source, hookHeadline } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -255,9 +258,12 @@ export default function SubtitleWorkflow({
 
   const hasAnyJapanese = cues.some(c => c.ja !== null)
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
-  const hook = hookOptionsOf(hookSettings)
+  const hook = hookOptionsOf(hookSettings, hookHeadline)
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
+  // The punch-in is previewed by zooming the player itself; the subtitle
+  // overlay is a sibling of it, so it keeps its size as in the burn.
+  const previewZoom = hook.punchIn && firstShotDuration !== null ? punchInScale(previewTime, firstShotDuration) : 1
 
   return (
     <div className={styles.wrapper}>
@@ -336,6 +342,7 @@ export default function SubtitleWorkflow({
                   src={previewUrl ?? undefined}
                   controls={stage !== 'burning'}
                   playsInline
+                  style={previewZoom !== 1 ? { transform: `scale(${previewZoom})` } : undefined}
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
                 />
                 <SubtitleOverlayPreview
@@ -384,6 +391,33 @@ export default function SubtitleWorkflow({
                   </button>
                 ))}
               </div>
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={hookSettings.hookHeadlineEnabled}
+                  onChange={e => onHookSettingsChange({ hookHeadlineEnabled: e.target.checked })}
+                />
+                フック見出し
+              </label>
+              {hookSettings.hookHeadlineEnabled && (
+                <input
+                  className={styles.headlineInput}
+                  aria-label="フック見出しのテキスト"
+                  placeholder="例: 'carry a torch' ≠ romantic?"
+                  value={hookHeadline}
+                  onChange={e => patch({ hookHeadline: e.target.value })}
+                />
+              )}
+              <p className={styles.hint}>最初のショットの間だけ、字幕の上に短い見出しを出します（空欄なら出しません。*で囲むと黄色）</p>
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={hookSettings.punchInEnabled}
+                  onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
+                />
+                パンチイン
+              </label>
+              <p className={styles.hint}>最初のショットの映像をゆっくりズームインします（字幕は拡大しません）</p>
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

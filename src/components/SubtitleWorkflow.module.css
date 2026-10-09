@@ -88,6 +88,9 @@
   position: relative;
   /* SubtitleOverlayPreview sizes itself in cqw of this box (= the video's width). */
   container-type: inline-size;
+  /* The punch-in scales the player; keep it inside its frame. */
+  overflow: hidden;
+  border-radius: 8px;
 }
 
 .fineTuneRow {
@@ -137,4 +140,15 @@
 
 .positionBtn:disabled {
   opacity: 0.4;
+}
+
+.headlineInput {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px;
+  /* ≥16px, or iOS Safari zooms in on focus and stays zoomed after blur. */
+  font-size: 1rem;
 }
