@@ -22,13 +22,18 @@ export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
       return
     }
     let cancelled = false
+    // Only the latest check may update the list: an older one answering
+    // last could bring back an item that was taken in the meantime.
+    let latest = 0
     function load() {
+      const request = ++latest
+      const isStale = () => cancelled || request !== latest
       fetchInbox(inboxKey)
         .then(next => {
-          if (!cancelled) setItems(next)
+          if (!isStale()) setItems(next)
         })
         .catch(err => {
-          if (cancelled) return
+          if (isStale()) return
           console.error('Failed to check the Claude inbox', err)
           setItems([])
         })

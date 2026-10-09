@@ -66,4 +66,22 @@ describe('ClaudeInbox', () => {
     })
     expect(await screen.findByText('Claudeから届いたスクリプト')).toBeInTheDocument()
   })
+
+  it('keeps the newest answer when an older check finishes last', async () => {
+    let finishFirst: (items: InboxItem[]) => void = () => {}
+    vi.mocked(fetchInbox)
+      .mockReturnValueOnce(new Promise(resolve => (finishFirst = resolve)))
+      .mockResolvedValueOnce([])
+    render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    // The first check, sent before the item was taken, answers late.
+    await act(async () => {
+      finishFirst([ITEM])
+    })
+    expect(screen.queryByText('Claudeから届いたスクリプト')).not.toBeInTheDocument()
+  })
 })
