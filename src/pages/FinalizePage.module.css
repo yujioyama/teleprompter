@@ -141,3 +141,14 @@
   font-variant-numeric: tabular-nums;
   margin-right: 8px;
 }
+
+.copyCaptionBtn {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 12px;
+}

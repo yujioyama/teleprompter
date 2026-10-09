@@ -180,6 +180,7 @@ export default function FinalizePage() {
   // What the export step previews and saves: `finalBlob` with its loudness
   // brought to the platforms' level, or `finalBlob` itself if that's off.
   const [exportBlob, setExportBlob] = useState<Blob | null>(null)
+  const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
   // Aborted by 中断する (issue #34) or when the page goes away mid-combine.
@@ -666,6 +667,18 @@ export default function FinalizePage() {
     await shareOrDownload(exportBlob, `${script.title}-final`)
   }
 
+  // The caption Claude wrote with the script, ready to paste into TikTok.
+  async function handleCopyCaption() {
+    if (!script?.caption) return
+    try {
+      await navigator.clipboard.writeText(script.caption)
+      setCaptionCopy('copied')
+    } catch {
+      setCaptionCopy('failed')
+    }
+    setTimeout(() => setCaptionCopy('idle'), 2000)
+  }
+
   if (!script) {
     return (
       <div style={{ padding: 24, color: 'var(--text-muted)' }}>
@@ -893,6 +906,15 @@ export default function FinalizePage() {
               <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
                 保存する
               </button>
+              {script.caption && (
+                <button className={styles.copyCaptionBtn} onClick={handleCopyCaption}>
+                  {captionCopy === 'copied'
+                    ? 'コピーしました'
+                    : captionCopy === 'failed'
+                      ? 'コピーできませんでした'
+                      : 'キャプションをコピー'}
+                </button>
+              )}
             </div>
           )}
         </>
