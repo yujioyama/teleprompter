@@ -10,6 +10,8 @@ export interface Script {
   id: string
   title: string
   shots: Shot[]
+  /** TikTok caption to post with the video. */
+  caption?: string
   createdAt: string
   updatedAt: string
 }

@@ -20,7 +20,7 @@ export function serializeBackup(scripts: Script[], now = new Date()): string {
   return JSON.stringify(backup, null, 2)
 }
 
-function isOptional(value: unknown, type: 'boolean' | 'number'): boolean {
+function isOptional(value: unknown, type: 'boolean' | 'number' | 'string'): boolean {
   return value === undefined || typeof value === type
 }
 
@@ -44,6 +44,7 @@ function isScript(value: unknown): value is Script {
     typeof script.title === 'string' &&
     typeof script.createdAt === 'string' &&
     typeof script.updatedAt === 'string' &&
+    isOptional(script.caption, 'string') &&
     Array.isArray(script.shots) &&
     script.shots.every(isShot)
   )

@@ -39,6 +39,15 @@ describe('serializeBackup / parseBackup', () => {
     backup.version = 99
     expect(parseBackup(JSON.stringify(backup))).toMatchObject({ ok: false })
   })
+
+  it('round-trips a caption, and rejects one that is not text', () => {
+    const withCaption = { ...script('a', '2026-01-02T00:00:00.000Z'), caption: '#朝活' }
+    expect(parseBackup(serializeBackup([withCaption]))).toEqual({ ok: true, scripts: [withCaption] })
+
+    const broken = JSON.parse(serializeBackup([withCaption]))
+    broken.scripts[0].caption = 42
+    expect(parseBackup(JSON.stringify(broken))).toMatchObject({ ok: false })
+  })
 })
 
 describe('mergeScripts', () => {

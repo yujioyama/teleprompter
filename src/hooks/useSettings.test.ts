@@ -16,6 +16,7 @@ const DEFAULTS = {
   hookHeadlineEnabled: true,
   punchInEnabled: true,
   firstShotPaddingStart: 0.05,
+  inboxKey: '',
 }
 
 beforeEach(() => {

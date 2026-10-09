@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
@@ -912,6 +912,12 @@ describe('FinalizePage export step: loudness normalization', () => {
     vi.mocked(burnModule.burnSubtitles).mockResolvedValue(BURNED)
   })
 
+  // jsdom has no navigator.clipboard; the caption tests define a stub, so
+  // remove it again rather than let it leak into later tests.
+  afterEach(() => {
+    delete (navigator as { clipboard?: unknown }).clipboard
+  })
+
   // Trim/combine → subtitle → skip BGM, landing on the export step.
   async function walkToExport() {
     renderFinalizePage('script-1')
@@ -973,6 +979,35 @@ describe('FinalizePage export step: loudness normalization', () => {
     fireEvent.click(await screen.findByText('保存する'))
     expect(normalizeLoudness).not.toHaveBeenCalled()
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
+  })
+
+  it('copies the caption from the export step', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: '#朝活 おはよう' }]))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('キャプションをコピー'))
+    expect(writeText).toHaveBeenCalledWith('#朝活 おはよう')
+    expect(await screen.findByText('コピーしました')).toBeInTheDocument()
+  })
+
+  it('says so when the caption cannot be copied', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => { throw new Error('denied') }) },
+      configurable: true,
+    })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: '#朝活' }]))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('キャプションをコピー'))
+    expect(await screen.findByText('コピーできませんでした')).toBeInTheDocument()
+  })
+
+  it('offers no caption copy when the script has no caption', async () => {
+    await walkToExport()
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+    expect(screen.queryByText('キャプションをコピー')).not.toBeInTheDocument()
   })
 })
 

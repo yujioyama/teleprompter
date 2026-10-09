@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
+import { useSettings } from '../hooks/useSettings'
+import ClaudeInbox from '../components/ClaudeInbox'
 import { listStoredShots, pruneRemovedShotVideos } from '../utils/shotVideoStore'
 import styles from './HomePage.module.css'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { scripts, deleteScript } = useScripts()
+  const [settings] = useSettings()
   const [scriptsWithVideos, setScriptsWithVideos] = useState<Set<string>>(new Set())
 
   const sorted = [...scripts].sort(
@@ -55,6 +58,11 @@ export default function HomePage() {
           </button>
         </div>
       </header>
+
+      <ClaudeInbox
+        inboxKey={settings.inboxKey}
+        onOpen={item => navigate('/scripts/new', { state: { inboxItem: item } })}
+      />
 
       {sorted.length === 0 ? (
         <div className={styles.empty}>

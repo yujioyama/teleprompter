@@ -97,4 +97,33 @@ describe('useScripts', () => {
     expect(result.current.scripts.map(s => s.title)).toEqual(['端末', '追加'])
     expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!).map((s: { title: string }) => s.title)).toEqual(['端末', '追加'])
   })
+
+  it('keeps a caption given when the script is created', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('キャプション付き', [{ id: '1', text: 'a' }], '#朝活 おはよう')
+    })
+    expect(result.current.scripts[0].caption).toBe('#朝活 おはよう')
+    expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0].caption).toBe('#朝活 おはよう')
+  })
+
+  it('leaves the caption off when none is given', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('なし', [], '')
+    })
+    expect(result.current.scripts[0]).not.toHaveProperty('caption')
+  })
+
+  it('updates a caption', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('元', [])
+    })
+    const id = result.current.scripts[0].id
+    act(() => {
+      result.current.updateScript(id, { caption: '新しいキャプション' })
+    })
+    expect(result.current.scripts[0].caption).toBe('新しいキャプション')
+  })
 })
