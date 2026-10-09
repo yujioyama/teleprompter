@@ -17,6 +17,7 @@ import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
+import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import styles from './SubtitleWorkflow.module.css'
@@ -192,7 +193,9 @@ export default function SubtitleWorkflow({
         patch({ stage: before })
         return
       }
-      patch({ cues: transcribed, stage: 'reviewing', source: 'speech', pasteText: '' })
+      // The script's *emphasis* (Claude marks it) carries over to what was said.
+      const cues = reapplyEmphasis(transcribed, shotCueInputs.map(s => s.text))
+      patch({ cues, stage: 'reviewing', source: 'speech', pasteText: '' })
     } catch (err) {
       if (signal.aborted) setNotice('中断しました')
       else setErrorMessage(err instanceof Error ? err.message : String(err))

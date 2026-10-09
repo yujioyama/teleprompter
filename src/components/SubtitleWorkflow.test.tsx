@@ -394,6 +394,23 @@ describe('SubtitleWorkflow subtitles from speech', () => {
     expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
   })
 
+  it('puts the script\'s *emphasis* back on what was said', async () => {
+    const transcribe = vi.fn().mockResolvedValue([
+      { id: 'speech-0', start: 0, end: 2, en: 'I really, really mean it.', ja: null },
+    ])
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={[{ text: 'I *really* mean it', duration: 2 }]}
+        onBurned={vi.fn()}
+        transcribe={transcribe}
+      />,
+    )
+    await screen.findByDisplayValue('I *really* mean it')
+    fireEvent.click(screen.getByText('話した音声から'))
+    expect(await screen.findByDisplayValue('I *really*, really mean it.')).toBeInTheDocument()
+  })
+
   it('asks before throwing away a translation, and keeps it if declined', async () => {
     const transcribe = vi.fn().mockResolvedValue(SPOKEN)
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
