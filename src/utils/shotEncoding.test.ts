@@ -282,3 +282,33 @@ describe('cancelling (issue #34)', () => {
     expect(signals.every(s => s instanceof AbortSignal)).toBe(true)
   })
 })
+
+describe('first-shot headline and punch-in', () => {
+  const EXTRAS: HookOptions = { style: true, position: 50, headline: 'Wait', punchIn: true }
+  const clips = [clip('a', 0, 2), clip('b', 0, 1)]
+  const cues = translate(cuesFromShotEntries([
+    { text: 'first', duration: 2 },
+    { text: 'second', duration: 1 },
+  ]))
+
+  it('go into the first shot\'s encode only', async () => {
+    await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, EXTRAS)
+    const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+    expect(looks.map(l => l.firstShotDuration)).toEqual([2, null])
+  })
+
+  it('re-encode only the first shot when the headline changes', async () => {
+    const cache = new ShotEncodeCache()
+    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, EXTRAS)
+    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, { ...EXTRAS, headline: 'Hold on' })
+    expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(burnModule.burnShotSubtitles).mock.calls[2][0]).toBe(clips[0].blob)
+  })
+
+  it('still burn the first shot when it has no translated cue', () => {
+    const shot = clip('a', 0, 2)
+    const first = look(50, { hook: { ...EXTRAS, punchIn: false }, firstShotDuration: 2 })
+    expect(burnRequest(shot, [], first).key).not.toBe(normalizeRequest(shot).key)
+    expect(burnRequest(shot, [], { ...first, firstShotDuration: null }).key).toBe(normalizeRequest(shot).key)
+  })
+})
