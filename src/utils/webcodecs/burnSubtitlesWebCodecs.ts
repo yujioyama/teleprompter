@@ -16,8 +16,9 @@ export type { SubtitleOverlay } from './subtitleOverlay'
 
 /**
  * WebCodecs counterpart of the ffmpeg overlay filtergraph: re-encode the
- * video once, compositing each cue's pre-rendered PNG at (centered, its y)
- * during [start, end). Frames with no cue are passed to the encoder as-is.
+ * video once, compositing each overlay's pre-rendered PNG at (centered, its y)
+ * during [start, end). Frames with no overlay are passed to the encoder as-is,
+ * unless the punch-in zooms them.
  * Audio packets are copied untouched.
  *
  * Only the fallback for a whole joined video now — FinalizePage burns each

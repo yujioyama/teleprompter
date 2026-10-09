@@ -17,6 +17,7 @@ import {
   startsInFirstShot,
   styleCues,
   type HookOptions,
+  type OverlayBox,
   type StyledCue,
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
@@ -41,11 +42,11 @@ import {
 /**
  * Build the chained overlay filtergraph for one subtitle image input per
  * entry of `ys` (indices 1..ys.length, input 0 is the base video), each
- * composited horizontally centered at its own Y (cue boxes differ in height
+ * composited horizontally centered at its own Y (boxes differ in height
  * with their line count). Each image input is itself time-bounded via
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is
- * needed here — simpler and less error-prone than threading per-cue timing
+ * needed here — simpler and less error-prone than threading per-overlay timing
  * through the filter string itself. `baseFilter` (the punch-in) is applied
  * to the video first, under the overlays.
  */
@@ -206,24 +207,23 @@ export async function renderHeadlineImage(text: string): Promise<{ image: Blob; 
  */
 export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
+  const firstShotBoxes: OverlayBox[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
     const { image, height } = await renderCueImage(cue, cue.variant)
-    overlays.push({
-      start: cue.start,
-      end: cue.start + cueDuration(cue),
-      image,
-      y: clampedSubtitleY(cuePosition(cue, look), height),
-    })
+    const y = clampedSubtitleY(cuePosition(cue, look), height)
+    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
+    if (look.firstShotDuration !== null && startsInFirstShot(cue.start, look.firstShotDuration)) {
+      firstShotBoxes.push({ top: y, bottom: y + height })
+    }
   }
 
   const firstShot = look.firstShotDuration
   if (firstShot !== null && look.hook.headline) {
-    // Above the topmost of the first shot's subtitles, so it holds still
-    // while they change underneath it.
-    const boxTops = overlays.filter(o => startsInFirstShot(o.start, firstShot)).map(o => o.y)
+    // Above the topmost of the first shot's subtitles so it holds still
+    // while they change underneath it, or below them when there's no room.
     const { image, height } = await renderHeadlineImage(look.hook.headline)
-    overlays.push({ start: 0, end: firstShot, image, y: headlineY(boxTops, height, look.hook.position) })
+    overlays.push({ start: 0, end: firstShot, image, y: headlineY(firstShotBoxes, height, look.hook.position) })
   }
   return overlays
 }
@@ -355,7 +355,7 @@ async function burnSubtitlesFFmpeg(
       const name = `sub${i}.png`
       await ff.writeFile(name, await fetchFile(overlay.image))
       // `-itsoffset` (not `-ss`) is what delays this input's presentation
-      // timestamps so it starts compositing at cue.start: `-ss` before `-i`
+      // timestamps so it starts compositing at overlay.start: `-ss` before `-i`
       // seeks into the SOURCE's own content, which is meaningless for a
       // `-loop 1` static image (there is nothing to seek past) and so does
       // NOT delay when the overlay appears in the composited output — every
@@ -368,23 +368,23 @@ async function burnSubtitlesFFmpeg(
       zoomUntil !== null ? punchInFilter(zoomUntil) : undefined,
     )
 
-    // buildOverlayFilterGraph's chain references each cue's image input by an
+    // buildOverlayFilterGraph's chain references each overlay's image input by an
     // arbitrary label ([sub0], [sub1], ...), but ffmpeg only recognizes an
     // input by its positional stream specifier ([1:v], [2:v], ...) unless a
     // filter stage explicitly defines that label first. Without this alias
     // preamble, ffmpeg fails immediately with "Invalid stream specifier" /
     // "matches no streams" and the whole -filter_complex is rejected. Each
-    // cue's PNG is input index i+1 (input 0 is the base video), so alias it
+    // overlay's PNG is input index i+1 (input 0 is the base video), so alias it
     // to the label the chain expects via a no-op `copy` filter.
     //
-    // Each overlay stage also needs `eof_action=pass`: once a cue's
+    // Each overlay stage also needs `eof_action=pass`: once an overlay's
     // (duration-bounded) image stream ends, overlay's default eof_action is
     // `repeat`, which freezes and keeps showing that image's last frame for
-    // the rest of the output — so a cue that already ended would otherwise
+    // the rest of the output — so an overlay that already ended would otherwise
     // stay burned in (and, being the topmost stage, visually hide every
-    // later cue too) all the way to the end of the video. `pass` makes the
+    // later overlay too) all the way to the end of the video. `pass` makes the
     // stage fall back to showing its unmodified input once the overlay
-    // stream ends, so the caption correctly disappears at cue.end.
+    // stream ends, so the caption (or headline) correctly disappears at overlay.end.
     const aliasStages = overlays.map((_, i) => `[${i + 1}:v]copy[sub${i}]`)
     const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
     const fullFilterGraph = [...aliasStages, overlayStages].filter(Boolean).join(';')

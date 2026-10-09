@@ -445,6 +445,19 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
     expect(screen.queryByLabelText('日本語字幕 1')).not.toBeInTheDocument()
   })
 
+  it('keeps the typed hook headline when the video is combined again in the same session', async () => {
+    await combineAndTranslate()
+    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
+    fireEvent.click(screen.getByRole('button', { name: /トリミング/ }))
+    fireEvent.click(await screen.findByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    fireEvent.change(await screen.findByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    expect(await screen.findByLabelText('フック見出しのテキスト')).toHaveValue('Wait')
+  })
+
   it('does not bring back subtitles for a shot retaken since', async () => {
     await combineAndTranslate()
     cleanup()

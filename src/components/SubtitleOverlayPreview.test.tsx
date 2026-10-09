@@ -105,10 +105,11 @@ describe('SubtitleOverlayPreview', () => {
   it('shows the headline just above the first shot\'s subtitle, as burned in', () => {
     render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={withHeadline('Wait *what*')} firstShotDuration={2} />)
     const measure = createCanvasMeasure()
-    const cueTop = clampedSubtitleY(50, layoutCue(CUES[0], measure, 'hook').height)
+    const cueHeight = layoutCue(CUES[0], measure, 'hook').height
+    const cueTop = clampedSubtitleY(50, cueHeight)
     const headline = layoutHeadline('Wait *what*', measure)
     const box = screen.getByTestId('hook-headline')
-    expect(box.style.top).toBe(`${(headlineY([cueTop], headline.height, 50) / 1920) * 100}%`)
+    expect(box.style.top).toBe(`${(headlineY([{ top: cueTop, bottom: cueTop + cueHeight }], headline.height, 50) / 1920) * 100}%`)
     expect(screen.getByText('what')).toHaveStyle({ color: '#FFD60A' })
   })
 

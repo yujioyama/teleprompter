@@ -52,6 +52,8 @@ export async function createOverlayProcess(
         canvas = new OffscreenCanvas(width, height)
         ctx = canvas.getContext('2d')
         if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable')
+        // For the punch-in's upscale of the picture.
+        ctx.imageSmoothingQuality = 'high'
       }
       const w = width * scale
       const h = height * scale

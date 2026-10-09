@@ -82,6 +82,8 @@
   width: 100%;
   border-radius: 8px;
   background: #000;
+  /* Smooths the punch-in, which the page sets a few times a second. */
+  transition: transform 250ms linear;
 }
 
 .previewWrapper {
@@ -91,6 +93,8 @@
   /* The punch-in scales the player; keep it inside its frame. */
   overflow: hidden;
   border-radius: 8px;
+  /* WebKit can ignore the rounded clip on a transformed child otherwise. */
+  isolation: isolate;
 }
 
 .fineTuneRow {

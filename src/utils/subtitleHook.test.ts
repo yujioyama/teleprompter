@@ -99,14 +99,21 @@ describe('first-shot extras', () => {
 
 describe('headlineY', () => {
   it('sits the headline just above the topmost first-shot box', () => {
-    expect(headlineY([900, 800], 100, 50)).toBe(800 - HEADLINE_GAP - 100)
+    const boxes = [{ top: 900, bottom: 1000 }, { top: 800, bottom: 950 }]
+    expect(headlineY(boxes, 100, 50)).toBe(800 - HEADLINE_GAP - 100)
   })
 
   it('centers it at the hook position with no box under it', () => {
     expect(headlineY([], 100, 50)).toBe(clampedSubtitleY(50, 100))
   })
 
-  it('keeps it on screen', () => {
-    expect(headlineY([50], 100, 50)).toBe(0)
+  it('goes below the bottom-most box when there is no room above', () => {
+    expect(headlineY([{ top: 117, bottom: 412 }], 142, 13.75)).toBe(412 + HEADLINE_GAP)
+  })
+
+  it('stays within the frame when it fits neither above nor below', () => {
+    const y = headlineY([{ top: 10, bottom: 1900 }], 142, 50)
+    expect(y).toBeGreaterThanOrEqual(0)
+    expect(y).toBeLessThanOrEqual(1920 - 142)
   })
 })

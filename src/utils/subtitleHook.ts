@@ -1,7 +1,7 @@
 import type { AppSettings } from '../hooks/useSettings'
 import type { SubtitleCue } from './subtitleCues'
 import { SUBTITLE_BLOCK_GAP, type CueVariant } from './subtitleLayout'
-import { clampedSubtitleY, type SubtitlePosition } from './subtitlePosition'
+import { clampedSubtitleY, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from './subtitlePosition'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -100,14 +100,26 @@ export function hasFirstShotExtras(hook: HookOptions, firstShotDuration: number 
 /** Space between the headline and the subtitle box under it, in output px. */
 export const HEADLINE_GAP = SUBTITLE_BLOCK_GAP * 2
 
+/** A first-shot subtitle box on the output video, in px. */
+export interface OverlayBox {
+  top: number
+  bottom: number
+}
+
 /**
  * Top of the headline: just above the topmost of the first shot's subtitle
- * boxes (`boxTops`), so it stays put while they change, or centered at the
- * hook position when there is none. Never above the frame.
+ * `boxes`, so it stays put while they change. When there is no room above
+ * (a hook position near the top), just below the bottom-most box instead, so
+ * it never covers the subtitle. With no box it is centered at the hook
+ * position. Always kept inside the frame.
  */
-export function headlineY(boxTops: number[], headlineHeight: number, hookPosition: SubtitlePosition): number {
-  const y = boxTops.length > 0
-    ? Math.min(...boxTops) - HEADLINE_GAP - headlineHeight
-    : clampedSubtitleY(hookPosition, headlineHeight)
-  return Math.max(0, y)
+export function headlineY(boxes: OverlayBox[], headlineHeight: number, hookPosition: SubtitlePosition): number {
+  let y: number
+  if (boxes.length === 0) {
+    y = clampedSubtitleY(hookPosition, headlineHeight)
+  } else {
+    const above = Math.min(...boxes.map(b => b.top)) - HEADLINE_GAP - headlineHeight
+    y = above >= 0 ? above : Math.max(...boxes.map(b => b.bottom)) + HEADLINE_GAP
+  }
+  return Math.min(Math.max(0, y), SUBTITLE_VIDEO_HEIGHT - headlineHeight)
 }

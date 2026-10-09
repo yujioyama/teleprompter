@@ -78,6 +78,14 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], at30).key).toBe(burnRequest(shot, [cue], at50).key)
   })
 
+  it('changes key with the punch-in alone, on the first shot', () => {
+    const first = clip('a', 0, 2)
+    const off = burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn: false }, firstShotDuration: 2 })).key
+    const on = burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn: true }, firstShotDuration: 2 })).key
+    expect(on).not.toBe(off)
+    expect(off).toBe(normalizeRequest(first).key)
+  })
+
   it('ignores the normal position when every cue in the shot is a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
     const HOOK = { style: true, position: 30, headline: '', punchIn: false }

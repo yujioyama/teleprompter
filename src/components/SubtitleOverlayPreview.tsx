@@ -80,14 +80,18 @@ export default function SubtitleOverlayPreview({
   const headlineText = hook?.headline ?? ''
   const hookPosition = hook?.position ?? position
   // Placed as the burn places it: above the topmost of the first shot's
-  // (translated, hence burned) subtitle boxes.
+  // (translated, hence burned) subtitle boxes, or below them with no room.
   const headline = useMemo(() => {
     if (!headlineText || firstShotDuration === null) return null
     const headlineLayout = layoutHeadline(headlineText, measure)
-    const boxTops = styled
+    const boxes = styled
       .filter(c => c.ja !== null && startsInFirstShot(c.start, firstShotDuration))
-      .map(c => clampedSubtitleY(c.variant === 'hook' ? hookPosition : position, layoutCue(c, measure, c.variant).height))
-    return { layout: headlineLayout, y: headlineY(boxTops, headlineLayout.height, hookPosition) }
+      .map(c => {
+        const height = layoutCue(c, measure, c.variant).height
+        const top = clampedSubtitleY(c.variant === 'hook' ? hookPosition : position, height)
+        return { top, bottom: top + height }
+      })
+    return { layout: headlineLayout, y: headlineY(boxes, headlineLayout.height, hookPosition) }
   }, [headlineText, firstShotDuration, styled, measure, hookPosition, position])
 
   const headlineBox = headline && firstShotDuration !== null && currentTime < firstShotDuration && (
@@ -135,8 +139,8 @@ export default function SubtitleOverlayPreview({
   if (!headlineBox && !cueBox) return null
   return (
     <>
-      {headlineBox}
       {cueBox}
+      {headlineBox}
     </>
   )
 }

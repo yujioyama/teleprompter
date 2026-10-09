@@ -175,13 +175,16 @@ export function stripEmphasis(raw: string): string
   full-width subtitle band. `layoutHeadline(text, measure)` returns its
   lines, runs, box width and height; `renderHeadlineImage(text)` draws it.
 - **Time:** `[0, D)`.
-- **Vertical position** — `headlineY(boxTops, headlineHeight, hookPosition)`:
-  - The headline's bottom sits `SUBTITLE_BLOCK_GAP * 2` (28 px) above the
-    **topmost** box among the first shot's burned cues (`boxTops` = the
-    clamped `y` of each rendered cue overlay starting before D). It stays put
-    while those cues change.
+- **Vertical position** — `headlineY(boxes, headlineHeight, hookPosition)`,
+  where `boxes` are the `{ top, bottom }` (`y` and `y + height`) of each
+  rendered cue overlay starting before D:
+  - Above: the headline's bottom sits `SUBTITLE_BLOCK_GAP * 2` (28 px) above
+    the **topmost** box. It stays put while those cues change.
+  - Below, as a fallback: when that would put it above the frame (`y < 0`,
+    e.g. a hook position near the top), it sits 28 px below the
+    **bottom-most** box instead, so it never covers the hook subtitle.
   - With no such cue, it is centered at `hookPosition`.
-  - It is clamped to `y ≥ 0`.
+  - The result is clamped to `[0, 1920 - headlineHeight]`.
 
   With the hook style off, the first shot's cues sit at the normal position
   and the headline goes above them.

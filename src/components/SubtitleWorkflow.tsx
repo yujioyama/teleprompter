@@ -403,6 +403,7 @@ export default function SubtitleWorkflow({
                 <input
                   className={styles.headlineInput}
                   aria-label="フック見出しのテキスト"
+                  maxLength={60}
                   placeholder="例: 'carry a torch' ≠ romantic?"
                   value={hookHeadline}
                   onChange={e => patch({ hookHeadline: e.target.value })}
