@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  followsFrames,
   hasFirstShotExtras,
   hookOptionsOf,
   impactAt,
@@ -145,5 +146,21 @@ describe('impactAt', () => {
       medium: { blurSpread: 0.06, rgbShiftPx: 8 },
       strong: { blurSpread: 0.09, rgbShiftPx: 12 },
     })
+  })
+})
+
+describe('followsFrames', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+
+  it('follows frames through the first shot and a short tail after it', () => {
+    expect(followsFrames(0, punchIn, 2)).toBe(true)
+    expect(followsFrames(2.05, punchIn, 2)).toBe(true)
+    expect(followsFrames(2.1, punchIn, 2)).toBe(false)
+    expect(followsFrames(30, punchIn, 2)).toBe(false)
+  })
+
+  it('does not follow without the zoom or a first shot', () => {
+    expect(followsFrames(0.5, null, 2)).toBe(false)
+    expect(followsFrames(0.5, punchIn, null)).toBe(false)
   })
 })

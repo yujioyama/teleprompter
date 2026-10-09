@@ -107,6 +107,18 @@ export function snapZoomScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, 
   return 1 + (punchIn.zoom - 1) * easeOutQuint(p)
 }
 
+/** Seconds past the first shot's end that frame-accurate time still matters, so the cut back to 1x lands. */
+const FRAME_FOLLOW_TAIL = 0.1
+
+/**
+ * Whether the preview needs frame-accurate time at `t`: only while the snap
+ * zoom is on and the playhead is in (or just past) the first shot. Elsewhere
+ * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
+ */
+export function followsFrames(t: number, punchIn: PunchIn | null, firstShotDuration: number | null): boolean {
+  return punchIn !== null && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+}
+
 /** Seconds the impact effect lasts from the start of the snap. */
 export const IMPACT_DURATION = 0.15
 

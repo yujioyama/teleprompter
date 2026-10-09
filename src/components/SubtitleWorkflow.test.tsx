@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
@@ -513,10 +513,15 @@ describe('SubtitleWorkflow punch-in', () => {
     return onHookSettingsChange
   }
 
-  it('snaps the preview video in about (50%, 40%) during the first shot, unless the zoom is off', async () => {
+  function setTime(video: HTMLVideoElement, t: number) {
+    Object.defineProperty(video, 'currentTime', { value: t, configurable: true })
+  }
+
+  it('snaps the preview video in about (50%, 40%) during the first shot while playing, unless the zoom is off', async () => {
     const onChange = await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
-    Object.defineProperty(video, 'currentTime', { value: 1, configurable: true })
+    setTime(video, 1)
+    fireEvent.play(video)
     fireEvent.timeUpdate(video)
     expect(video.style.transform).toBe('scale(1.25)')
     expect(video.style.transformOrigin).toBe('50% 40%')
@@ -524,6 +529,56 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.click(screen.getByLabelText('スナップズーム'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
+  })
+
+  it('shows the preview at 1x when paused, even inside the snap, so the controls stay reachable', async () => {
+    await renderTranslated()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 1)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    expect(video.style.transform).toBe('scale(1.25)')
+    fireEvent.pause(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    fireEvent.ended(video)
+    expect(video.style.transform).toBe('')
+  })
+
+  describe('frame following', () => {
+    let frames: FrameRequestCallback[] = []
+    beforeEach(() => {
+      frames = []
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+      vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    })
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('follows frames within the first shot, but ignores them once it is over', async () => {
+      await renderTranslated()
+      const video = document.querySelector('video') as HTMLVideoElement
+      setTime(video, 0.1)
+      fireEvent.play(video)
+      expect(video.style.transform).toBe('')
+
+      setTime(video, 1)
+      act(() => frames.shift()!(0))
+      expect(video.style.transform).toBe('scale(1.25)')
+
+      // Past the first shot (2s) plus the short tail: the frame is ignored,
+      // so the last update (inside the snap) still stands.
+      setTime(video, 5)
+      act(() => frames.shift()!(0))
+      expect(video.style.transform).toBe('scale(1.25)')
+      // The slower timeupdate still moves the preview on.
+      fireEvent.timeUpdate(video)
+      expect(video.style.transform).toBe('')
+    })
   })
 
   it('sets the zoom and when it snaps, reporting them to be saved', async () => {

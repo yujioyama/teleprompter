@@ -9,6 +9,7 @@ import {
   hookOptionsOf,
   PUNCH_IN_ZOOMS,
   snapZoomScale,
+  followsFrames,
   ZOOM_ANCHOR_Y,
   type HookSettings,
   type ImpactStrength,
@@ -110,6 +111,8 @@ export default function SubtitleWorkflow({
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
+  // The snap zoom is only shown while playing: it would scale (and clip) the native controls.
+  const [previewPlaying, setPreviewPlaying] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [burnProgress, setBurnProgress] = useState(0)
   const [transcribeProgress, setTranscribeProgress] = useState<WhisperProgress | null>(null)
@@ -119,7 +122,14 @@ export default function SubtitleWorkflow({
   // The same element as previewRef, as state, so the frame-time hook
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
-  useVideoFrameTime(previewVideo, setPreviewTime)
+  const hook = hookOptionsOf(hookSettings)
+  // The first clip of the 結合: hook cues are the ones starting within it.
+  const firstShotDuration = shotCueInputs[0]?.duration ?? null
+  // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
+  // is enough, and per-frame state would re-render the whole workflow.
+  useVideoFrameTime(previewVideo, t => {
+    if (followsFrames(t, hook.punchIn, firstShotDuration)) setPreviewTime(t)
+  })
   // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
   const attachPreview = useCallback((el: HTMLVideoElement | null) => {
     previewRef.current = el
@@ -281,12 +291,9 @@ export default function SubtitleWorkflow({
 
   const hasAnyJapanese = cues.some(c => c.ja !== null)
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
-  const hook = hookOptionsOf(hookSettings)
-  // The first clip of the 結合: hook cues are the ones starting within it.
-  const firstShotDuration = shotCueInputs[0]?.duration ?? null
   // The snap zoom is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
-  const previewZoom = hook.punchIn && firstShotDuration !== null
+  const previewZoom = previewPlaying && hook.punchIn && firstShotDuration !== null
     ? snapZoomScale(previewTime, hook.punchIn, firstShotDuration)
     : 1
 
@@ -371,6 +378,10 @@ export default function SubtitleWorkflow({
                     ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` }
                     : undefined}
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
+                  onPlay={() => setPreviewPlaying(true)}
+                  onPlaying={() => setPreviewPlaying(true)}
+                  onPause={() => setPreviewPlaying(false)}
+                  onEnded={() => setPreviewPlaying(false)}
                 />
                 <SubtitleOverlayPreview
                   cues={cues}
