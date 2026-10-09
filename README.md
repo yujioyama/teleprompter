@@ -72,6 +72,8 @@ Claudeチャットで「teleprompterに送って」と頼むと、タイトル�
 3. claude.ai → 設定 → コネクタ → カスタムコネクタを追加 → URL に `https://<アプリのドメイン>/api/mcp?key=<INBOX_SECRET>`
 4. 各端末の teleprompter → 設定 → 受け取り用キー に同じ `INBOX_SECRET` を入れる
 
+字幕ステップの「📋 Claude用プロンプトをコピー」も、受け取り用キーを入れた端末ではコネクタ経由になります。プロンプトをClaudeチャットに貼ると、Claudeが訳を `send_subtitles` で送り返し、字幕画面に戻ると日本語が自動で入ります（チャットにも番号付きで出るので、手動の貼り付けもそのまま使えます）。
+
 サーバー側: `api/`（Vercel Functions の入口）、`server/`（処理とテスト）。ローカルの `npm run dev` では `/api` は動かないので、受け取り箱は表示されません。
 
 ---
@@ -327,6 +329,8 @@ When you ask Claude chat to "send it to teleprompter", the title, script, and ca
 2. Add `INBOX_SECRET` (a long random string of letters and digits only — `+`, `#` or `&` would break the connector URL's `?key=`; `openssl rand -hex 32` makes one) to Vercel's environment variables and redeploy
 3. claude.ai → Settings → Connectors → Add custom connector → URL: `https://<app-domain>/api/mcp?key=<INBOX_SECRET>`
 4. On each device, teleprompter → Settings → Inbox key → enter the same `INBOX_SECRET`
+
+On a device with the inbox key, the subtitle step's "📋 Claude用プロンプトをコピー" goes through the connector too: paste the prompt into Claude chat, Claude sends the lines back with `send_subtitles`, and the Japanese is filled in when you return to the subtitle step (the numbered reply still appears in chat, so manual paste keeps working).
 
 Server-side: `api/` is the Vercel Functions entry point; `server/` contains the logic and tests. Locally, `npm run dev` doesn't serve `/api`, so the inbox won't appear.
 
