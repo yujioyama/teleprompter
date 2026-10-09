@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
+import { useSettings } from '../hooks/useSettings'
+import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
 import { Shot } from '../types'
@@ -19,22 +21,43 @@ function generateId() {
   return crypto.randomUUID()
 }
 
+interface Draft {
+  title?: string
+  body?: string
+  caption?: string
+}
+
+function loadDraft(): Draft {
+  try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}') } catch { return {} }
+}
+
 export default function ScriptEditPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams<{ id: string }>()
   const { createScript, updateScript, getScript } = useScripts()
+  const [settings] = useSettings()
 
   const existingScript = id ? getScript(id) : undefined
   const isEdit = Boolean(existingScript)
+  // A script sent from Claude chat, opened from Home's inbox section.
+  const inboxItem = isEdit ? undefined : (location.state as { inboxItem?: InboxItem } | null)?.inboxItem
 
-  const [title, setTitle] = useState(() => {
-    if (existingScript) return existingScript.title
-    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}').title ?? '' } catch { return '' }
+  const [initial] = useState(() => {
+    if (existingScript) {
+      return {
+        title: existingScript.title,
+        body: existingScript.shots.map(s => s.text).join('\n'),
+        caption: existingScript.caption ?? '',
+      }
+    }
+    if (inboxItem) return { title: inboxItem.title, body: inboxItem.body, caption: inboxItem.caption }
+    const draft = loadDraft()
+    return { title: draft.title ?? '', body: draft.body ?? '', caption: draft.caption ?? '' }
   })
-  const [body, setBody] = useState(() => {
-    if (existingScript) return existingScript.shots.map(s => s.text).join('\n')
-    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? '{}').body ?? '' } catch { return '' }
-  })
+  const [title, setTitle] = useState(initial.title)
+  const [body, setBody] = useState(initial.body)
+  const [caption, setCaption] = useState(initial.caption)
   const [preview, setPreview] = useState<string[]>(
     () => existingScript ? existingScript.shots.map(s => s.text) : []
   )
@@ -60,9 +83,9 @@ export default function ScriptEditPage() {
     if (scroller) scroller.scrollTop = scrollTop
   }, [body])
 
-  function saveDraft(nextTitle: string, nextBody: string) {
+  function saveDraft(next: Partial<Draft>) {
     if (!isEdit) {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ title: nextTitle, body: nextBody }))
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ title, body, caption, ...next }))
     }
   }
 
@@ -87,12 +110,18 @@ export default function ScriptEditPage() {
 
     if (existingScript) {
       const shots = reconcileShots(existingScript.shots, preview, generateId)
-      updateScript(existingScript.id, { title: title.trim(), shots })
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim() })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
-      const script = createScript(title.trim(), shots)
+      const script = createScript(title.trim(), shots, caption.trim())
       clearDraft()
+      if (inboxItem && settings.inboxKey) {
+        // Taken: clear it from the inbox so no device offers it again. If
+        // this fails the item just lingers until it expires.
+        deleteInboxItem(settings.inboxKey, inboxItem.id)
+          .catch(err => console.error('Failed to clear the inbox item', err))
+      }
       navigate(`/scripts/${script.id}/shots`)
     }
   }
@@ -116,7 +145,7 @@ export default function ScriptEditPage() {
           type="text"
           placeholder="例：商品紹介動画"
           value={title}
-          onChange={e => { setTitle(e.target.value); saveDraft(e.target.value, body) }}
+          onChange={e => { setTitle(e.target.value); saveDraft({ title: e.target.value }) }}
         />
 
         <label className={styles.label} htmlFor="script-body">スクリプト全文</label>
@@ -129,7 +158,7 @@ export default function ScriptEditPage() {
           onChange={e => {
             setBody(e.target.value)
             setPreview([])
-            saveDraft(title, e.target.value)
+            saveDraft({ body: e.target.value })
           }}
           rows={8}
         />
@@ -172,6 +201,19 @@ export default function ScriptEditPage() {
             ))}
           </div>
         )}
+
+        <label className={styles.label} htmlFor="script-caption">キャプション（任意）</label>
+        <textarea
+          id="script-caption"
+          className={`${styles.textarea} ${styles.captionTextarea}`}
+          placeholder="TikTokに投稿するときのキャプション"
+          value={caption}
+          onChange={e => {
+            setCaption(e.target.value)
+            saveDraft({ caption: e.target.value })
+          }}
+          rows={4}
+        />
       </div>
 
       <div className={styles.footer}>
