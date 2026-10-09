@@ -45,11 +45,13 @@ export function useScripts() {
   }
 
   function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption'>>): void {
-    const updated = scripts.map(s =>
-      s.id === id
-        ? { ...s, ...changes, updatedAt: new Date().toISOString() }
-        : s
-    )
+    const updated = scripts.map(s => {
+      if (s.id !== id) return s
+      const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
+      // A cleared caption is stored as no caption, as createScript does.
+      if (!next.caption) delete next.caption
+      return next
+    })
     saveToStorage(updated)
     setScripts(updated)
   }

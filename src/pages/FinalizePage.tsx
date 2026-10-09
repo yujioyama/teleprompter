@@ -181,6 +181,8 @@ export default function FinalizePage() {
   // brought to the platforms' level, or `finalBlob` itself if that's off.
   const [exportBlob, setExportBlob] = useState<Blob | null>(null)
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
   // Aborted by 中断する (issue #34) or when the page goes away mid-combine.
@@ -676,7 +678,10 @@ export default function FinalizePage() {
     } catch {
       setCaptionCopy('failed')
     }
-    setTimeout(() => setCaptionCopy('idle'), 2000)
+    // Restart the 2s from the latest tap, so an earlier tap's timer can't
+    // cut the new message short.
+    clearTimeout(captionCopyTimerRef.current)
+    captionCopyTimerRef.current = setTimeout(() => setCaptionCopy('idle'), 2000)
   }
 
   if (!script) {

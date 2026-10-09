@@ -126,4 +126,17 @@ describe('useScripts', () => {
     })
     expect(result.current.scripts[0].caption).toBe('新しいキャプション')
   })
+
+  it('drops the caption when it is cleared, the same as creating without one', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('元', [], '消すキャプション')
+    })
+    const id = result.current.scripts[0].id
+    act(() => {
+      result.current.updateScript(id, { caption: '' })
+    })
+    expect(result.current.scripts[0]).not.toHaveProperty('caption')
+    expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0]).not.toHaveProperty('caption')
+  })
 })
