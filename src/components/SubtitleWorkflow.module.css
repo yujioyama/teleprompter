@@ -82,8 +82,6 @@
   width: 100%;
   border-radius: 8px;
   background: #000;
-  /* Smooths the punch-in, which the page sets a few times a second. */
-  transition: transform 250ms linear;
 }
 
 .previewWrapper {

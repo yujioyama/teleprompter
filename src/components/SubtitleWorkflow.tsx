@@ -1,11 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste } from '../utils/subtitleCues'
 import {
   SubtitlePosition,
   SUBTITLE_POSITION_BOTTOM,
   SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
-import { hookOptionsOf, snapZoomScale, ZOOM_ANCHOR_Y, type HookSettings } from '../utils/subtitleHook'
+import {
+  hookOptionsOf,
+  PUNCH_IN_ZOOMS,
+  snapZoomScale,
+  ZOOM_ANCHOR_Y,
+  type HookSettings,
+  type ImpactStrength,
+} from '../utils/subtitleHook'
+import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
@@ -73,6 +81,12 @@ interface SubtitleWorkflowProps {
   ) => Promise<SubtitleCue[]>
 }
 
+const IMPACT_STRENGTHS: { label: string; value: ImpactStrength }[] = [
+  { label: '弱', value: 'weak' },
+  { label: '中', value: 'medium' },
+  { label: '強', value: 'strong' },
+]
+
 const SOURCES: { label: string; value: SubtitleSource }[] = [
   { label: '台本から', value: 'script' },
   { label: '話した音声から', value: 'speech' },
@@ -100,7 +114,16 @@ export default function SubtitleWorkflow({
   const [transcribeProgress, setTranscribeProgress] = useState<WhisperProgress | null>(null)
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const previewRef = useRef<HTMLVideoElement>(null)
+  const previewRef = useRef<HTMLVideoElement | null>(null)
+  // The same element as previewRef, as state, so the frame-time hook
+  // re-subscribes when the player mounts (it appears with the first translation).
+  const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
+  useVideoFrameTime(previewVideo, setPreviewTime)
+  // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
+  const attachPreview = useCallback((el: HTMLVideoElement | null) => {
+    previewRef.current = el
+    setPreviewVideo(el)
+  }, [])
   // Aborted by 中断する (issue #34) or if this unmounts mid-burn.
   const burnAbortRef = useRef<AbortController | null>(null)
   const transcribeAbortRef = useRef<AbortController | null>(null)
@@ -336,7 +359,7 @@ export default function SubtitleWorkflow({
               <p className={styles.sectionTitle}>プレビュー</p>
               <div className={styles.previewWrapper}>
                 <video
-                  ref={previewRef}
+                  ref={attachPreview}
                   className={styles.preview}
                   src={previewUrl ?? undefined}
                   controls={stage !== 'burning'}
@@ -398,9 +421,61 @@ export default function SubtitleWorkflow({
                   checked={hookSettings.punchInEnabled}
                   onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
                 />
-                パンチイン
+                スナップズーム
               </label>
-              <p className={styles.hint}>最初のショットの映像をゆっくりズームインします（字幕は拡大しません）</p>
+              <p className={styles.hint}>最初のショットの途中で一気に寄り、2つ目のショットで元に戻ります（字幕は拡大しません）</p>
+              {hookSettings.punchInEnabled && (
+                <>
+                  <div className={styles.positionRow} role="group" aria-label="ズーム倍率">
+                    {PUNCH_IN_ZOOMS.map(z => (
+                      <button
+                        key={z}
+                        className={`${styles.positionBtn} ${hookSettings.punchInZoom === z ? styles.positionBtnActive : ''}`}
+                        aria-pressed={hookSettings.punchInZoom === z}
+                        onClick={() => onHookSettingsChange({ punchInZoom: z })}
+                      >
+                        {z}倍
+                      </button>
+                    ))}
+                  </div>
+                  <div className={styles.fineTuneRow}>
+                    <label htmlFor="punch-in-at-slider">寄るタイミング {hookSettings.punchInAt.toFixed(1)}秒</label>
+                    <input
+                      id="punch-in-at-slider"
+                      aria-label="寄るタイミング"
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.1}
+                      value={hookSettings.punchInAt}
+                      onChange={e => onHookSettingsChange({ punchInAt: Number(e.target.value) })}
+                    />
+                  </div>
+                </>
+              )}
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={hookSettings.impactEnabled}
+                  disabled={!hookSettings.punchInEnabled}
+                  onChange={e => onHookSettingsChange({ impactEnabled: e.target.checked })}
+                />
+                インパクト効果
+              </label>
+              <div className={styles.positionRow} role="group" aria-label="インパクトの強さ">
+                {IMPACT_STRENGTHS.map(s => (
+                  <button
+                    key={s.value}
+                    className={`${styles.positionBtn} ${hookSettings.impactStrength === s.value ? styles.positionBtnActive : ''}`}
+                    aria-pressed={hookSettings.impactStrength === s.value}
+                    disabled={!hookSettings.punchInEnabled || !hookSettings.impactEnabled}
+                    onClick={() => onHookSettingsChange({ impactStrength: s.value })}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.hint}>寄った瞬間だけ、ブレと色ずれを一瞬重ねます（字幕にはかかりません。プレビューには出ません）</p>
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

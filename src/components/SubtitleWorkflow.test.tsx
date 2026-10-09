@@ -504,8 +504,35 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(video.style.transform).toBe('scale(1.25)')
     expect(video.style.transformOrigin).toBe('50% 40%')
 
-    fireEvent.click(screen.getByLabelText('パンチイン'))
+    fireEvent.click(screen.getByLabelText('スナップズーム'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
+  })
+
+  it('sets the zoom and when it snaps, reporting them to be saved', async () => {
+    const onChange = await renderTranslated()
+    const zoomGroup = within(screen.getByRole('group', { name: 'ズーム倍率' }))
+    expect(zoomGroup.getByText('1.25倍')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(zoomGroup.getByText('1.35倍'))
+    expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.35 })
+
+    fireEvent.change(screen.getByLabelText('寄るタイミング'), { target: { value: '0.8' } })
+    expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
+  })
+
+  it('sets the impact effect, which needs the zoom on', async () => {
+    const onChange = await renderTranslated()
+    const strength = () => within(screen.getByRole('group', { name: 'インパクトの強さ' }))
+    expect(strength().getByText('中')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(strength().getByText('強'))
+    expect(onChange).toHaveBeenCalledWith({ impactStrength: 'strong' })
+
+    fireEvent.click(screen.getByLabelText('インパクト効果'))
+    expect(onChange).toHaveBeenCalledWith({ impactEnabled: false })
+    for (const button of strength().getAllByRole('button')) expect(button).toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('スナップズーム'))
+    expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
+    expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
   })
 })
