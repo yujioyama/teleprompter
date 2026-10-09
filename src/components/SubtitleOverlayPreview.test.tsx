@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { clampedSubtitlePosition } from '../utils/subtitlePosition'
-import { createCanvasMeasure, layoutCue } from '../utils/subtitleLayout'
+import { clampedSubtitlePosition, clampedSubtitleY } from '../utils/subtitlePosition'
+import { createCanvasMeasure, layoutCue, layoutHeadline } from '../utils/subtitleLayout'
+import { headlineY } from '../utils/subtitleHook'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
@@ -97,5 +98,28 @@ describe('SubtitleOverlayPreview', () => {
     render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)
     expect(screen.getByText('love')).toHaveStyle({ color: '#FFD60A' })
     expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
+  })
+
+  const withHeadline = (headline: string) => ({ ...HOOK, headline })
+
+  it('shows the headline just above the first shot\'s subtitle, as burned in', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={withHeadline('Wait *what*')} firstShotDuration={2} />)
+    const measure = createCanvasMeasure()
+    const cueTop = clampedSubtitleY(50, layoutCue(CUES[0], measure, 'hook').height)
+    const headline = layoutHeadline('Wait *what*', measure)
+    const box = screen.getByTestId('hook-headline')
+    expect(box.style.top).toBe(`${(headlineY([cueTop], headline.height, 50) / 1920) * 100}%`)
+    expect(screen.getByText('what')).toHaveStyle({ color: '#FFD60A' })
+  })
+
+  it('hides the headline after the first shot', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={3} hook={withHeadline('Wait')} firstShotDuration={2} />)
+    expect(screen.queryByTestId('hook-headline')).not.toBeInTheDocument()
+  })
+
+  it('shows the headline at the hook position when the first shot has no subtitle', () => {
+    render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={0.5} hook={withHeadline('Wait')} firstShotDuration={2} />)
+    const headline = layoutHeadline('Wait', createCanvasMeasure())
+    expect(screen.getByTestId('hook-headline').style.top).toBe(`${(clampedSubtitleY(50, headline.height) / 1920) * 100}%`)
   })
 })
