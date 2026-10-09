@@ -244,32 +244,6 @@ export function layoutCue(
 }
 
 /**
- * The first shot's headline: short on-screen-only text above the hook
- * subtitle. Bold white on a dark band as wide as its text, so it reads as
- * a title rather than one more subtitle.
- */
-export const HEADLINE_STYLE: TextStyle = { weight: 'bold', maxPx: 72, minPx: 56, maxLines: 2, lineHeight: 1.2 }
-export const HEADLINE_BOX_OPACITY = 0.8
-
-export interface HeadlineLayout {
-  block: TextBlockLayout
-  /** Width of its band: the widest line plus padding, at most a subtitle band's. */
-  width: number
-  height: number
-}
-
-export function layoutHeadline(text: string, measure: MeasureText): HeadlineLayout {
-  const block = layoutBlock(text, HEADLINE_STYLE, measure)
-  const font = fontFor(HEADLINE_STYLE, block.fontPx)
-  const widest = Math.max(0, ...block.lines.map(line => measure(line, font)))
-  return {
-    block,
-    width: Math.min(widest + SUBTITLE_BOX_PADDING_X * 2, SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
-    height: SUBTITLE_BOX_PADDING_Y * 2 + block.lines.length * block.lineHeightPx,
-  }
-}
-
-/**
  * Text measurement backed by a 2D canvas, falling back to a rough per-char
  * estimate where no canvas is available (e.g. jsdom in tests).
  */

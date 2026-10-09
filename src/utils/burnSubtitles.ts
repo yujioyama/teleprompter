@@ -11,19 +11,14 @@ import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   hasFirstShotExtras,
-  headlineY,
   PUNCH_IN_ZOOM,
   punchInUntil,
-  startsInFirstShot,
   styleCues,
   type HookOptions,
-  type OverlayBox,
   type StyledCue,
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
-  HEADLINE_BOX_OPACITY,
-  HEADLINE_STYLE,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_BOX_MARGIN_X,
   SUBTITLE_BOX_OPACITY,
@@ -33,7 +28,6 @@ import {
   TextBlockLayout,
   fontFor,
   layoutCue,
-  layoutHeadline,
   textStylesFor,
   type CueVariant,
   type MeasureText,
@@ -178,52 +172,18 @@ export async function renderCueImage(
   return { image: await toPng(canvas), height }
 }
 
-/** Render the hook headline: bold white, emphasis in yellow, on a band as wide as its text. */
-export async function renderHeadlineImage(text: string): Promise<{ image: Blob; height: number }> {
-  const layout = layoutHeadline(text, canvasMeasure())
-  const width = SUBTITLE_REFERENCE_WIDTH
-  const { canvas, ctx } = overlayCanvas(layout.height)
-
-  ctx.fillStyle = `rgba(0, 0, 0, ${HEADLINE_BOX_OPACITY})`
-  ctx.beginPath()
-  ctx.roundRect((width - layout.width) / 2, 0, layout.width, layout.height, SUBTITLE_BOX_RADIUS)
-  ctx.fill()
-
-  ctx.font = fontFor(HEADLINE_STYLE, layout.block.fontPx)
-  let top = SUBTITLE_BOX_PADDING_Y
-  for (const runs of layout.block.runs) {
-    fillRuns(ctx, runs, width / 2, top + layout.block.lineHeightPx / 2, '#ffffff')
-    top += layout.block.lineHeightPx
-  }
-  return { image: await toPng(canvas), height: layout.height }
-}
-
 /**
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
- * translation aren't burned in. A video starting with the first shot also
- * gets the hook headline over [0, D), even with no translated cue.
+ * translation aren't burned in.
  */
 export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
-  const firstShotBoxes: OverlayBox[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
     const { image, height } = await renderCueImage(cue, cue.variant)
-    const y = clampedSubtitleY(cuePosition(cue, look), height)
-    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
-    if (look.firstShotDuration !== null && startsInFirstShot(cue.start, look.firstShotDuration)) {
-      firstShotBoxes.push({ top: y, bottom: y + height })
-    }
-  }
-
-  const firstShot = look.firstShotDuration
-  if (firstShot !== null && look.hook.headline) {
-    // Above the topmost of the first shot's subtitles so it holds still
-    // while they change underneath it, or below them when there's no room.
-    const { image, height } = await renderHeadlineImage(look.hook.headline)
-    overlays.push({ start: 0, end: firstShot, image, y: headlineY(firstShotBoxes, height, look.hook.position) })
+    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   return overlays
 }
@@ -384,7 +344,7 @@ async function burnSubtitlesFFmpeg(
     // stay burned in (and, being the topmost stage, visually hide every
     // later overlay too) all the way to the end of the video. `pass` makes the
     // stage fall back to showing its unmodified input once the overlay
-    // stream ends, so the caption (or headline) correctly disappears at overlay.end.
+    // stream ends, so the caption correctly disappears at overlay.end.
     const aliasStages = overlays.map((_, i) => `[${i + 1}:v]copy[sub${i}]`)
     const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
     const fullFilterGraph = [...aliasStages, overlayStages].filter(Boolean).join(';')

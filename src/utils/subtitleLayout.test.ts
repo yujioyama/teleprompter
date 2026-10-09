@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   EN_STYLE,
-  HEADLINE_STYLE,
   HOOK_EN_STYLE,
   HOOK_JA_STYLE,
   JA_STYLE,
@@ -9,7 +8,6 @@ import {
   SUBTITLE_BOX_OPACITY,
   SUBTITLE_TEXT_WIDTH,
   layoutCue,
-  layoutHeadline,
   tokenize,
   wrapText,
 } from './subtitleLayout'
@@ -154,29 +152,5 @@ describe('layoutCue emphasis', () => {
     expect(layoutCue({ en: 'Hello there', ja: null }, measure).en.runs).toEqual([
       [{ text: 'Hello there', emphasized: false }],
     ])
-  })
-})
-
-describe('layoutHeadline', () => {
-  it('shrink-wraps its band around a short headline', () => {
-    const layout = layoutHeadline('Wait.', measure)
-    expect(HEADLINE_STYLE).toMatchObject({ weight: 'bold', maxPx: 72, minPx: 56, maxLines: 2 })
-    expect(layout.block).toMatchObject({ fontPx: 72, lines: ['Wait.'] })
-    // 5 chars at 36px each, plus 40px padding either side.
-    expect(layout.width).toBe(5 * 36 + 80)
-    expect(layout.height).toBe(28 * 2 + Math.round(72 * 1.2))
-  })
-
-  it('wraps a longer headline onto two lines, never wider than a subtitle band', () => {
-    const layout = layoutHeadline("'carry a torch' ≠ romantic? Not quite", measure)
-    expect(layout.block.lines.length).toBe(2)
-    expect(layout.width).toBeLessThanOrEqual(1080 - 90 * 2)
-  })
-
-  it('keeps emphasized words', () => {
-    expect(layoutHeadline('Wait *what*', measure).block.runs).toEqual([[
-      { text: 'Wait ', emphasized: false },
-      { text: 'what', emphasized: true },
-    ]])
   })
 })

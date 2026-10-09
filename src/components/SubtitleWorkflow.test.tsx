@@ -16,7 +16,7 @@ function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
-const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50, hookHeadlineEnabled: true, punchInEnabled: true }
+const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50, punchInEnabled: true }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
 // to FinalizePage, so subtitle work survives the component unmounting on
@@ -51,7 +51,7 @@ function ControlledSubtitleWorkflow({
       burn={(cues, position) =>
         burnModule.burnSubtitles(combinedBlob, cues, {
           position,
-          hook: hookOptionsOf(hookSettings, state.hookHeadline),
+          hook: hookOptionsOf(hookSettings),
           firstShotDuration: shotCueInputs[0]?.duration ?? null,
         })
       }
@@ -459,7 +459,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, headline: '', punchIn: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: true }, firstShotDuration: 2 }),
     )
   })
 
@@ -469,7 +469,7 @@ describe('SubtitleWorkflow hook controls', () => {
   })
 })
 
-describe('SubtitleWorkflow headline and punch-in', () => {
+describe('SubtitleWorkflow punch-in', () => {
   async function renderTranslated(onHookSettingsChange = vi.fn()) {
     seedBurnMock()
     render(
@@ -487,29 +487,6 @@ describe('SubtitleWorkflow headline and punch-in', () => {
     fireEvent.click(screen.getByText('日本語を反映'))
     return onHookSettingsChange
   }
-
-  it('shows a typed headline over the first shot, and drops it when switched off', async () => {
-    const onChange = await renderTranslated()
-    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
-    expect(screen.getByTestId('hook-headline')).toHaveTextContent('Wait')
-
-    fireEvent.click(screen.getByLabelText('フック見出し'))
-    expect(onChange).toHaveBeenCalledWith({ hookHeadlineEnabled: false })
-    expect(screen.queryByLabelText('フック見出しのテキスト')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('hook-headline')).not.toBeInTheDocument()
-  })
-
-  it('burns with the headline', async () => {
-    await renderTranslated()
-    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
-    fireEvent.click(screen.getByText('次へ'))
-    await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
-    expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
-      BLOB,
-      expect.anything(),
-      expect.objectContaining({ hook: expect.objectContaining({ headline: 'Wait', punchIn: true }) }),
-    )
-  })
 
   it('zooms the preview video during the first shot, unless the punch-in is off', async () => {
     const onChange = await renderTranslated()

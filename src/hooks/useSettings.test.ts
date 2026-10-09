@@ -13,7 +13,6 @@ const DEFAULTS = {
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_CENTER,
-  hookHeadlineEnabled: true,
   punchInEnabled: true,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
@@ -139,6 +138,12 @@ describe('useSettings', () => {
       hookPosition: 30,
     })
   })
+
+  it('drops the removed hook headline setting from stored settings', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ hookHeadlineEnabled: false }))
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0]).not.toHaveProperty('hookHeadlineEnabled')
+  })
 })
 
 describe('defaultBgmTrack', () => {
@@ -151,12 +156,11 @@ describe('defaultBgmTrack', () => {
     expect(defaultBgmTrack({ defaultBgmId: 'removed-track' })).toBeNull()
   })
 
-  it('gives older stored settings the headline, punch-in and first-shot lead-in defaults', () => {
+  it('gives older stored settings the punch-in and first-shot lead-in defaults', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toMatchObject({
-      hookHeadlineEnabled: true,
-      punchInEnabled: true,
+          punchInEnabled: true,
       firstShotPaddingStart: 0.05,
     })
   })

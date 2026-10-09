@@ -17,8 +17,6 @@ export interface AppSettings {
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
-  /** Show the per-video hook headline above the first shot's subtitle. */
-  hookHeadlineEnabled: boolean
   /** Slowly zoom the first shot's picture in. */
   punchInEnabled: boolean
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
@@ -38,16 +36,23 @@ const DEFAULTS: AppSettings = {
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_CENTER,
-  hookHeadlineEnabled: true,
   punchInEnabled: true,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }
 
+/** Stored settings brought up to date with the current shape. */
+export function migrateSettings(stored: Record<string, unknown>): Partial<AppSettings> {
+  const next = { ...stored }
+  // The hook headline was removed (2026-10-10).
+  delete next.hookHeadlineEnabled
+  return next as Partial<AppSettings>
+}
+
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS
+    return raw ? { ...DEFAULTS, ...migrateSettings(JSON.parse(raw)) } : DEFAULTS
   } catch {
     return DEFAULTS
   }

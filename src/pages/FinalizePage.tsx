@@ -138,7 +138,7 @@ export default function FinalizePage() {
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
-  const { hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled } = settings
+  const { hookStyleEnabled, hookPosition, punchInEnabled } = settings
   const { normalizeAudio } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
@@ -269,9 +269,9 @@ export default function FinalizePage() {
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
-          const { cues, pasteText, position, source, hookHeadline = '' } = subtitles
+          const { cues, pasteText, position, source } = subtitles
           savedSubtitlesRef.current = subtitlesSignatureOf(subtitles)
-          setSubtitleState({ stage: cues.length > 0 ? 'reviewing' : 'idle', cues, pasteText, position, source, hookHeadline })
+          setSubtitleState({ stage: cues.length > 0 ? 'reviewing' : 'idle', cues, pasteText, position, source })
           if (cues.length > 0) {
             setCompletedSteps(['trim'])
             setStep('subtitle')
@@ -476,7 +476,6 @@ export default function FinalizePage() {
           pasteText: subtitleState.pasteText,
           position: subtitleState.position,
           source: subtitleState.source,
-          hookHeadline: subtitleState.hookHeadline,
         }
   const subtitlesSignature = subtitlesToSave && subtitlesSignatureOf(subtitlesToSave)
   useEffect(() => {
@@ -496,10 +495,10 @@ export default function FinalizePage() {
   // while the user checks the preview and position, so 次へ only has to
   // join them. Editing a cue or moving the subtitles re-queues just the
   // shots that changed.
-  const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition, hookHeadline } = subtitleState
+  const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
   const hook = useMemo(
-    () => hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }, hookHeadline),
-    [hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled, hookHeadline],
+    () => hookOptionsOf({ hookStyleEnabled, hookPosition, punchInEnabled }),
+    [hookStyleEnabled, hookPosition, punchInEnabled],
   )
   useEffect(() => {
     if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
@@ -608,9 +607,8 @@ export default function FinalizePage() {
     // clearing the blobs is sufficient — no completedSteps update needed.
     setBurnedBlob(null)
     setMixed(null)
-    // A re-combined video invalidates any subtitle cues tied to the old one;
-    // the headline doesn't depend on timing, so it stays.
-    setSubtitleState(prev => ({ ...initialSubtitleState(), hookHeadline: prev.hookHeadline }))
+    // A re-combined video invalidates any subtitle cues tied to the old one.
+    setSubtitleState(initialSubtitleState())
     preparedAudio.clear()
     try {
       const clips = availableEntries.map(clipOf)
@@ -822,7 +820,7 @@ export default function FinalizePage() {
                 shotCueInputs={shotCueInputs}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
-                hookSettings={{ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }}
+                hookSettings={{ hookStyleEnabled, hookPosition, punchInEnabled }}
                 onHookSettingsChange={updateSettings}
                 burn={(cues, position, onProgress, signal) =>
                   burnSubtitlesByShot(

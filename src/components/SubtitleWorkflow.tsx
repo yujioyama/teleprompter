@@ -39,8 +39,6 @@ export interface SubtitleState {
   pasteText: string
   position: SubtitlePosition
   source: SubtitleSource
-  /** On-screen-only text above the first shot's subtitle; per video. */
-  hookHeadline: string
 }
 
 export const INITIAL_SUBTITLE_STATE: SubtitleState = {
@@ -49,7 +47,6 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
   pasteText: '',
   position: SUBTITLE_POSITION_BOTTOM,
   source: 'script',
-  hookHeadline: '',
 }
 
 interface SubtitleWorkflowProps {
@@ -92,7 +89,7 @@ export default function SubtitleWorkflow({
   onBurned,
   transcribe = transcribeSpeech,
 }: SubtitleWorkflowProps) {
-  const { stage, cues, pasteText, position, source, hookHeadline } = state
+  const { stage, cues, pasteText, position, source } = state
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -258,7 +255,7 @@ export default function SubtitleWorkflow({
 
   const hasAnyJapanese = cues.some(c => c.ja !== null)
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
-  const hook = hookOptionsOf(hookSettings, hookHeadline)
+  const hook = hookOptionsOf(hookSettings)
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
   // The punch-in is previewed by zooming the player itself; the subtitle
@@ -391,25 +388,6 @@ export default function SubtitleWorkflow({
                   </button>
                 ))}
               </div>
-              <label className={styles.toggleRow}>
-                <input
-                  type="checkbox"
-                  checked={hookSettings.hookHeadlineEnabled}
-                  onChange={e => onHookSettingsChange({ hookHeadlineEnabled: e.target.checked })}
-                />
-                フック見出し
-              </label>
-              {hookSettings.hookHeadlineEnabled && (
-                <input
-                  className={styles.headlineInput}
-                  aria-label="フック見出しのテキスト"
-                  maxLength={60}
-                  placeholder="例: 'carry a torch' ≠ romantic?"
-                  value={hookHeadline}
-                  onChange={e => patch({ hookHeadline: e.target.value })}
-                />
-              )}
-              <p className={styles.hint}>最初のショットの間だけ、字幕の上に短い見出しを出します（空欄なら出しません。*で囲むと黄色）</p>
               <label className={styles.toggleRow}>
                 <input
                   type="checkbox"

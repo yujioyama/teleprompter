@@ -36,7 +36,7 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
 
 /**
  * The shot trimmed and normalized with `cues` (styled, in the shot's own
- * timeline) burned in by the same encode, plus the headline and punch-in
+ * timeline) burned in by the same encode, plus the punch-in
  * when it's the first shot. A shot with nothing of that is just its
  * normalized clip, so it's shared with the combine step's cache entry. The
  * key holds everything that changes the pixels, so a hook change re-encodes
@@ -48,12 +48,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   if (translated.length === 0 && !extras) return normalizeRequest(clip)
   const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
-  const hasHeadline = look.firstShotDuration !== null && look.hook.headline !== ''
-  const placement = JSON.stringify([
-    hasNormalCue ? look.position : null,
-    hasHookCue || hasHeadline ? look.hook.position : null,
-  ])
-  const firstShot = JSON.stringify(extras ? [look.hook.headline, look.hook.punchIn] : null)
+  const placement = JSON.stringify([hasNormalCue ? look.position : null, hasHookCue ? look.hook.position : null])
+  const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   return {
     slot: `burn:${clip.shotId}`,

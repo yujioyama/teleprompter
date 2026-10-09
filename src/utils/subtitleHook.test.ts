@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  HEADLINE_GAP,
   hasFirstShotExtras,
-  headlineY,
   hookOptionsOf,
   punchInScale,
   punchInUntil,
@@ -10,7 +8,6 @@ import {
   styleCues,
   type HookOptions,
 } from './subtitleHook'
-import { clampedSubtitleY } from './subtitlePosition'
 import type { SubtitleCue } from './subtitleCues'
 
 const cue = (id: string, start: number, end: number): SubtitleCue => ({ id, start, end, en: id, ja: `${id}-ja` })
@@ -47,15 +44,9 @@ describe('styleCues', () => {
 })
 
 describe('hookOptionsOf', () => {
-  const settings = { hookStyleEnabled: false, hookPosition: 40, hookHeadlineEnabled: true, punchInEnabled: true }
-
-  it('reads the hook settings, with the headline trimmed', () => {
-    expect(hookOptionsOf(settings, '  Wait  ')).toEqual({ style: false, position: 40, headline: 'Wait', punchIn: true })
-  })
-
-  it('has no headline when it is switched off or not given', () => {
-    expect(hookOptionsOf({ ...settings, hookHeadlineEnabled: false }, 'Wait').headline).toBe('')
-    expect(hookOptionsOf(settings).headline).toBe('')
+  it('reads the hook settings', () => {
+    expect(hookOptionsOf({ hookStyleEnabled: false, hookPosition: 40, punchInEnabled: true }))
+      .toEqual({ style: false, position: 40, punchIn: true })
   })
 })
 
@@ -81,39 +72,17 @@ describe('punchInScale', () => {
 })
 
 describe('first-shot extras', () => {
-  const hook: HookOptions = { style: true, position: 50, headline: '', punchIn: false }
+  const hook: HookOptions = { style: true, position: 50, punchIn: false }
 
   it('only apply to a video starting with the first shot', () => {
-    expect(hasFirstShotExtras({ ...hook, headline: 'Hi' }, 2)).toBe(true)
     expect(hasFirstShotExtras({ ...hook, punchIn: true }, 2)).toBe(true)
     expect(hasFirstShotExtras(hook, 2)).toBe(false)
-    expect(hasFirstShotExtras({ ...hook, headline: 'Hi', punchIn: true }, null)).toBe(false)
+    expect(hasFirstShotExtras({ ...hook, punchIn: true }, null)).toBe(false)
   })
 
   it('zoom until the end of the first shot when the punch-in is on', () => {
     expect(punchInUntil({ ...hook, punchIn: true }, 2)).toBe(2)
     expect(punchInUntil(hook, 2)).toBeNull()
     expect(punchInUntil({ ...hook, punchIn: true }, null)).toBeNull()
-  })
-})
-
-describe('headlineY', () => {
-  it('sits the headline just above the topmost first-shot box', () => {
-    const boxes = [{ top: 900, bottom: 1000 }, { top: 800, bottom: 950 }]
-    expect(headlineY(boxes, 100, 50)).toBe(800 - HEADLINE_GAP - 100)
-  })
-
-  it('centers it at the hook position with no box under it', () => {
-    expect(headlineY([], 100, 50)).toBe(clampedSubtitleY(50, 100))
-  })
-
-  it('goes below the bottom-most box when there is no room above', () => {
-    expect(headlineY([{ top: 117, bottom: 412 }], 142, 13.75)).toBe(412 + HEADLINE_GAP)
-  })
-
-  it('stays within the frame when it fits neither above nor below', () => {
-    const y = headlineY([{ top: 10, bottom: 1900 }], 142, 50)
-    expect(y).toBeGreaterThanOrEqual(0)
-    expect(y).toBeLessThanOrEqual(1920 - 142)
   })
 })

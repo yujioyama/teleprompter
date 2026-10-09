@@ -19,16 +19,3 @@
   display: block;
   white-space: nowrap;
 }
-
-.headline {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  pointer-events: none;
-}
-
-.headlineText {
-  color: #fff;
-  font-weight: 700;
-}
