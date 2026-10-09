@@ -130,6 +130,26 @@ export default function SettingsPage() {
       </div>
 
       <div className={styles.section}>
+        <div className={styles.sectionTitle}>Claudeから受け取る</div>
+        <div className={styles.row}>
+          <div>
+            <label className={styles.rowLabel} htmlFor="inbox-key">受け取り用キー</label>
+            <div className={styles.rowSub}>Claudeチャットから送ったスクリプトを受け取るための合言葉です。Vercelに設定したINBOX_SECRETと同じものを入れてください</div>
+          </div>
+        </div>
+        <input
+          id="inbox-key"
+          className={styles.keyInput}
+          type="text"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          value={settings.inboxKey}
+          onChange={e => updateSettings({ inboxKey: e.target.value.trim() })}
+        />
+      </div>
+
+      <div className={styles.section}>
         <div className={styles.sectionTitle}>バックアップ</div>
         <ScriptBackup />
       </div>

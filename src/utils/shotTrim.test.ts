@@ -43,6 +43,7 @@ describe('resolveShotTrimSettings', () => {
     hookHeadlineEnabled: true,
     punchInEnabled: true,
     firstShotPaddingStart: 0.05,
+    inboxKey: '',
   }
 
   it('gives the first shot its own lead-in before the speech', () => {

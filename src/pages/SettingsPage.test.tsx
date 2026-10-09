@@ -143,3 +143,12 @@ describe('SettingsPage auto-trim', () => {
     expect(stored().firstShotPaddingStart).toBe(0.2)
   })
 })
+
+describe('SettingsPage inbox key', () => {
+  it('saves the key for receiving scripts from Claude', () => {
+    renderSettings()
+    fireEvent.change(screen.getByLabelText('受け取り用キー'), { target: { value: ' abc123 ' } })
+    expect(stored().inboxKey).toBe('abc123')
+    expect(screen.getByLabelText('受け取り用キー')).toHaveValue('abc123')
+  })
+})

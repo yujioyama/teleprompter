@@ -129,3 +129,18 @@
   opacity: 0.4;
   pointer-events: none;
 }
+
+.keyInput {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-family: ui-monospace, monospace;
+}
+
+.keyInput:focus {
+  border-color: var(--accent);
+}

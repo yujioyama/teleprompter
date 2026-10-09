@@ -23,6 +23,8 @@ export interface AppSettings {
   punchInEnabled: boolean
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
+  /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
+  inboxKey: string
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -39,6 +41,7 @@ const DEFAULTS: AppSettings = {
   hookHeadlineEnabled: true,
   punchInEnabled: true,
   firstShotPaddingStart: 0.05,
+  inboxKey: '',
 }
 
 function loadSettings(): AppSettings {
