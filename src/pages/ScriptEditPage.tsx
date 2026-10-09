@@ -122,7 +122,10 @@ export default function ScriptEditPage() {
         deleteInboxItem(settings.inboxKey, inboxItem.id)
           .catch(err => console.error('Failed to clear the inbox item', err))
       }
-      navigate(`/scripts/${script.id}/shots`)
+      // From the inbox, replace the /scripts/new entry: it carries the
+      // consumed item in its state, and going back would reopen it
+      // pre-filled and let it be saved a second time.
+      navigate(`/scripts/${script.id}/shots`, { replace: Boolean(inboxItem) })
     }
   }
 

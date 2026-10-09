@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import ScriptEditPage from './ScriptEditPage'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import type { Script } from '../types'
@@ -19,10 +19,23 @@ function stored(): Script[] {
   return JSON.parse(localStorage.getItem('teleprompter_scripts') ?? '[]')
 }
 
-function renderAt(entry: string | { pathname: string; state: unknown }) {
-  render(
-    <MemoryRouter initialEntries={[entry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+type Entry = string | { pathname: string; state: unknown }
+
+function GoBack() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate(-1)}>戻る操作</button>
+}
+
+function renderAt(entry: Entry | Entry[], initialIndex?: number) {
+  return render(
+    <MemoryRouter
+      initialEntries={Array.isArray(entry) ? entry : [entry]}
+      initialIndex={initialIndex}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <GoBack />
       <Routes>
+        <Route path="/" element={<p>ホーム</p>} />
         <Route path="/scripts/new" element={<ScriptEditPage />} />
         <Route path="/scripts/:id/edit" element={<ScriptEditPage />} />
         <Route path="/scripts/:id/shots" element={<p>ショット編集</p>} />
@@ -30,6 +43,10 @@ function renderAt(entry: string | { pathname: string; state: unknown }) {
     </MemoryRouter>,
   )
 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 beforeEach(() => {
   localStorage.clear()
@@ -66,13 +83,27 @@ describe('ScriptEditPage from the Claude inbox', () => {
   })
 
   it('still creates the script when clearing the item fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(deleteInboxItem).mockRejectedValueOnce(new Error('offline'))
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     fireEvent.click(screen.getByText('自動分割する'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
     expect(stored()).toHaveLength(1)
+    expect(deleteInboxItem).toHaveBeenCalledWith('secret', 'inbox-1')
+    await waitFor(() => expect(logged).toHaveBeenCalledWith('Failed to clear the inbox item', expect.any(Error)))
+  })
+
+  it('does not reopen the consumed item when going back after creating the script', async () => {
+    renderAt(['/', { pathname: '/scripts/new', state: { inboxItem: ITEM } }], 1)
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('戻る操作'))
+
+    expect(await screen.findByText('ホーム')).toBeInTheDocument()
+    expect(screen.queryByText('新規スクリプト')).not.toBeInTheDocument()
   })
 })
 
@@ -88,6 +119,15 @@ describe('ScriptEditPage caption', () => {
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
     expect(stored()[0].caption).toBe('#手入力')
     expect(deleteInboxItem).not.toHaveBeenCalled()
+  })
+
+  it('keeps a typed caption in the draft and restores it on remount', () => {
+    const { unmount } = renderAt('/scripts/new')
+    fireEvent.change(screen.getByLabelText('キャプション（任意）'), { target: { value: '#下書き' } })
+    unmount()
+
+    renderAt('/scripts/new')
+    expect(screen.getByLabelText('キャプション（任意）')).toHaveValue('#下書き')
   })
 
   it('edits the caption of an existing script', async () => {
