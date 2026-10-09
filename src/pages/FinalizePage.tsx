@@ -824,6 +824,7 @@ export default function FinalizePage() {
                 onStateChange={setSubtitleState}
                 hookSettings={{ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }}
                 onHookSettingsChange={updateSettings}
+                inboxKey={settings.inboxKey}
                 burn={(cues, position, onProgress, signal) =>
                   burnSubtitlesByShot(
                     getEncodeCache(),
