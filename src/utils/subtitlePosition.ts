@@ -34,6 +34,15 @@ export function clampedSubtitlePosition(
   return Math.min(Math.max(position, half), 100 - half)
 }
 
+/** Top of an overlay on the output video, kept so all of it stays on screen. */
+export function clampedSubtitleY(
+  position: SubtitlePosition,
+  overlayHeight: number,
+  videoHeight = SUBTITLE_VIDEO_HEIGHT,
+): number {
+  return subtitleY(clampedSubtitlePosition(position, overlayHeight, videoHeight), videoHeight, overlayHeight)
+}
+
 /** The one-tap positions offered next to the fine-tune slider. */
 export const SUBTITLE_POSITION_PRESETS: { label: string; value: SubtitlePosition }[] = [
   { label: '上部', value: SUBTITLE_POSITION_TOP },

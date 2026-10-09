@@ -96,7 +96,8 @@ beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   // The tests below predate the usual BGM; they walk the BGM step by hand.
-  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null }))
+  // They also predate the first shot's own lead-in, so it is the usual 0.3s.
+  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.3 }))
   vi.clearAllMocks()
   // mixForExport reports which way it added the BGM.
   vi.spyOn(console, 'info').mockImplementation(() => {})
@@ -326,6 +327,17 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     expect(probeVideoDuration).not.toHaveBeenCalled()
     expect(detectSpeech).not.toHaveBeenCalled()
   })
+
+  it('opens the first shot with its own, shorter lead-in', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.1 }))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
+    renderFinalizePage('script-1')
+
+    // 1.0s - 0.1s, rather than the usual 0.3s before.
+    await screen.findByText('開始 0.9秒')
+    expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
+  })
 })
 
 describe('FinalizePage trim step: picks up where it was left', () => {
@@ -433,6 +445,19 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
     expect(screen.queryByLabelText('日本語字幕 1')).not.toBeInTheDocument()
   })
 
+  it('keeps the typed hook headline when the video is combined again in the same session', async () => {
+    await combineAndTranslate()
+    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
+    fireEvent.click(screen.getByRole('button', { name: /トリミング/ }))
+    fireEvent.click(await screen.findByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    fireEvent.change(await screen.findByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    expect(await screen.findByLabelText('フック見出しのテキスト')).toHaveValue('Wait')
+  })
+
   it('does not bring back subtitles for a shot retaken since', async () => {
     await combineAndTranslate()
     cleanup()
@@ -442,6 +467,18 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
     renderFinalizePage('script-1')
     await screen.findByText('結合する')
     expect(screen.queryByLabelText('英語字幕 1')).not.toBeInTheDocument()
+  })
+
+  it('reopens with the hook headline kept', async () => {
+    await combineAndTranslate()
+    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait *what*' } })
+    await waitFor(async () =>
+      expect((await loadFinalizeProgress('script-1')).subtitles?.hookHeadline).toBe('Wait *what*'),
+    )
+    cleanup()
+
+    renderFinalizePage('script-1')
+    expect(await screen.findByLabelText('フック見出しのテキスト')).toHaveValue('Wait *what*')
   })
 })
 
@@ -1096,5 +1133,29 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
       expect.objectContaining({ variant: 'normal' }),
     ])
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!).hookStyleEnabled).toBe(false)
+  })
+
+  it('burns the headline and the punch-in into the first shot', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
+
+    await waitFor(() => {
+      const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { headline: 'Wait', punchIn: true }, firstShotDuration: 5 })
+    }, { timeout: 3000 })
   })
 })

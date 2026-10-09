@@ -9,15 +9,16 @@ import {
   Quality,
 } from 'mediabunny'
 import { assertUsable } from './normalizeShot'
-import { createOverlayProcess, type SubtitleOverlay } from './subtitleOverlay'
+import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
 export type { SubtitleOverlay } from './subtitleOverlay'
 
 /**
  * WebCodecs counterpart of the ffmpeg overlay filtergraph: re-encode the
- * video once, compositing each cue's pre-rendered PNG at (centered, its y)
- * during [start, end). Frames with no cue are passed to the encoder as-is.
+ * video once, compositing each overlay's pre-rendered PNG at (centered, its y)
+ * during [start, end). Frames with no overlay are passed to the encoder as-is,
+ * unless the punch-in zooms them.
  * Audio packets are copied untouched.
  *
  * Only the fallback for a whole joined video now — FinalizePage burns each
@@ -28,9 +29,10 @@ export async function burnSubtitlesWebCodecs(
   overlays: SubtitleOverlay[],
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  options: OverlayOptions = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
-  const overlay = await createOverlayProcess(overlays)
+  const overlay = await createOverlayProcess(overlays, options)
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
     const output = new Output({

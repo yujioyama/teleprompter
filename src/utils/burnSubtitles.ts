@@ -4,14 +4,26 @@ import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { SubtitleCue } from './subtitleCues'
-import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, clampedSubtitlePosition, subtitleY } from './subtitlePosition'
-import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
+import { SubtitlePosition, clampedSubtitleY } from './subtitlePosition'
+import { OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_WIDTH, canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
-import { styleCues, type HookOptions, type StyledCue } from './subtitleHook'
+import {
+  hasFirstShotExtras,
+  headlineY,
+  PUNCH_IN_ZOOM,
+  punchInUntil,
+  startsInFirstShot,
+  styleCues,
+  type HookOptions,
+  type OverlayBox,
+  type StyledCue,
+} from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
+  HEADLINE_BOX_OPACITY,
+  HEADLINE_STYLE,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_BOX_MARGIN_X,
   SUBTITLE_BOX_OPACITY,
@@ -21,31 +33,50 @@ import {
   TextBlockLayout,
   fontFor,
   layoutCue,
+  layoutHeadline,
   textStylesFor,
   type CueVariant,
+  type MeasureText,
 } from './subtitleLayout'
 
 /**
  * Build the chained overlay filtergraph for one subtitle image input per
  * entry of `ys` (indices 1..ys.length, input 0 is the base video), each
- * composited horizontally centered at its own Y (cue boxes differ in height
+ * composited horizontally centered at its own Y (boxes differ in height
  * with their line count). Each image input is itself time-bounded via
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is
- * needed here — simpler and less error-prone than threading per-cue timing
- * through the filter string itself.
+ * needed here — simpler and less error-prone than threading per-overlay timing
+ * through the filter string itself. `baseFilter` (the punch-in) is applied
+ * to the video first, under the overlays.
  */
-export function buildOverlayFilterGraph(ys: number[]): { filterGraph: string; outputLabel: string } {
+export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { filterGraph: string; outputLabel: string } {
+  const base = baseFilter ? '[base]' : '[0:v]'
+  const prelude = baseFilter ? [`[0:v]${baseFilter}[base]`] : []
   if (ys.length === 0) {
-    return { filterGraph: '', outputLabel: '[0:v]' }
+    return { filterGraph: prelude.join(';'), outputLabel: base }
   }
 
   const stages = ys.map((y, i) => {
-    const baseInput = i === 0 ? '[0:v]' : `[v${i - 1}]`
+    const baseInput = i === 0 ? base : `[v${i - 1}]`
     return `${baseInput}[sub${i}]overlay=x=(W-w)/2:y=${y}[v${i}]`
   })
 
-  return { filterGraph: stages.join(';'), outputLabel: `[v${ys.length - 1}]` }
+  return { filterGraph: [...prelude, ...stages].join(';'), outputLabel: `[v${ys.length - 1}]` }
+}
+
+/**
+ * ffmpeg's punch-in: zoom the joined video's first `until` seconds in from
+ * 1x to 1 + PUNCH_IN_ZOOM about the center, as punchInScale does on the
+ * hardware path. `in` counts input frames, and the joined video is
+ * normalized to OUTPUT_FRAME_RATE. zoompan crops to whole pixels, so the
+ * zoom may judder slightly — accepted on this last-resort path.
+ */
+export function punchInFilter(until: number): string {
+  const t = `in/${OUTPUT_FRAME_RATE}`
+  const d = until.toFixed(3)
+  return `zoompan=z='if(lt(${t},${d}),1+${PUNCH_IN_ZOOM}*${t}/${d},1)'`
+    + `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }
 
 /** How subtitles look beyond the cues themselves. */
@@ -76,6 +107,38 @@ function fillRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y
   })
 }
 
+/** Text measurement on a scratch canvas, matching what gets drawn. */
+function canvasMeasure(): MeasureText {
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  return (text, font) => {
+    ctx.font = font
+    return ctx.measureText(text).width
+  }
+}
+
+/** A video-wide transparent canvas `height` tall, set up for drawing runs. */
+function overlayCanvas(height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  const canvas = document.createElement('canvas')
+  canvas.width = SUBTITLE_REFERENCE_WIDTH
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  // Runs are laid side by side from the left, centered as a whole line.
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  return { canvas, ctx }
+}
+
+function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob)
+      else reject(new Error('Failed to render subtitle image'))
+    }, 'image/png')
+  })
+}
+
 /**
  * Render one cue's bilingual subtitle (English bold/larger above, Japanese
  * smaller below, on a semi-transparent rounded background) as a transparent
@@ -88,30 +151,16 @@ export async function renderCueImage(
   cue: SubtitleCue,
   variant: CueVariant = 'normal',
 ): Promise<{ image: Blob; height: number }> {
-  const measureCanvas = document.createElement('canvas')
-  const measureCtx = measureCanvas.getContext('2d')
-  if (!measureCtx) throw new Error('Canvas 2D context unavailable')
-  const layout = layoutCue(cue, (text, font) => {
-    measureCtx.font = font
-    return measureCtx.measureText(text).width
-  }, variant)
-
+  const layout = layoutCue(cue, canvasMeasure(), variant)
   const width = SUBTITLE_REFERENCE_WIDTH
   const height = layout.height
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  const { canvas, ctx } = overlayCanvas(height)
 
   ctx.fillStyle = `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[variant]})`
   ctx.beginPath()
   ctx.roundRect(SUBTITLE_BOX_MARGIN_X, 0, width - SUBTITLE_BOX_MARGIN_X * 2, height, SUBTITLE_BOX_RADIUS)
   ctx.fill()
 
-  // Runs are laid side by side from the left, centered as a whole line.
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
   let top = SUBTITLE_BOX_PADDING_Y
   const drawBlock = (block: TextBlockLayout, font: string, color: string) => {
     ctx.font = font
@@ -126,33 +175,55 @@ export async function renderCueImage(
     top += SUBTITLE_BLOCK_GAP
     drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
   }
+  return { image: await toPng(canvas), height }
+}
 
-  const image = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(blob => {
-      if (blob) resolve(blob)
-      else reject(new Error('Failed to render subtitle image'))
-    }, 'image/png')
-  })
-  return { image, height }
+/** Render the hook headline: bold white, emphasis in yellow, on a band as wide as its text. */
+export async function renderHeadlineImage(text: string): Promise<{ image: Blob; height: number }> {
+  const layout = layoutHeadline(text, canvasMeasure())
+  const width = SUBTITLE_REFERENCE_WIDTH
+  const { canvas, ctx } = overlayCanvas(layout.height)
+
+  ctx.fillStyle = `rgba(0, 0, 0, ${HEADLINE_BOX_OPACITY})`
+  ctx.beginPath()
+  ctx.roundRect((width - layout.width) / 2, 0, layout.width, layout.height, SUBTITLE_BOX_RADIUS)
+  ctx.fill()
+
+  ctx.font = fontFor(HEADLINE_STYLE, layout.block.fontPx)
+  let top = SUBTITLE_BOX_PADDING_Y
+  for (const runs of layout.block.runs) {
+    fillRuns(ctx, runs, width / 2, top + layout.block.lineHeightPx / 2, '#ffffff')
+    top += layout.block.lineHeightPx
+  }
+  return { image: await toPng(canvas), height: layout.height }
 }
 
 /**
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
- * translation aren't burned in.
+ * translation aren't burned in. A video starting with the first shot also
+ * gets the hook headline over [0, D), even with no translated cue.
  */
 export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
+  const firstShotBoxes: OverlayBox[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
     const { image, height } = await renderCueImage(cue, cue.variant)
-    overlays.push({
-      start: cue.start,
-      end: cue.start + cueDuration(cue),
-      image,
-      y: subtitleY(clampedSubtitlePosition(cuePosition(cue, look), height), SUBTITLE_VIDEO_HEIGHT, height),
-    })
+    const y = clampedSubtitleY(cuePosition(cue, look), height)
+    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
+    if (look.firstShotDuration !== null && startsInFirstShot(cue.start, look.firstShotDuration)) {
+      firstShotBoxes.push({ top: y, bottom: y + height })
+    }
+  }
+
+  const firstShot = look.firstShotDuration
+  if (firstShot !== null && look.hook.headline) {
+    // Above the topmost of the first shot's subtitles so it holds still
+    // while they change underneath it, or below them when there's no room.
+    const { image, height } = await renderHeadlineImage(look.hook.headline)
+    overlays.push({ start: 0, end: firstShot, image, y: headlineY(firstShotBoxes, height, look.hook.position) })
   }
   return overlays
 }
@@ -179,15 +250,16 @@ export async function burnSubtitles(
   // The whole joined video starts with the first shot, so hook cues are
   // those starting within its length, as in the per-shot path.
   const translated = styleCues(cues, look.firstShotDuration, look.hook.style).filter(c => c.ja !== null)
-  if (translated.length === 0) {
+  if (translated.length === 0 && !hasFirstShotExtras(look.hook, look.firstShotDuration)) {
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }
   const overlays = await renderSubtitleOverlays(translated, look)
+  const zoomUntil = punchInUntil(look.hook, look.firstShotDuration)
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal)
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchInUntil: zoomUntil })
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -195,14 +267,7 @@ export async function burnSubtitles(
       onProgress?.(0)
     }
   }
-  return burnSubtitlesFFmpeg(
-    videoBlob,
-    translated,
-    overlays.map(o => o.image),
-    overlays.map(o => o.y),
-    onProgress,
-    signal,
-  )
+  return burnSubtitlesFFmpeg(videoBlob, overlays, zoomUntil, onProgress, signal)
 }
 
 /**
@@ -224,7 +289,9 @@ export async function burnShotSubtitles(
   throwIfCancelled(signal)
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
   const overlays = await renderSubtitleOverlays(cues, look)
-  return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal)
+  return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
+    punchInUntil: punchInUntil(look.hook, look.firstShotDuration),
+  })
 }
 
 function cueDuration(cue: SubtitleCue): number {
@@ -258,14 +325,14 @@ export function ffmpegProgressRatio(timeMicros: number, durationSec: number): nu
 }
 
 /**
- * ffmpeg.wasm path: feed each cue's PNG in as a time-bounded image input and
- * composite them via a chained overlay filtergraph.
+ * ffmpeg.wasm path: feed each overlay's PNG in as a time-bounded image input
+ * and composite them via a chained overlay filtergraph, over the punch-in
+ * when there is one.
  */
 async function burnSubtitlesFFmpeg(
   videoBlob: Blob,
-  translated: SubtitleCue[],
-  images: Blob[],
-  ys: number[],
+  overlays: SubtitleOverlay[],
+  zoomUntil: number | null,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
@@ -283,42 +350,44 @@ async function burnSubtitlesFFmpeg(
     await ff.writeFile('in.mp4', await fetchFile(videoBlob))
 
     const args: string[] = ['-i', 'in.mp4']
-    for (let i = 0; i < translated.length; i++) {
-      const cue = translated[i]
+    for (let i = 0; i < overlays.length; i++) {
+      const overlay = overlays[i]
       const name = `sub${i}.png`
-      await ff.writeFile(name, await fetchFile(images[i]))
-      const duration = cueDuration(cue)
+      await ff.writeFile(name, await fetchFile(overlay.image))
       // `-itsoffset` (not `-ss`) is what delays this input's presentation
-      // timestamps so it starts compositing at cue.start: `-ss` before `-i`
+      // timestamps so it starts compositing at overlay.start: `-ss` before `-i`
       // seeks into the SOURCE's own content, which is meaningless for a
       // `-loop 1` static image (there is nothing to seek past) and so does
       // NOT delay when the overlay appears in the composited output — every
       // image would otherwise start compositing at t=0.
-      args.push('-loop', '1', '-itsoffset', cue.start.toFixed(3), '-t', duration.toFixed(3), '-i', name)
+      args.push('-loop', '1', '-itsoffset', overlay.start.toFixed(3), '-t', (overlay.end - overlay.start).toFixed(3), '-i', name)
     }
 
-    const { filterGraph, outputLabel } = buildOverlayFilterGraph(ys)
+    const { filterGraph, outputLabel } = buildOverlayFilterGraph(
+      overlays.map(o => o.y),
+      zoomUntil !== null ? punchInFilter(zoomUntil) : undefined,
+    )
 
-    // buildOverlayFilterGraph's chain references each cue's image input by an
+    // buildOverlayFilterGraph's chain references each overlay's image input by an
     // arbitrary label ([sub0], [sub1], ...), but ffmpeg only recognizes an
     // input by its positional stream specifier ([1:v], [2:v], ...) unless a
     // filter stage explicitly defines that label first. Without this alias
     // preamble, ffmpeg fails immediately with "Invalid stream specifier" /
     // "matches no streams" and the whole -filter_complex is rejected. Each
-    // cue's PNG is input index i+1 (input 0 is the base video), so alias it
+    // overlay's PNG is input index i+1 (input 0 is the base video), so alias it
     // to the label the chain expects via a no-op `copy` filter.
     //
-    // Each overlay stage also needs `eof_action=pass`: once a cue's
+    // Each overlay stage also needs `eof_action=pass`: once an overlay's
     // (duration-bounded) image stream ends, overlay's default eof_action is
     // `repeat`, which freezes and keeps showing that image's last frame for
-    // the rest of the output — so a cue that already ended would otherwise
+    // the rest of the output — so an overlay that already ended would otherwise
     // stay burned in (and, being the topmost stage, visually hide every
-    // later cue too) all the way to the end of the video. `pass` makes the
+    // later overlay too) all the way to the end of the video. `pass` makes the
     // stage fall back to showing its unmodified input once the overlay
-    // stream ends, so the caption correctly disappears at cue.end.
-    const aliasStages = translated.map((_, i) => `[${i + 1}:v]copy[sub${i}]`).join(';')
+    // stream ends, so the caption (or headline) correctly disappears at overlay.end.
+    const aliasStages = overlays.map((_, i) => `[${i + 1}:v]copy[sub${i}]`)
     const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
-    const fullFilterGraph = `${aliasStages};${overlayStages}`
+    const fullFilterGraph = [...aliasStages, overlayStages].filter(Boolean).join(';')
 
     args.push(
       '-filter_complex', fullFilterGraph,
@@ -343,7 +412,7 @@ async function burnSubtitlesFFmpeg(
     const data = await ff.readFile('out.mp4')
 
     ff.deleteFile('in.mp4')
-    for (let i = 0; i < translated.length; i++) ff.deleteFile(`sub${i}.png`)
+    for (let i = 0; i < overlays.length; i++) ff.deleteFile(`sub${i}.png`)
     ff.deleteFile('out.mp4')
 
     return new Blob([data as Uint8Array], { type: 'video/mp4' })

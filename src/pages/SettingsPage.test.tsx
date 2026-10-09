@@ -134,3 +134,12 @@ describe('SettingsPage backup', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)).toEqual([SCRIPT])
   })
 })
+
+describe('SettingsPage auto-trim', () => {
+  it('saves the first shot\'s lead-in', () => {
+    renderSettings()
+    expect(screen.getByText('0.05秒')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('slider', { name: '最初のショットの前に残す時間' }), { target: { value: '0.2' } })
+    expect(stored().firstShotPaddingStart).toBe(0.2)
+  })
+})

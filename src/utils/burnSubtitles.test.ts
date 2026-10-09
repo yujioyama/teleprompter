@@ -1,25 +1,34 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   buildOverlayFilterGraph,
+  burnShotSubtitles,
   burnSubtitles,
   cuePosition,
   ffmpegProgressRatio,
+  punchInFilter,
   renderCueImage,
   renderSubtitleOverlays,
   type SubtitleLook,
 } from './burnSubtitles'
 import { CancelledError } from './cancellation'
-import { layoutCue, type MeasureText } from './subtitleLayout'
-import { subtitleY } from './subtitlePosition'
-import type { StyledCue } from './subtitleHook'
+import { layoutCue, layoutHeadline, type MeasureText } from './subtitleLayout'
+import { clampedSubtitleY, subtitleY } from './subtitlePosition'
+import { headlineY, type StyledCue } from './subtitleHook'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
+import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
-vi.mock('./webcodecs/support', () => ({
+vi.mock('./webcodecs/support', async importOriginal => ({
+  ...(await importOriginal<typeof import('./webcodecs/support')>()),
   canUseWebCodecs: vi.fn(async () => true),
   disableWebCodecs: vi.fn(),
 }))
 vi.mock('./webcodecs/burnSubtitlesWebCodecs', () => ({
   burnSubtitlesWebCodecs: vi.fn(async () => new Blob(['burned'])),
+}))
+
+vi.mock('./webcodecs/normalizeShot', async importOriginal => ({
+  ...(await importOriginal<typeof import('./webcodecs/normalizeShot')>()),
+  normalizeShotWebCodecs: vi.fn(async () => new Blob(['normalized'])),
 }))
 
 // The canvas stub's text measure: every char is half its font size wide.
@@ -51,7 +60,7 @@ function stubCanvas() {
   return { drawn, bands }
 }
 
-const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50 }, firstShotDuration: 2 }
+const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, headline: '', punchIn: false }, firstShotDuration: 2 }
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -163,5 +172,100 @@ describe('burnSubtitles', () => {
   it('returns the video unchanged when nothing is translated', async () => {
     const video = new Blob(['x'])
     expect(await burnSubtitles(video, [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: null }], LOOK)).toBe(video)
+  })
+})
+
+describe('buildOverlayFilterGraph with a punch-in', () => {
+  it('feeds the overlays from the zoomed base video', () => {
+    expect(buildOverlayFilterGraph([100], 'zoompan=Z')).toEqual({
+      filterGraph: '[0:v]zoompan=Z[base];[base][sub0]overlay=x=(W-w)/2:y=100[v0]',
+      outputLabel: '[v0]',
+    })
+  })
+
+  it('outputs the zoomed video when there is nothing to overlay', () => {
+    expect(buildOverlayFilterGraph([], 'zoompan=Z')).toEqual({ filterGraph: '[0:v]zoompan=Z[base]', outputLabel: '[base]' })
+  })
+})
+
+describe('punchInFilter', () => {
+  it('zooms the first seconds in about the center, at the output size and rate', () => {
+    expect(punchInFilter(2)).toBe(
+      "zoompan=z='if(lt(in/30,2.000),1+0.08*in/30/2.000,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30",
+    )
+  })
+})
+
+describe('the hook headline', () => {
+  const headlineLook = (headline: string, firstShotDuration: number | null = 2): SubtitleLook => ({
+    position: 72,
+    hook: { style: true, position: 50, headline, punchIn: false },
+    firstShotDuration,
+  })
+  const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
+  const laterCue: StyledCue = { id: 'b', start: 2.5, end: 3, en: 'Bye', ja: 'じゃあ', variant: 'normal' }
+
+  it('shows over the first shot, just above its subtitle, emphasis in yellow', async () => {
+    const { drawn } = stubCanvas()
+    const overlays = await renderSubtitleOverlays([hookCue, laterCue], headlineLook('Wait *what*'))
+    const cueHeight = layoutCue(hookCue, measure, 'hook').height
+    const cueTop = clampedSubtitleY(50, cueHeight)
+    const headline = layoutHeadline('Wait *what*', measure)
+    expect(overlays).toHaveLength(3)
+    expect(overlays[2]).toMatchObject({
+      start: 0,
+      end: 2,
+      y: headlineY([{ top: cueTop, bottom: cueTop + cueHeight }], headline.height, 50),
+    })
+    expect(drawn).toContainEqual(expect.objectContaining({ text: 'what', color: '#FFD60A' }))
+  })
+
+  it('goes below the subtitle when the hook position leaves no room above it', async () => {
+    stubCanvas()
+    const look = { ...headlineLook('Wait'), hook: { style: true, position: 13.75, headline: 'Wait', punchIn: false } }
+    const overlays = await renderSubtitleOverlays([hookCue], look)
+    const cueHeight = layoutCue(hookCue, measure, 'hook').height
+    expect(overlays[1].y).toBeGreaterThanOrEqual(overlays[0].y + cueHeight)
+  })
+
+  it('centers at the hook position when the first shot has no subtitle', async () => {
+    stubCanvas()
+    const overlays = await renderSubtitleOverlays([laterCue], headlineLook('Wait'))
+    const headline = layoutHeadline('Wait', measure)
+    expect(overlays[1]).toMatchObject({ start: 0, end: 2, y: clampedSubtitleY(50, headline.height) })
+  })
+
+  it('is left out of any clip but the first shot\'s', async () => {
+    stubCanvas()
+    expect(await renderSubtitleOverlays([laterCue], headlineLook('Wait', null))).toHaveLength(1)
+  })
+
+  it('is burned even when no cue is translated', async () => {
+    stubCanvas()
+    await burnSubtitles(new Blob(['x']), [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: null }], headlineLook('Wait'))
+    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][1]).toHaveLength(1)
+  })
+})
+
+describe('burnSubtitles punch-in', () => {
+  it('zooms the whole video\'s first shot on the hardware path', async () => {
+    stubCanvas()
+    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, headline: '', punchIn: true }, firstShotDuration: 2 }
+    await burnSubtitles(new Blob(['x']), [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }], look)
+    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][4]).toEqual({ punchInUntil: 2 })
+  })
+})
+
+describe('burnShotSubtitles', () => {
+  it('forwards the punch-in to the shot encode as punchInUntil', async () => {
+    stubCanvas()
+    const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
+    const look: SubtitleLook = {
+      position: 72,
+      hook: { style: true, position: 50, headline: '', punchIn: true },
+      firstShotDuration: 2,
+    }
+    await burnShotSubtitles(new Blob(['shot']), 0, 2, [hookCue], look)
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][6]).toEqual({ punchInUntil: 2 })
   })
 })

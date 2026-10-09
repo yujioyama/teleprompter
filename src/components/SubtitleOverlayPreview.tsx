@@ -1,9 +1,10 @@
 import { CSSProperties, Fragment, useMemo } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
-import { styleCues, type HookOptions } from '../utils/subtitleHook'
+import { SubtitlePosition, SUBTITLE_VIDEO_HEIGHT, clampedSubtitlePosition, clampedSubtitleY } from '../utils/subtitlePosition'
+import { headlineY, startsInFirstShot, styleCues, type HookOptions } from '../utils/subtitleHook'
 import { EMPHASIS_COLOR } from '../utils/subtitleEmphasis'
 import {
+  HEADLINE_BOX_OPACITY,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_BOX_MARGIN_X,
   SUBTITLE_BOX_OPACITY,
@@ -14,6 +15,7 @@ import {
   TextBlockLayout,
   createCanvasMeasure,
   layoutCue,
+  layoutHeadline,
 } from '../utils/subtitleLayout'
 import styles from './SubtitleOverlayPreview.module.css'
 
@@ -74,18 +76,55 @@ export default function SubtitleOverlayPreview({
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
   const layout = useMemo(() => (cue ? layoutCue(cue, measure, cue.variant) : null), [cue, measure])
-  if (!cue || !layout) return null
 
-  const wrapperStyle: CSSProperties = {
-    top: `${clampedSubtitlePosition(cue.variant === 'hook' && hook ? hook.position : position, layout.height)}%`,
-    width: cqw(SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
-    padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} ${cqw(SUBTITLE_BOX_PADDING_X)}`,
-    borderRadius: cqw(SUBTITLE_BOX_RADIUS),
-    backgroundColor: `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[cue.variant]})`,
-  }
+  const headlineText = hook?.headline ?? ''
+  const hookPosition = hook?.position ?? position
+  // Placed as the burn places it: above the topmost of the first shot's
+  // (translated, hence burned) subtitle boxes, or below them with no room.
+  const headline = useMemo(() => {
+    if (!headlineText || firstShotDuration === null) return null
+    const headlineLayout = layoutHeadline(headlineText, measure)
+    const boxes = styled
+      .filter(c => c.ja !== null && startsInFirstShot(c.start, firstShotDuration))
+      .map(c => {
+        const height = layoutCue(c, measure, c.variant).height
+        const top = clampedSubtitleY(c.variant === 'hook' ? hookPosition : position, height)
+        return { top, bottom: top + height }
+      })
+    return { layout: headlineLayout, y: headlineY(boxes, headlineLayout.height, hookPosition) }
+  }, [headlineText, firstShotDuration, styled, measure, hookPosition, position])
 
-  return (
-    <div className={styles.wrapper} style={wrapperStyle} data-testid="subtitle-overlay-box" data-variant={cue.variant}>
+  const headlineBox = headline && firstShotDuration !== null && currentTime < firstShotDuration && (
+    <div
+      className={styles.headline}
+      data-testid="hook-headline"
+      style={{
+        top: `${(headline.y / SUBTITLE_VIDEO_HEIGHT) * 100}%`,
+        width: cqw(headline.layout.width),
+        padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} 0`,
+        borderRadius: cqw(SUBTITLE_BOX_RADIUS),
+        backgroundColor: `rgba(0, 0, 0, ${HEADLINE_BOX_OPACITY})`,
+      }}
+    >
+      <p className={styles.headlineText} style={blockStyle(headline.layout.block)}>
+        <BlockLines block={headline.layout.block} />
+      </p>
+    </div>
+  )
+
+  const cueBox = cue && layout && (
+    <div
+      className={styles.wrapper}
+      style={{
+        top: `${clampedSubtitlePosition(cue.variant === 'hook' ? hookPosition : position, layout.height)}%`,
+        width: cqw(SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
+        padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} ${cqw(SUBTITLE_BOX_PADDING_X)}`,
+        borderRadius: cqw(SUBTITLE_BOX_RADIUS),
+        backgroundColor: `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[cue.variant]})`,
+      }}
+      data-testid="subtitle-overlay-box"
+      data-variant={cue.variant}
+    >
       <p className={styles.en} style={blockStyle(layout.en)}>
         <BlockLines block={layout.en} />
       </p>
@@ -95,5 +134,13 @@ export default function SubtitleOverlayPreview({
         </p>
       )}
     </div>
+  )
+
+  if (!headlineBox && !cueBox) return null
+  return (
+    <>
+      {cueBox}
+      {headlineBox}
+    </>
   )
 }

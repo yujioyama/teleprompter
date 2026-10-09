@@ -71,8 +71,7 @@ Expected: all pass (PR 1 is in `main`).
 **Interfaces:**
 - Produces:
   - `AppSettings.hookHeadlineEnabled: boolean`, `AppSettings.punchInEnabled: boolean`, `AppSettings.firstShotPaddingStart: number`
-  - `SUBTITLE_VIDEO_HEIGHT = 1920`
-  - `clampedSubtitleY(position: SubtitlePosition, overlayHeight: number, videoHeight = SUBTITLE_VIDEO_HEIGHT): number`
+  - `clampedSubtitleY(position: SubtitlePosition, overlayHeight: number, videoHeight = SUBTITLE_VIDEO_HEIGHT): number` (PR 1 already added `SUBTITLE_VIDEO_HEIGHT` and `clampedSubtitlePosition` to `subtitlePosition.ts`)
   - `HookOptions { style; position; headline: string; punchIn: boolean }`
   - `HookSettings = Pick<AppSettings, 'hookStyleEnabled' | 'hookPosition' | 'hookHeadlineEnabled' | 'punchInEnabled'>`
   - `hookOptionsOf(settings: HookSettings, headline = ''): HookOptions`
@@ -102,18 +101,17 @@ Expected: all pass (PR 1 is in `main`).
   })
 ```
 
-`src/utils/subtitlePosition.test.ts`: add `clampedSubtitleY` and `SUBTITLE_VIDEO_HEIGHT` to the import, and append:
+`src/utils/subtitlePosition.test.ts`: add `clampedSubtitleY` to the import, and append:
 
 ```ts
 describe('clampedSubtitleY', () => {
   it('is subtitleY on the 1920px video while the box fits', () => {
-    expect(SUBTITLE_VIDEO_HEIGHT).toBe(1920)
     expect(clampedSubtitleY(50, 220)).toBe(850)
   })
 
   it('keeps the whole box on screen', () => {
-    expect(clampedSubtitleY(0, 220)).toBe(0)
-    expect(clampedSubtitleY(100, 220)).toBe(1700)
+    expect(clampedSubtitleY(0, 220)).toBeCloseTo(0, 5)
+    expect(clampedSubtitleY(100, 220)).toBeCloseTo(1700, 5)
   })
 })
 ```
@@ -243,19 +241,16 @@ Expected: FAIL (missing exports and defaults).
   firstShotPaddingStart: 0.05,
 ```
 
-`src/utils/subtitlePosition.ts`, append:
+`src/utils/subtitlePosition.ts`, append (after PR 1's `clampedSubtitlePosition`):
 
 ```ts
-/** Height of the output video that subtitle positions are measured on. */
-export const SUBTITLE_VIDEO_HEIGHT = 1920
-
-/** subtitleY on the output video, kept so the whole overlay stays on screen. */
+/** Top of an overlay on the output video, kept so all of it stays on screen. */
 export function clampedSubtitleY(
   position: SubtitlePosition,
   overlayHeight: number,
   videoHeight = SUBTITLE_VIDEO_HEIGHT,
 ): number {
-  return Math.min(Math.max(subtitleY(position, videoHeight, overlayHeight), 0), videoHeight - overlayHeight)
+  return subtitleY(clampedSubtitlePosition(position, overlayHeight, videoHeight), videoHeight, overlayHeight)
 }
 ```
 
@@ -358,16 +353,22 @@ export function headlineY(boxTops: number[], headlineHeight: number, hookPositio
 
 `src/pages/FinalizePage.tsx` (otherwise it stops type-checking against the widened `HookSettings`):
 - Change `const { hookStyleEnabled, hookPosition } = settings` to `const { hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled } = settings`.
-- Replace both `hookOptionsOf({ hookStyleEnabled, hookPosition })` with `hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled })`.
-- Add `hookHeadlineEnabled, punchInEnabled` to the background-burn effect's dependency array.
+- Change the memoized hook (PR 1 builds it once with `useMemo`, used by the background-burn effect and the `burn` prop) to:
+
+```ts
+  const hook = useMemo(
+    () => hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }),
+    [hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled],
+  )
+```
+
 - Change the prop to `hookSettings={{ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }}`.
 
 (Task 7 adds the headline text to these same places.)
 
 `src/utils/burnSubtitles.ts`:
-- Import `clampedSubtitleY` from `./subtitlePosition`, alongside `SubtitlePosition`. Drop the `subtitleY` import if it is no longer used.
-- In `renderSubtitleOverlays`, set `y: clampedSubtitleY(cuePosition(cue, look), height),`.
-- Delete `const VIDEO_HEIGHT = 1920`.
+- Import `clampedSubtitleY` from `./subtitlePosition`. Drop the `subtitleY`, `clampedSubtitlePosition` and `SUBTITLE_VIDEO_HEIGHT` imports if they are no longer used.
+- In `renderSubtitleOverlays`, set `y: clampedSubtitleY(cuePosition(cue, look), height),` (same value as PR 1's `subtitleY(clampedSubtitlePosition(…), SUBTITLE_VIDEO_HEIGHT, height)`).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1292,9 +1293,13 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   const translated = cues.filter(c => c.ja !== null)
   const extras = hasFirstShotExtras(look.hook, look.firstShotDuration)
   if (translated.length === 0 && !extras) return normalizeRequest(clip)
+  const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const hasHeadline = look.firstShotDuration !== null && look.hook.headline !== ''
-  const placement = JSON.stringify([look.position, hasHookCue || hasHeadline ? look.hook.position : null])
+  const placement = JSON.stringify([
+    hasNormalCue ? look.position : null,
+    hasHookCue || hasHeadline ? look.hook.position : null,
+  ])
   const firstShot = JSON.stringify(extras ? [look.hook.headline, look.hook.punchIn] : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   return {
@@ -1388,7 +1393,7 @@ In `src/components/SubtitleOverlayPreview.tsx`:
 1. Extend the imports:
 
 ```ts
-import { SubtitlePosition, SUBTITLE_VIDEO_HEIGHT, clampedSubtitleY } from '../utils/subtitlePosition'
+import { SubtitlePosition, SUBTITLE_VIDEO_HEIGHT, clampedSubtitlePosition, clampedSubtitleY } from '../utils/subtitlePosition'
 import { headlineY, startsInFirstShot, styleCues, type HookOptions } from '../utils/subtitleHook'
 ```
 
@@ -1435,7 +1440,7 @@ import { headlineY, startsInFirstShot, styleCues, type HookOptions } from '../ut
     <div
       className={styles.wrapper}
       style={{
-        top: `${cue.variant === 'hook' ? hookPosition : position}%`,
+        top: `${clampedSubtitlePosition(cue.variant === 'hook' ? hookPosition : position, layout.height)}%`,
         width: cqw(SUBTITLE_REFERENCE_WIDTH - SUBTITLE_BOX_MARGIN_X * 2),
         padding: `${cqw(SUBTITLE_BOX_PADDING_Y)} ${cqw(SUBTITLE_BOX_PADDING_X)}`,
         borderRadius: cqw(SUBTITLE_BOX_RADIUS),
@@ -1741,25 +1746,14 @@ In `src/components/SubtitleWorkflow.module.css`:
 
 3. Add `hookHeadline: subtitleState.hookHeadline,` to `subtitlesToSave`.
 
-4. The background-burn effect:
+4. The memoized hook gains this video's headline (the background-burn effect already depends on `hook`, and the `burn` prop already passes it):
 
 ```ts
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition, hookHeadline } = subtitleState
-  useEffect(() => {
-    if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
-    if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
-    const timer = setTimeout(() => {
-      const cache = getEncodeCache()
-      const hook = hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }, hookHeadline)
-      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook)) {
-        cache.prefetch(request)
-      }
-    }, BACKGROUND_ENCODE_DELAY_MS)
-    return () => clearTimeout(timer)
-  }, [
-    step, subtitleStage, subtitleCues, subtitlePosition, combinedClips,
-    hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled, hookHeadline,
-  ])
+  const hook = useMemo(
+    () => hookOptionsOf({ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }, hookHeadline),
+    [hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled, hookHeadline],
+  )
 ```
 
 5. Re-combining keeps the headline, since it doesn't depend on timing. Replace `setSubtitleState(initialSubtitleState())` in the combine handler with:
@@ -1775,22 +1769,9 @@ In `src/components/SubtitleWorkflow.module.css`:
 ```tsx
                 hookSettings={{ hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled }}
                 onHookSettingsChange={updateSettings}
-                burn={(cues, position, onProgress, signal) =>
-                  burnSubtitlesByShot(
-                    getEncodeCache(),
-                    combinedClips,
-                    combinedBlob,
-                    cues,
-                    position,
-                    hookOptionsOf(
-                      { hookStyleEnabled, hookPosition, hookHeadlineEnabled, punchInEnabled },
-                      subtitleState.hookHeadline,
-                    ),
-                    onProgress,
-                    signal,
-                  )
-                }
 ```
+
+   (the `burn` prop keeps passing the memoized `hook`).
 
 - [ ] **Step 5: Run the tests to verify they pass**
 

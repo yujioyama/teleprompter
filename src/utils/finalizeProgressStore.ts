@@ -42,6 +42,8 @@ export interface SavedSubtitles {
   pasteText: string
   position: SubtitlePosition
   source: 'script' | 'speech'
+  /** The hook headline; missing in records saved before it existed. */
+  hookHeadline?: string
 }
 
 /**
