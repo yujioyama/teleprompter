@@ -34,6 +34,7 @@ import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
+import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
@@ -734,7 +735,7 @@ export default function FinalizePage() {
                     >
                       {entries.map((entry, i) => (
                         <option key={entry.shotId} value={entry.shotId} disabled={!entry.url}>
-                          {i + 1}. {shotMeta(entry)}｜{entry.text}
+                          {i + 1}. {shotMeta(entry)}｜{stripEmphasis(entry.text)}
                         </option>
                       ))}
                     </select>
@@ -750,7 +751,7 @@ export default function FinalizePage() {
                   </div>
                   <p className={styles.shotEntryText}>
                     <span className={styles.shotCounter}>{selectedIndex + 1} / {entries.length}</span>
-                    <span>{selected.text}</span>
+                    <span>{stripEmphasis(selected.text)}</span>
                   </p>
                   <ShotTrimmer
                     url={selected.url}

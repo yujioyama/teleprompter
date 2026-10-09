@@ -37,7 +37,7 @@ import {
 /**
  * Build the chained overlay filtergraph for one subtitle image input per
  * entry of `ys` (indices 1..ys.length, input 0 is the base video), each
- * composited horizontally centered at its own Y (boxes differ in height
+ * composited horizontally centered at its own Y (images differ in height
  * with their line count). Each image input is itself time-bounded via
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is

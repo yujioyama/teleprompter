@@ -165,6 +165,18 @@ describe('FinalizePage trim step: one player for the selected shot', () => {
     expect(document.querySelector('video')!.getAttribute('src')).not.toBe(firstSrc)
   })
 
+  it('shows a shot\'s text without its *emphasis* markers', async () => {
+    await seedTwoShots()
+    const script = JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0] as Script
+    script.shots[0].text = 'これは*大事*な話'
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderFinalizePage('script-1')
+
+    expect(await screen.findByText('これは大事な話')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /これは大事な話/ })).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('*大事*')
+  })
+
   it('steps through shots with the prev/next buttons (issue #18)', async () => {
     await seedTwoShots()
     renderFinalizePage('script-1')

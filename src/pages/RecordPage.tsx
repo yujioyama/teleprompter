@@ -174,11 +174,11 @@ export default function RecordPage() {
         // is still worth saving — just flagged as degraded rather than dropped.
         await saveShotVideo(safeScript.id, shot.id, processed.blob)
         if (!processed.ok) {
-          degradedShotTexts.push(shot.text)
+          degradedShotTexts.push(stripEmphasis(shot.text))
         }
       } catch (err) {
         console.error('Failed to import a recorded shot video', err)
-        failedShotTexts.push(shot.text)
+        failedShotTexts.push(stripEmphasis(shot.text))
       }
       setBulkImportProgress({ done: i + 1, total: targets.length })
     }

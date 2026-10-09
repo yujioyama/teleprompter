@@ -50,7 +50,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const placement = JSON.stringify([hasNormalCue ? look.position : null, hasHookCue ? look.hook.position : null])
   const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
-  const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
+  // A hook cue draws only its English, so its Japanese must not re-encode the shot.
+  const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.variant === 'hook' ? null : c.ja, c.variant]))
   return {
     slot: `burn:${clip.shotId}`,
     key: `burn|${clipKey(clip)}|${placement}|${firstShot}|${text}`,
