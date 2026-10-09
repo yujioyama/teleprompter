@@ -22,8 +22,9 @@ const CHANNELS = [
 
 /**
  * Draw the frame zoomed by `scale` about (50%, ZOOM_ANCHOR_Y), moved `dx`
- * px sideways. Drawing from the sample (larger than the frame once zoomed)
- * means a sideways shift never leaves an empty strip at the edge.
+ * px sideways. The zoomed picture overhangs the frame by (scale - 1) * width
+ * / 2 on each side, so as long as |dx| stays within that overscan the shift
+ * leaves no empty strip at the edge (drawImpactFrame clamps its shift to it).
  */
 export function drawZoomed(ctx: Ctx, sample: VideoSample, scale: number, width: number, height: number, dx = 0): void {
   const w = width * scale
@@ -59,12 +60,13 @@ export function drawImpactFrame(
   width: number,
   height: number,
 ): void {
+  const shift = Math.min(amounts.rgbShiftPx, ((scale - 1) * width) / 2)
   ctx.globalCompositeOperation = 'source-over'
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, width, height)
   for (const channel of CHANNELS) {
     scratch.globalCompositeOperation = 'source-over'
-    drawBlurred(scratch, sample, scale, amounts.blurSpread, width, height, channel.dir * amounts.rgbShiftPx)
+    drawBlurred(scratch, sample, scale, amounts.blurSpread, width, height, channel.dir * shift)
     scratch.globalCompositeOperation = 'multiply'
     scratch.fillStyle = channel.color
     scratch.fillRect(0, 0, width, height)

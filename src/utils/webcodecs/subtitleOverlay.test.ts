@@ -84,6 +84,27 @@ describe('createOverlayProcess impact', () => {
     expect(canvases[1].width).toBe(0)
   })
 
+  it('lets the scratch go when the first shot ends inside the impact window', async () => {
+    const plan = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 0.47 }
+    const { process } = await createOverlayProcess([], { punchIn: plan })
+    process(frameAt(0.45).sample)
+    expect(canvases).toHaveLength(2)
+    expect(canvases[1].width).toBe(1080)
+
+    const after = frameAt(0.5)
+    expect(process(after.sample)).toBe(after.sample)
+    expect(after.draw).not.toHaveBeenCalled()
+    expect(canvases[1].width).toBe(0)
+  })
+
+  it('releases a live scratch on dispose', async () => {
+    const { process, dispose } = await createOverlayProcess([], { punchIn: IMPACT_PLAN })
+    process(frameAt(0.45).sample)
+    expect(canvases[1].width).toBe(1080)
+    dispose()
+    expect(canvases[1].width).toBe(0)
+  })
+
   it('draws no impact with it switched off', async () => {
     const { process } = await createOverlayProcess([], { punchIn: { ...IMPACT_PLAN, punchIn: { ...IMPACT_PLAN.punchIn, impact: null } } })
     const { sample, draw } = frameAt(0.45)

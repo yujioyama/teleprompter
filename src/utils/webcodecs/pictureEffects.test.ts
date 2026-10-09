@@ -54,6 +54,19 @@ describe('drawImpactFrame', () => {
     expect(firstOfEach).toEqual([-8, 0, 8])
   })
 
+  it('keeps the shift within the zoom overscan, so near scale 1 no strip is left uncovered', () => {
+    const out = recordingCtx('out')
+    const scratch = recordingCtx('scratch')
+    const { sample, draws } = recordingSample()
+    drawImpactFrame(out.ctx as never, scratch.ctx as never, sample, 1.005, amounts, 1080, 1920)
+
+    const overscan = (1080 - 1080 * 1.005) / 2
+    const firstOfEach = [0, BLUR_LAYERS, 2 * BLUR_LAYERS].map(i => draws[i].x - overscan)
+    expect(firstOfEach[0]).toBeCloseTo(-2.7)
+    expect(firstOfEach[1]).toBeCloseTo(0)
+    expect(firstOfEach[2]).toBeCloseTo(2.7)
+  })
+
   it('averages the blur layers evenly, each a little bigger', () => {
     const out = recordingCtx('out')
     const scratch = recordingCtx('scratch')
@@ -76,6 +89,7 @@ describe('drawImpactFrame', () => {
     ])
     expect(out.ops.filter(o => o.op === 'drawImage').map(o => o.mode)).toEqual(['lighter', 'lighter', 'lighter'])
     expect(out.ctx.globalCompositeOperation).toBe('source-over')
-    expect(out.ctx.globalAlpha).toBe(1)
+    expect(scratch.ctx.globalAlpha).toBe(1)
+    expect(scratch.ctx.globalCompositeOperation).toBe('source-over')
   })
 })

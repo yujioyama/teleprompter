@@ -60,6 +60,9 @@ export async function createOverlayProcess(
       const active = cues.filter(c => t >= c.start && t < c.end)
       const scale = punchIn ? snapZoomScale(t, punchIn.punchIn, punchIn.until) : 1
       const impact = punchIn ? impactAt(t, punchIn.punchIn, punchIn.until) : null
+      // Free the scratch on any frame without the effect, before the
+      // pass-through below can skip the release.
+      if (!impact) releaseScratch()
       if (active.length === 0 && scale === 1 && !impact) return sample
       const width = sample.displayWidth
       const height = sample.displayHeight
@@ -79,7 +82,6 @@ export async function createOverlayProcess(
         }
         drawImpactFrame(ctx!, scratchCtx!, sample, scale, impact, width, height)
       } else {
-        releaseScratch()
         drawZoomed(ctx!, sample, scale, width, height)
       }
       for (const cue of active) {
