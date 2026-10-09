@@ -1,7 +1,7 @@
-import type { RedisLike } from '../inboxStore.js'
+import type { RedisLike } from '../redis.js'
 
-// In-memory stand-in for the Upstash client, covering only what the inbox
-// store calls. Values are cloned like Upstash's JSON round-trip would.
+// In-memory stand-in for the Upstash client, covering only what the
+// stores call. Values are cloned like Upstash's JSON round-trip would.
 export function createFakeRedis() {
   const values = new Map<string, unknown>()
   const expiries = new Map<string, number>()
@@ -11,6 +11,9 @@ export function createFakeRedis() {
       values.set(key, structuredClone(value))
       if (opts?.ex !== undefined) expiries.set(key, opts.ex)
       return 'OK'
+    },
+    async get(key: string) {
+      return values.has(key) ? structuredClone(values.get(key)) : null
     },
     async mget(...keys: string[]) {
       return keys.map(k => (values.has(k) ? structuredClone(values.get(k)) : null))

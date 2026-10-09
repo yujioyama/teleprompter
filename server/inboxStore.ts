@@ -1,11 +1,9 @@
-import { Redis } from '@upstash/redis'
 import type { InboxItem } from '../shared/inbox.js'
+import { redisFromEnv, type RedisLike } from './redis.js'
 
 const PREFIX = 'inbox:'
 /** Unclaimed items disappear after 30 days. */
 export const INBOX_TTL_SECONDS = 30 * 24 * 60 * 60
-
-export type RedisLike = Pick<Redis, 'set' | 'mget' | 'scan' | 'del'>
 
 export interface InboxStore {
   add(input: { title: string; body: string; caption: string }): Promise<InboxItem>
@@ -52,13 +50,5 @@ export function createInboxStore(
 
 /** The store for the Upstash database connected to the Vercel project. */
 export function inboxStoreFromEnv(): InboxStore {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) {
-    throw new Error(
-      'Upstash Redis is not configured: set KV_REST_API_URL and KV_REST_API_TOKEN ' +
-        '(connect the Upstash for Redis integration to the Vercel project).',
-    )
-  }
-  return createInboxStore(new Redis({ url, token }))
+  return createInboxStore(redisFromEnv())
 }
