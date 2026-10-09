@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
@@ -990,6 +990,38 @@ describe('FinalizePage export step: loudness normalization', () => {
     fireEvent.click(await screen.findByText('キャプションをコピー'))
     expect(writeText).toHaveBeenCalledWith('#朝活 おはよう')
     expect(await screen.findByText('コピーしました')).toBeInTheDocument()
+  })
+
+  it('shows コピーしました for 2 seconds after the latest copy, even when tapped twice', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: '#朝活' }]))
+    await walkToExport()
+    const button = await screen.findByText('キャプションをコピー')
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await act(async () => {
+        fireEvent.click(button)
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1500)
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByText('コピーしました'))
+      })
+      // 2.5s after the first tap, but only 1s after the second.
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(screen.getByText('コピーしました')).toBeInTheDocument()
+
+      await act(async () => {
+        vi.advanceTimersByTime(1100)
+      })
+      expect(screen.getByText('キャプションをコピー')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('says so when the caption cannot be copied', async () => {
