@@ -61,6 +61,21 @@ iPhoneのSafariで「ホーム画面に追加」するとPWAとして動作し�
 
 ---
 
+## Claudeチャットからスクリプトを受け取る
+
+Claudeチャットで「teleprompterに送って」と頼むと、タイトル・本文・キャプションがサーバー側の受け取り箱に届き、どの端末のホーム画面にも「Claudeから届いたスクリプト」として出ます。タップすると新規スクリプトが入力済みで開きます（作成すると受け取り箱から消えます。取らなかったものは30日で消えます）。
+
+### 初回だけの設定
+
+1. Vercel ダッシュボード → Storage → **Upstash for Redis** を無料プランで作成し、このプロジェクトに接続する（`KV_REST_API_URL` / `KV_REST_API_TOKEN` が自動で入る）
+2. Vercel の環境変数に `INBOX_SECRET`（長いランダムな文字列）を追加して再デプロイ
+3. claude.ai → 設定 → コネクタ → カスタムコネクタを追加 → URL に `https://<アプリのドメイン>/api/mcp?key=<INBOX_SECRET>`
+4. 各端末の teleprompter → 設定 → 受け取り用キー に同じ `INBOX_SECRET` を入れる
+
+サーバー側: `api/`（Vercel Functions の入口）、`server/`（処理とテスト）。ローカルの `npm run dev` では `/api` は動かないので、受け取り箱は表示されません。
+
+---
+
 ## 技術スタック
 
 | カテゴリ | 技術 |
@@ -299,6 +314,21 @@ Add to iPhone home screen via Safari for the full PWA experience.
 5. **Export** — Loudness is brought to the level Instagram/TikTok play at, the BGM can still be removed, and the video is saved through the share sheet.
 
 Everything runs in the browser — nothing is uploaded. Encoding, joining and burning use WebCodecs (hardware encoding) where available, falling back to ffmpeg.wasm.
+
+---
+
+## Receiving Scripts from Claude Chat
+
+When you ask Claude chat to "send it to teleprompter", the title, script, and caption land in the server's inbox and appear on every device's home screen as "Script from Claude". Tap it to open a new script with the content pre-filled (it disappears from the inbox once you create it; uncollected items expire after 30 days).
+
+### First-time setup
+
+1. Vercel dashboard → Storage → create **Upstash for Redis** on the free tier and connect it to this project (`KV_REST_API_URL` / `KV_REST_API_TOKEN` are set automatically)
+2. Add `INBOX_SECRET` (a long random string) to Vercel's environment variables and redeploy
+3. claude.ai → Settings → Connectors → Add custom connector → URL: `https://<app-domain>/api/mcp?key=<INBOX_SECRET>`
+4. On each device, teleprompter → Settings → Inbox key → enter the same `INBOX_SECRET`
+
+Server-side: `api/` is the Vercel Functions entry point; `server/` contains the logic and tests. Locally, `npm run dev` doesn't serve `/api`, so the inbox won't appear.
 
 ---
 
