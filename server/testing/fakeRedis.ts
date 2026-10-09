@@ -15,9 +15,13 @@ export function createFakeRedis() {
     async mget(...keys: string[]) {
       return keys.map(k => (values.has(k) ? structuredClone(values.get(k)) : null))
     },
-    async scan(_cursor: string | number, opts?: { match?: string }) {
+    async scan(cursor: string | number, opts?: { match?: string; count?: number }) {
       const prefix = (opts?.match ?? '*').replace(/\*$/, '')
-      return ['0', [...values.keys()].filter(k => k.startsWith(prefix))]
+      const count = opts?.count ?? 10
+      const matching = [...values.keys()].filter(k => k.startsWith(prefix))
+      const start = Number(cursor)
+      const end = start + count
+      return [end >= matching.length ? '0' : String(end), matching.slice(start, end)]
     },
     async del(...keys: string[]) {
       let n = 0

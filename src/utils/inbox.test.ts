@@ -19,6 +19,11 @@ describe('fetchInbox', () => {
     })
   })
 
+  it('returns no items when the response has no items list', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({})))
+    expect(await fetchInbox('secret')).toEqual([])
+  })
+
   it('throws on a rejected key', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 401 })))
     await expect(fetchInbox('wrong')).rejects.toThrow('401')

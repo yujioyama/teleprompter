@@ -46,6 +46,29 @@ describe('createInboxStore', () => {
     expect((await store.list()).map(i => i.id)).toEqual(['b', 'c', 'a'])
   })
 
+  it('lists every item across several SCAN pages', async () => {
+    const ids = Array.from({ length: 250 }, (_, i) => `id-${i}`)
+    const { store } = storeAt([], [...ids])
+    for (let i = 0; i < ids.length; i++) await store.add({ title: 'T', body: 'b', caption: '' })
+
+    const listed = (await store.list()).map(i => i.id)
+    expect(listed).toHaveLength(250)
+    expect(new Set(listed)).toEqual(new Set(ids))
+  })
+
+  it('lists an item once even when SCAN returns its key twice', async () => {
+    const fake = createFakeRedis()
+    const realScan = fake.redis.scan.bind(fake.redis)
+    fake.redis.scan = (async (...args: Parameters<typeof realScan>) => {
+      const [cursor, keys] = await realScan(...args)
+      return [cursor, [...keys, ...keys]]
+    }) as typeof fake.redis.scan
+    const store = createInboxStore(fake.redis, () => new Date('2026-10-09T00:00:00.000Z'), () => 'a')
+    await store.add({ title: 'A', body: 'a', caption: '' })
+
+    expect((await store.list()).map(i => i.id)).toEqual(['a'])
+  })
+
   it('lists nothing when the inbox is empty', async () => {
     const { store } = storeAt([], [])
     expect(await store.list()).toEqual([])

@@ -82,6 +82,18 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(deleteInboxItem).toHaveBeenCalledWith('secret', 'inbox-1')
   })
 
+  it('leaves a hand-typed draft alone while editing and creating from an inbox item', async () => {
+    const seeded = { title: '下書き', body: '古い', caption: '' }
+    sessionStorage.setItem('teleprompter_new_script_draft', JSON.stringify(seeded))
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    fireEvent.change(screen.getByLabelText('タイトル'), { target: { value: '届いた台本を直した' } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(JSON.parse(sessionStorage.getItem('teleprompter_new_script_draft') ?? 'null')).toEqual(seeded)
+  })
+
   it('still creates the script when clearing the item fails', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(deleteInboxItem).mockRejectedValueOnce(new Error('offline'))

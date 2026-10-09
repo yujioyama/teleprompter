@@ -68,7 +68,7 @@ Claudeチャットで「teleprompterに送って」と頼むと、タイトル�
 ### 初回だけの設定
 
 1. Vercel ダッシュボード → Storage → **Upstash for Redis** を無料プランで作成し、このプロジェクトに接続する（`KV_REST_API_URL` / `KV_REST_API_TOKEN` が自動で入る）
-2. Vercel の環境変数に `INBOX_SECRET`（長いランダムな文字列）を追加して再デプロイ
+2. Vercel の環境変数に `INBOX_SECRET`（英数字のみの長いランダムな文字列。`+` `#` `&` はコネクタURLの `?key=` を壊すので不可。`openssl rand -hex 32` で作れます）を追加して再デプロイ
 3. claude.ai → 設定 → コネクタ → カスタムコネクタを追加 → URL に `https://<アプリのドメイン>/api/mcp?key=<INBOX_SECRET>`
 4. 各端末の teleprompter → 設定 → 受け取り用キー に同じ `INBOX_SECRET` を入れる
 
@@ -324,7 +324,7 @@ When you ask Claude chat to "send it to teleprompter", the title, script, and ca
 ### First-time setup
 
 1. Vercel dashboard → Storage → create **Upstash for Redis** on the free tier and connect it to this project (`KV_REST_API_URL` / `KV_REST_API_TOKEN` are set automatically)
-2. Add `INBOX_SECRET` (a long random string) to Vercel's environment variables and redeploy
+2. Add `INBOX_SECRET` (a long random string of letters and digits only — `+`, `#` or `&` would break the connector URL's `?key=`; `openssl rand -hex 32` makes one) to Vercel's environment variables and redeploy
 3. claude.ai → Settings → Connectors → Add custom connector → URL: `https://<app-domain>/api/mcp?key=<INBOX_SECRET>`
 4. On each device, teleprompter → Settings → Inbox key → enter the same `INBOX_SECRET`
 

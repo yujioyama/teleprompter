@@ -12,8 +12,8 @@ function auth(key: string) {
 export async function fetchInbox(key: string): Promise<InboxItem[]> {
   const res = await fetch('/api/inbox', { headers: auth(key), cache: 'no-store' })
   if (!res.ok) throw new Error(`Inbox request failed: ${res.status}`)
-  const data = (await res.json()) as { items: InboxItem[] }
-  return data.items
+  const data = (await res.json()) as { items?: InboxItem[] } | null
+  return Array.isArray(data?.items) ? data.items : []
 }
 
 export async function deleteInboxItem(key: string, id: string): Promise<void> {

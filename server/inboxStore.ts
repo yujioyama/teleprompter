@@ -38,7 +38,7 @@ export function createInboxStore(
         cursor = next
       } while (String(cursor) !== '0')
       if (keys.length === 0) return []
-      const items = await redis.mget<(InboxItem | null)[]>(...keys)
+      const items = await redis.mget<(InboxItem | null)[]>(...new Set(keys))
       return items
         .filter((item): item is InboxItem => item !== null)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

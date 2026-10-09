@@ -13,6 +13,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
 })
 
 function rpc(body: unknown, key = 'secret') {
@@ -33,6 +34,23 @@ describe('handleMcpRequest', () => {
     const res = await handleMcpRequest(callTool({ title: 'a', script: 'b' }, 'wrong'), getStore)
     expect(res.status).toBe(401)
     expect(getStore).not.toHaveBeenCalled()
+  })
+
+  it('rejects a request with no key', async () => {
+    const getStore = vi.fn(() => store)
+    const req = new Request('https://app.test/api/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    })
+    const res = await handleMcpRequest(req, getStore)
+    expect(res.status).toBe(401)
+    expect(getStore).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unauthenticated GET with 401, not 405', async () => {
+    const res = await handleMcpRequest(new Request('https://app.test/api/mcp'), () => store)
+    expect(res.status).toBe(401)
   })
 
   it('answers GET with 405, since it offers no event stream', async () => {

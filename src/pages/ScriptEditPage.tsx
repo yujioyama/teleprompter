@@ -84,7 +84,8 @@ export default function ScriptEditPage() {
   }, [body])
 
   function saveDraft(next: Partial<Draft>) {
-    if (!isEdit) {
+    // An inbox item must not overwrite the hand-typed new-script draft.
+    if (!isEdit && !inboxItem) {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ title, body, caption, ...next }))
     }
   }
@@ -115,7 +116,7 @@ export default function ScriptEditPage() {
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
       const script = createScript(title.trim(), shots, caption.trim())
-      clearDraft()
+      if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
         // this fails the item just lingers until it expires.
