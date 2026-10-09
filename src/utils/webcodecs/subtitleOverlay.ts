@@ -1,5 +1,5 @@
 import type { VideoSample } from 'mediabunny'
-import { punchInScale } from '../subtitleHook'
+import { snapZoomScale, ZOOM_ANCHOR_Y, type PunchInPlan } from '../subtitleHook'
 
 export interface SubtitleOverlay {
   start: number
@@ -10,8 +10,8 @@ export interface SubtitleOverlay {
 }
 
 export interface OverlayOptions {
-  /** Zoom the picture in over [0, punchInUntil) (see punchInScale); null = never. */
-  punchInUntil?: number | null
+  /** The first shot's snap zoom and when it ends; null = never zoom. */
+  punchIn?: PunchInPlan | null
 }
 
 export interface OverlayProcess {
@@ -23,7 +23,7 @@ export interface OverlayProcess {
 /**
  * Build a Mediabunny `video.process` callback that composites each cue's
  * pre-rendered PNG at (centered, its y) during [start, end), in the frame's
- * own timeline, over the picture zoomed in by the first shot's punch-in.
+ * own timeline, over the picture zoomed in by the first shot's snap zoom.
  * Only the picture is zoomed, the subtitles keep their size. Frames with no
  * active cue and no zoom are passed through untouched. Mediabunny calls this
  * after resizing to the output size. Call `dispose` once the conversion ends
@@ -31,7 +31,7 @@ export interface OverlayProcess {
  */
 export async function createOverlayProcess(
   overlays: SubtitleOverlay[],
-  { punchInUntil = null }: OverlayOptions = {},
+  { punchIn = null }: OverlayOptions = {},
 ): Promise<OverlayProcess> {
   const bitmaps = await Promise.all(overlays.map(o => createImageBitmap(o.image)))
   const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, y: o.y, bitmap: bitmaps[i] }))
@@ -44,7 +44,7 @@ export async function createOverlayProcess(
       // frame edge doesn't flicker on for a single extra frame.
       const t = sample.timestamp + sample.duration / 2
       const active = cues.filter(c => t >= c.start && t < c.end)
-      const scale = punchInUntil !== null ? punchInScale(t, punchInUntil) : 1
+      const scale = punchIn ? snapZoomScale(t, punchIn.punchIn, punchIn.until) : 1
       if (active.length === 0 && scale === 1) return sample
       const width = sample.displayWidth
       const height = sample.displayHeight
@@ -57,7 +57,8 @@ export async function createOverlayProcess(
       }
       const w = width * scale
       const h = height * scale
-      sample.draw(ctx!, (width - w) / 2, (height - h) / 2, w, h)
+      // About (50%, ZOOM_ANCHOR_Y): inside the frame, so the zoomed picture always covers it.
+      sample.draw(ctx!, (width - w) / 2, ZOOM_ANCHOR_Y * (height - h), w, h)
       for (const cue of active) {
         ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
       }

@@ -60,7 +60,7 @@ function stubCanvas() {
   return { drawn, bands }
 }
 
-const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: false }, firstShotDuration: 2 }
+const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null }, firstShotDuration: 2 }
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -189,32 +189,32 @@ describe('buildOverlayFilterGraph with a punch-in', () => {
 })
 
 describe('punchInFilter', () => {
-  it('zooms the first seconds in about the center, at the output size and rate', () => {
-    expect(punchInFilter(2)).toBe(
-      "zoompan=z='if(lt(in/30,2.000),1+0.08*in/30/2.000,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30",
+  it('snaps in about (50%, 40%) at `at`, holds, and drops back at `until`, at the output size and rate', () => {
+    const plan = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 2 }
+    expect(punchInFilter(plan)).toBe(
+      "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,2.000),1+0.25*(1-pow(1-min(((in+0.5)/30-0.400)/0.12,1),5)),1))'"
+        + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
     )
   })
 })
 
+const PUNCH_IN = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+
 describe('burnSubtitles punch-in', () => {
   it('zooms the whole video\'s first shot on the hardware path', async () => {
     stubCanvas()
-    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: true }, firstShotDuration: 2 }
+    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: PUNCH_IN }, firstShotDuration: 2 }
     await burnSubtitles(new Blob(['x']), [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }], look)
-    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][4]).toEqual({ punchInUntil: 2 })
+    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][4]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 } })
   })
 })
 
 describe('burnShotSubtitles', () => {
-  it('forwards the punch-in to the shot encode as punchInUntil', async () => {
+  it('forwards the punch-in plan to the shot encode', async () => {
     stubCanvas()
     const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
-    const look: SubtitleLook = {
-      position: 72,
-      hook: { style: true, position: 50, punchIn: true },
-      firstShotDuration: 2,
-    }
+    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: PUNCH_IN }, firstShotDuration: 2 }
     await burnShotSubtitles(new Blob(['shot']), 0, 2, [hookCue], look)
-    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][6]).toEqual({ punchInUntil: 2 })
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][6]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 } })
   })
 })

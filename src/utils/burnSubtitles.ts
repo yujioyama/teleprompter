@@ -11,10 +11,12 @@ import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   hasFirstShotExtras,
-  PUNCH_IN_ZOOM,
-  punchInUntil,
+  punchInPlan,
+  SNAP_DURATION,
   styleCues,
+  ZOOM_ANCHOR_Y,
   type HookOptions,
+  type PunchInPlan,
   type StyledCue,
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
@@ -41,7 +43,7 @@ import {
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
- * through the filter string itself. `baseFilter` (the punch-in) is applied
+ * through the filter string itself. `baseFilter` (the snap zoom) is applied
  * to the video first, under the overlays.
  */
 export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { filterGraph: string; outputLabel: string } {
@@ -60,17 +62,20 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 }
 
 /**
- * ffmpeg's punch-in: zoom the joined video's first `until` seconds in from
- * 1x to 1 + PUNCH_IN_ZOOM about the center, as punchInScale does on the
- * hardware path. `in` counts input frames, and the joined video is
- * normalized to OUTPUT_FRAME_RATE. zoompan crops to whole pixels, so the
- * zoom may judder slightly — accepted on this last-resort path.
+ * ffmpeg's snap zoom, as snapZoomScale does it on the hardware path: 1x
+ * until `at`, an ease-out (quint) to `zoom` about (50%, ZOOM_ANCHOR_Y),
+ * held until `until`. `in` counts input frames of the joined video, which is
+ * normalized to OUTPUT_FRAME_RATE; +0.5 takes the frame's midpoint, as the
+ * hardware path does. zoompan crops to whole pixels, so the zoom may judder
+ * slightly — accepted on this last-resort path, which has no impact effect.
  */
-export function punchInFilter(until: number): string {
-  const t = `in/${OUTPUT_FRAME_RATE}`
-  const d = until.toFixed(3)
-  return `zoompan=z='if(lt(${t},${d}),1+${PUNCH_IN_ZOOM}*${t}/${d},1)'`
-    + `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
+export function punchInFilter({ punchIn, until }: PunchInPlan): string {
+  const t = `(in+0.5)/${OUTPUT_FRAME_RATE}`
+  const at = punchIn.at.toFixed(3)
+  const p = `min((${t}-${at})/${SNAP_DURATION},1)`
+  const z = `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${(punchIn.zoom - 1).toFixed(2)}*(1-pow(1-${p},5)),1))`
+  return `zoompan=z='${z}':x='iw/2-iw/zoom/2':y='ih*${ZOOM_ANCHOR_Y}-ih*${ZOOM_ANCHOR_Y}/zoom'`
+    + `:d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }
 
 /** How subtitles look beyond the cues themselves. */
@@ -215,11 +220,11 @@ export async function burnSubtitles(
     return videoBlob
   }
   const overlays = await renderSubtitleOverlays(translated, look)
-  const zoomUntil = punchInUntil(look.hook, look.firstShotDuration)
+  const plan = punchInPlan(look.hook, look.firstShotDuration)
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchInUntil: zoomUntil })
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan })
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -227,7 +232,7 @@ export async function burnSubtitles(
       onProgress?.(0)
     }
   }
-  return burnSubtitlesFFmpeg(videoBlob, overlays, zoomUntil, onProgress, signal)
+  return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal)
 }
 
 /**
@@ -250,7 +255,7 @@ export async function burnShotSubtitles(
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
   const overlays = await renderSubtitleOverlays(cues, look)
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
-    punchInUntil: punchInUntil(look.hook, look.firstShotDuration),
+    punchIn: punchInPlan(look.hook, look.firstShotDuration),
   })
 }
 
@@ -286,13 +291,13 @@ export function ffmpegProgressRatio(timeMicros: number, durationSec: number): nu
 
 /**
  * ffmpeg.wasm path: feed each overlay's PNG in as a time-bounded image input
- * and composite them via a chained overlay filtergraph, over the punch-in
+ * and composite them via a chained overlay filtergraph, over the snap zoom
  * when there is one.
  */
 async function burnSubtitlesFFmpeg(
   videoBlob: Blob,
   overlays: SubtitleOverlay[],
-  zoomUntil: number | null,
+  plan: PunchInPlan | null,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
@@ -325,7 +330,7 @@ async function burnSubtitlesFFmpeg(
 
     const { filterGraph, outputLabel } = buildOverlayFilterGraph(
       overlays.map(o => o.y),
-      zoomUntil !== null ? punchInFilter(zoomUntil) : undefined,
+      plan !== null ? punchInFilter(plan) : undefined,
     )
 
     // buildOverlayFilterGraph's chain references each overlay's image input by an

@@ -1167,7 +1167,7 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
     await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1), { timeout: 2000 })
     const [, , , cues, look] = vi.mocked(burnModule.burnShotSubtitles).mock.calls[0]
     expect(cues).toEqual([expect.objectContaining({ variant: 'hook', start: 0 })])
-    expect(look).toMatchObject({ hook: { style: true, position: 50 }, firstShotDuration: 5 })
+    expect(look).toMatchObject({ hook: { style: true, position: 13.75 }, firstShotDuration: 5 })
 
     fireEvent.click(screen.getByLabelText('フック字幕'))
     await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(2), { timeout: 2000 })
@@ -1196,7 +1196,7 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
 
     await waitFor(() => {
       const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
-      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: true }, firstShotDuration: 5 })
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }, firstShotDuration: 5 })
     }, { timeout: 3000 })
   })
 })

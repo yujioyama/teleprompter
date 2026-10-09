@@ -5,7 +5,7 @@ import {
   SUBTITLE_POSITION_BOTTOM,
   SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
-import { hookOptionsOf, punchInScale, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, snapZoomScale, ZOOM_ANCHOR_Y, type HookSettings } from '../utils/subtitleHook'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
@@ -258,9 +258,11 @@ export default function SubtitleWorkflow({
   const hook = hookOptionsOf(hookSettings)
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
-  // The punch-in is previewed by zooming the player itself; the subtitle
+  // The snap zoom is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
-  const previewZoom = hook.punchIn && firstShotDuration !== null ? punchInScale(previewTime, firstShotDuration) : 1
+  const previewZoom = hook.punchIn && firstShotDuration !== null
+    ? snapZoomScale(previewTime, hook.punchIn, firstShotDuration)
+    : 1
 
   return (
     <div className={styles.wrapper}>
@@ -339,7 +341,9 @@ export default function SubtitleWorkflow({
                   src={previewUrl ?? undefined}
                   controls={stage !== 'burning'}
                   playsInline
-                  style={previewZoom !== 1 ? { transform: `scale(${previewZoom})` } : undefined}
+                  style={previewZoom !== 1
+                    ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` }
+                    : undefined}
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
                 />
                 <SubtitleOverlayPreview

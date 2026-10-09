@@ -12,22 +12,44 @@ import type { SubtitlePosition } from './subtitlePosition'
 
 export type StyledCue = SubtitleCue & { variant: CueVariant }
 
+/** How far the first shot snaps in. */
+export type PunchInZoom = 1.15 | 1.25 | 1.35
+export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
+export type ImpactStrength = 'weak' | 'medium' | 'strong'
+
+export interface PunchIn {
+  zoom: PunchInZoom
+  /** Seconds into the first shot when the snap starts. */
+  at: number
+  /** The impact effect riding on the snap; null = off. */
+  impact: ImpactStrength | null
+}
+
 export interface HookOptions {
   /** Hook style for the first shot's cues, the first one from 0 s. */
   style: boolean
   /** 0-100, where hook cues are centered. */
   position: SubtitlePosition
-  /** Zoom the first shot's picture in (see punchInScale). */
-  punchIn: boolean
+  /** The first shot's snap zoom; null = off. */
+  punchIn: PunchIn | null
 }
 
-export type HookSettings = Pick<AppSettings, 'hookStyleEnabled' | 'hookPosition' | 'punchInEnabled'>
+export type HookSettings = Pick<
+  AppSettings,
+  'hookStyleEnabled' | 'hookPosition' | 'punchInEnabled' | 'punchInZoom' | 'punchInAt' | 'impactEnabled' | 'impactStrength'
+>
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
   return {
     style: settings.hookStyleEnabled,
     position: settings.hookPosition,
-    punchIn: settings.punchInEnabled,
+    punchIn: settings.punchInEnabled
+      ? {
+          zoom: settings.punchInZoom,
+          at: settings.punchInAt,
+          impact: settings.impactEnabled ? settings.impactStrength : null,
+        }
+      : null,
   }
 }
 
@@ -66,26 +88,37 @@ export function styleCues(
   }))
 }
 
-export const PUNCH_IN_ZOOM = 0.08
+/** Seconds the snap takes to land. */
+export const SNAP_DURATION = 0.12
+/** The zoom is about (50%, 40%) of the frame: roughly where the face is. */
+export const ZOOM_ANCHOR_Y = 0.4
+
+// Fast, then settling smoothly: reads as a camera move, not a ramp.
+const easeOutQuint = (p: number) => 1 - (1 - p) ** 5
 
 /**
- * How far the first shot's picture is zoomed at `t` seconds into it: a slow
- * push from 1x to 1 + PUNCH_IN_ZOOM over its `duration`, and 1x after it.
+ * How far the picture is zoomed at `t` seconds: 1x until `at`, then a
+ * SNAP_DURATION ease-out to `zoom`, held until `until` (the end of the
+ * first shot), where the cut drops it back to 1x.
  */
-export function punchInScale(t: number, duration: number): number {
-  if (!(duration > 0) || t >= duration) return 1
-  return 1 + (PUNCH_IN_ZOOM * Math.max(t, 0)) / duration
+export function snapZoomScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, until: number): number {
+  if (t < punchIn.at || t >= until) return 1
+  const p = Math.min((t - punchIn.at) / SNAP_DURATION, 1)
+  return 1 + (punchIn.zoom - 1) * easeOutQuint(p)
 }
 
-/**
- * Until when a video is zoomed in, or null: only a video starting with the
- * first shot (`firstShotDuration` set) gets the punch-in.
- */
-export function punchInUntil(hook: HookOptions, firstShotDuration: number | null): number | null {
-  return hook.punchIn ? firstShotDuration : null
+/** The punch-in a video gets and until when (the first shot's end). */
+export interface PunchInPlan {
+  punchIn: PunchIn
+  until: number
+}
+
+/** Only a video starting with the first shot (`firstShotDuration` set) gets the punch-in. */
+export function punchInPlan(hook: HookOptions, firstShotDuration: number | null): PunchInPlan | null {
+  return hook.punchIn && firstShotDuration !== null ? { punchIn: hook.punchIn, until: firstShotDuration } : null
 }
 
 /** Whether a video starting with the first shot needs an encode even without subtitles. */
 export function hasFirstShotExtras(hook: HookOptions, firstShotDuration: number | null): boolean {
-  return firstShotDuration !== null && hook.punchIn
+  return punchInPlan(hook, firstShotDuration) !== null
 }

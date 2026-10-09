@@ -49,7 +49,7 @@ describe('SubtitleOverlayPreview', () => {
     expect(Array.from(en.children, c => c.textContent).join(' ')).toBe(long[0].en)
   })
 
-  const HOOK = { style: true, position: 50, punchIn: false }
+  const HOOK = { style: true, position: 50, punchIn: null }
 
   it('shows the first shot\'s cue in hook style at the hook position', () => {
     render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={HOOK} firstShotDuration={2} />)
@@ -66,7 +66,7 @@ describe('SubtitleOverlayPreview', () => {
       ja: '絶対もう一人の歌手が通ると思ってたし、みんなにもそう言ってたんだ。',
     }
     render(
-      <SubtitleOverlayPreview cues={[cue]} position={72} currentTime={1} hook={{ style: true, position: 0, punchIn: false }} firstShotDuration={2} />,
+      <SubtitleOverlayPreview cues={[cue]} position={72} currentTime={1} hook={{ style: true, position: 0, punchIn: null }} firstShotDuration={2} />,
     )
     const box = screen.getByTestId('subtitle-overlay-box')
     const { height } = layoutCue(cue, createCanvasMeasure(), 'hook')

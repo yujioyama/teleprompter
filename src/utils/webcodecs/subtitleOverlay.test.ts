@@ -31,29 +31,33 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('createOverlayProcess punch-in', () => {
-  it('draws the first shot\'s picture zoomed about its center', async () => {
-    const { process } = await createOverlayProcess([], { punchInUntil: 2 })
+const PLAN = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: null }, until: 2 }
+
+describe('createOverlayProcess snap zoom', () => {
+  it('draws the held zoom about (50%, 40%)', async () => {
+    const { process } = await createOverlayProcess([], { punchIn: PLAN })
     const { sample, draw } = frameAt(1)
 
     expect(process(sample)).toBeInstanceOf(FakeCanvas)
     const [, x, y, w, h] = draw.mock.calls[0]
-    expect(w).toBeCloseTo(1080 * 1.04)
-    expect(h).toBeCloseTo(1920 * 1.04)
-    expect(x).toBeCloseTo((1080 - 1080 * 1.04) / 2)
-    expect(y).toBeCloseTo((1920 - 1920 * 1.04) / 2)
+    expect(w).toBeCloseTo(1080 * 1.25)
+    expect(h).toBeCloseTo(1920 * 1.25)
+    expect(x).toBeCloseTo((1080 - 1080 * 1.25) / 2)
+    expect(y).toBeCloseTo(0.4 * (1920 - 1920 * 1.25))
   })
 
-  it('passes frames after the first shot through untouched', async () => {
-    const { process } = await createOverlayProcess([], { punchInUntil: 2 })
-    const { sample, draw } = frameAt(2.5)
-    expect(process(sample)).toBe(sample)
-    expect(draw).not.toHaveBeenCalled()
+  it('passes frames before the snap and after the first shot through untouched', async () => {
+    const { process } = await createOverlayProcess([], { punchIn: PLAN })
+    for (const t of [0.2, 2.5]) {
+      const { sample, draw } = frameAt(t)
+      expect(process(sample)).toBe(sample)
+      expect(draw).not.toHaveBeenCalled()
+    }
   })
 
   it('leaves the picture alone without a punch-in', async () => {
     const { process } = await createOverlayProcess([])
-    const { sample } = frameAt(0.5)
+    const { sample } = frameAt(1)
     expect(process(sample)).toBe(sample)
   })
 })

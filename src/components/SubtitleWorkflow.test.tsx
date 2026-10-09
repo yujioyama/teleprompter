@@ -16,7 +16,15 @@ function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
-const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50, punchInEnabled: true }
+const DEFAULT_HOOK_SETTINGS: HookSettings = {
+  hookStyleEnabled: true,
+  hookPosition: 50,
+  punchInEnabled: true,
+  punchInZoom: 1.25,
+  punchInAt: 0.4,
+  impactEnabled: true,
+  impactStrength: 'medium',
+}
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
 // to FinalizePage, so subtitle work survives the component unmounting on
@@ -459,7 +467,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }, firstShotDuration: 2 }),
     )
   })
 
@@ -488,12 +496,13 @@ describe('SubtitleWorkflow punch-in', () => {
     return onHookSettingsChange
   }
 
-  it('zooms the preview video during the first shot, unless the punch-in is off', async () => {
+  it('snaps the preview video in about (50%, 40%) during the first shot, unless the zoom is off', async () => {
     const onChange = await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
     Object.defineProperty(video, 'currentTime', { value: 1, configurable: true })
     fireEvent.timeUpdate(video)
-    expect(video.style.transform).toBe('scale(1.04)')
+    expect(video.style.transform).toBe('scale(1.25)')
+    expect(video.style.transformOrigin).toBe('50% 40%')
 
     fireEvent.click(screen.getByLabelText('パンチイン'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })

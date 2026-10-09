@@ -41,6 +41,10 @@ describe('resolveShotTrimSettings', () => {
     hookStyleEnabled: true,
     hookPosition: 50,
     punchInEnabled: true,
+    punchInZoom: 1.25,
+    punchInAt: 0.4,
+    impactEnabled: true,
+    impactStrength: 'medium',
     firstShotPaddingStart: 0.05,
     inboxKey: '',
   }

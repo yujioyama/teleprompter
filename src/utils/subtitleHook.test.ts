@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   hasFirstShotExtras,
   hookOptionsOf,
-  punchInScale,
-  punchInUntil,
+  punchInPlan,
+  snapZoomScale,
+  SNAP_DURATION,
   startsInFirstShot,
   styleCues,
   type HookOptions,
@@ -44,9 +45,27 @@ describe('styleCues', () => {
 })
 
 describe('hookOptionsOf', () => {
-  it('reads the hook settings', () => {
-    expect(hookOptionsOf({ hookStyleEnabled: false, hookPosition: 40, punchInEnabled: true }))
-      .toEqual({ style: false, position: 40, punchIn: true })
+  const settings = {
+    hookStyleEnabled: false,
+    hookPosition: 40,
+    punchInEnabled: true,
+    punchInZoom: 1.35 as const,
+    punchInAt: 0.6,
+    impactEnabled: true,
+    impactStrength: 'strong' as const,
+  }
+
+  it('reads the hook settings into a punch-in with its impact', () => {
+    expect(hookOptionsOf(settings)).toEqual({
+      style: false,
+      position: 40,
+      punchIn: { zoom: 1.35, at: 0.6, impact: 'strong' },
+    })
+  })
+
+  it('has no impact with the effect off, and no punch-in with the zoom off', () => {
+    expect(hookOptionsOf({ ...settings, impactEnabled: false }).punchIn?.impact).toBeNull()
+    expect(hookOptionsOf({ ...settings, punchInEnabled: false }).punchIn).toBeNull()
   })
 })
 
@@ -57,32 +76,45 @@ describe('startsInFirstShot', () => {
   })
 })
 
-describe('punchInScale', () => {
-  it('zooms from 1x to 1.08x over the first shot, then stops', () => {
-    expect(punchInScale(0, 2)).toBe(1)
-    expect(punchInScale(1, 2)).toBeCloseTo(1.04)
-    expect(punchInScale(1.999, 2)).toBeCloseTo(1.08, 3)
-    expect(punchInScale(2, 2)).toBe(1)
-    expect(punchInScale(5, 2)).toBe(1)
+describe('snapZoomScale', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4 }
+
+  it('stays at 1x until the snap starts', () => {
+    expect(snapZoomScale(0, punchIn, 2)).toBe(1)
+    expect(snapZoomScale(0.399, punchIn, 2)).toBe(1)
   })
 
-  it('does nothing for a shot without length', () => {
-    expect(punchInScale(0.5, 0)).toBe(1)
+  it('eases out (quint) to the zoom over SNAP_DURATION', () => {
+    const half = 1 - (1 - 0.5) ** 5
+    expect(snapZoomScale(0.4 + SNAP_DURATION / 2, punchIn, 2)).toBeCloseTo(1 + 0.25 * half)
+    expect(snapZoomScale(0.4 + SNAP_DURATION, punchIn, 2)).toBeCloseTo(1.25)
+  })
+
+  it('holds the zoom until the first shot ends, then cuts back to 1x', () => {
+    expect(snapZoomScale(1.9, punchIn, 2)).toBeCloseTo(1.25)
+    expect(snapZoomScale(2, punchIn, 2)).toBe(1)
+    expect(snapZoomScale(5, punchIn, 2)).toBe(1)
+  })
+
+  it('never zooms a first shot that ends before the snap', () => {
+    expect(snapZoomScale(0.3, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
+    expect(snapZoomScale(0.45, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
   })
 })
 
 describe('first-shot extras', () => {
-  const hook: HookOptions = { style: true, position: 50, punchIn: false }
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+  const hook: HookOptions = { style: true, position: 50, punchIn: null }
 
   it('only apply to a video starting with the first shot', () => {
-    expect(hasFirstShotExtras({ ...hook, punchIn: true }, 2)).toBe(true)
+    expect(hasFirstShotExtras({ ...hook, punchIn }, 2)).toBe(true)
     expect(hasFirstShotExtras(hook, 2)).toBe(false)
-    expect(hasFirstShotExtras({ ...hook, punchIn: true }, null)).toBe(false)
+    expect(hasFirstShotExtras({ ...hook, punchIn }, null)).toBe(false)
   })
 
-  it('zoom until the end of the first shot when the punch-in is on', () => {
-    expect(punchInUntil({ ...hook, punchIn: true }, 2)).toBe(2)
-    expect(punchInUntil(hook, 2)).toBeNull()
-    expect(punchInUntil({ ...hook, punchIn: true }, null)).toBeNull()
+  it('plan the punch-in until the end of the first shot', () => {
+    expect(punchInPlan({ ...hook, punchIn }, 2)).toEqual({ punchIn, until: 2 })
+    expect(punchInPlan(hook, 2)).toBeNull()
+    expect(punchInPlan({ ...hook, punchIn }, null)).toBeNull()
   })
 })

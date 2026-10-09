@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSettings, defaultBgmTrack } from './useSettings'
-import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER } from '../utils/subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER, SUBTITLE_POSITION_TOP } from '../utils/subtitlePosition'
 
 const DEFAULTS = {
   trimEnabled: true,
@@ -12,8 +12,12 @@ const DEFAULTS = {
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
-  hookPosition: SUBTITLE_POSITION_CENTER,
+  hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
+  punchInZoom: 1.25,
+  punchInAt: 0.4,
+  impactEnabled: true,
+  impactStrength: 'medium',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }
@@ -131,12 +135,24 @@ describe('useSettings', () => {
   it('stores the hook settings, defaulting older stored settings to them', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
     const { result } = renderHook(() => useSettings())
-    expect(result.current[0]).toMatchObject({ hookStyleEnabled: true, hookPosition: SUBTITLE_POSITION_CENTER })
+    expect(result.current[0]).toMatchObject({ hookStyleEnabled: true, hookPosition: SUBTITLE_POSITION_TOP })
     act(() => { result.current[1]({ hookStyleEnabled: false, hookPosition: 30 }) })
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({
       hookStyleEnabled: false,
       hookPosition: 30,
     })
+  })
+
+  it('moves a hook position left at the old center default up to the top, once', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: SUBTITLE_POSITION_CENTER }))
+    expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(SUBTITLE_POSITION_TOP)
+  })
+
+  it('keeps a hook position the user moved, and the center once saved in the new shape', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: 40 }))
+    expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(40)
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: SUBTITLE_POSITION_CENTER, punchInZoom: 1.25 }))
+    expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(SUBTITLE_POSITION_CENTER)
   })
 
   it('drops the removed hook headline setting from stored settings', () => {
