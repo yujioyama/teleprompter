@@ -25,12 +25,13 @@ function saveToStorage(scripts: Script[]): void {
 export function useScripts() {
   const [scripts, setScripts] = useState<Script[]>(loadFromStorage)
 
-  function createScript(title: string, shots: Shot[]): Script {
+  function createScript(title: string, shots: Shot[], caption?: string): Script {
     const now = new Date().toISOString()
     const script: Script = {
       id: generateId(),
       title,
       shots,
+      ...(caption ? { caption } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -43,7 +44,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption'>>): void {
     const updated = scripts.map(s =>
       s.id === id
         ? { ...s, ...changes, updatedAt: new Date().toISOString() }
