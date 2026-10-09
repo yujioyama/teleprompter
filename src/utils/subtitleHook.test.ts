@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   hasFirstShotExtras,
   hookOptionsOf,
+  impactAt,
+  IMPACT_DURATION,
+  IMPACT_LEVELS,
   punchInPlan,
   snapZoomScale,
   SNAP_DURATION,
@@ -116,5 +119,31 @@ describe('first-shot extras', () => {
     expect(punchInPlan({ ...hook, punchIn }, 2)).toEqual({ punchIn, until: 2 })
     expect(punchInPlan(hook, 2)).toBeNull()
     expect(punchInPlan({ ...hook, punchIn }, null)).toBeNull()
+  })
+})
+
+describe('impactAt', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+
+  it('is the full level as the snap starts, decaying as (1-u)^4 to nothing', () => {
+    expect(impactAt(0.4, punchIn, 2)).toEqual(IMPACT_LEVELS.medium)
+    const mid = impactAt(0.4 + IMPACT_DURATION / 2, punchIn, 2)!
+    expect(mid.rgbShiftPx).toBeCloseTo(8 * 0.5 ** 4)
+    expect(mid.blurSpread).toBeCloseTo(0.06 * 0.5 ** 4)
+    expect(impactAt(0.4 + IMPACT_DURATION, punchIn, 2)).toBeNull()
+  })
+
+  it('is null before the snap, without an impact, and past the first shot', () => {
+    expect(impactAt(0.39, punchIn, 2)).toBeNull()
+    expect(impactAt(0.45, { ...punchIn, impact: null }, 2)).toBeNull()
+    expect(impactAt(0.45, punchIn, 0.42)).toBeNull()
+  })
+
+  it('has the three strengths', () => {
+    expect(IMPACT_LEVELS).toEqual({
+      weak: { blurSpread: 0.03, rgbShiftPx: 4 },
+      medium: { blurSpread: 0.06, rgbShiftPx: 8 },
+      strong: { blurSpread: 0.09, rgbShiftPx: 12 },
+    })
   })
 })

@@ -107,6 +107,36 @@ export function snapZoomScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, 
   return 1 + (punchIn.zoom - 1) * easeOutQuint(p)
 }
 
+/** Seconds the impact effect lasts from the start of the snap. */
+export const IMPACT_DURATION = 0.15
+
+export interface ImpactAmounts {
+  /** How much wider the outermost zoom-blur layer is (0.06 = +6%). */
+  blurSpread: number
+  /** Red goes this far left and blue this far right, in output px (1080 wide). */
+  rgbShiftPx: number
+}
+
+export const IMPACT_LEVELS: Record<ImpactStrength, ImpactAmounts> = {
+  weak: { blurSpread: 0.03, rgbShiftPx: 4 },
+  medium: { blurSpread: 0.06, rgbShiftPx: 8 },
+  strong: { blurSpread: 0.09, rgbShiftPx: 12 },
+}
+
+/**
+ * The impact effect at `t`, or null outside it. It peaks as the snap
+ * starts and fades as (1-u)^4 over IMPACT_DURATION, the shape of the quint
+ * ease-out's speed, so it reads as the hit of the camera move.
+ */
+export function impactAt(t: number, punchIn: PunchIn, until: number): ImpactAmounts | null {
+  if (punchIn.impact === null || t < punchIn.at || t >= until) return null
+  const u = (t - punchIn.at) / IMPACT_DURATION
+  if (u >= 1) return null
+  const k = (1 - u) ** 4
+  const level = IMPACT_LEVELS[punchIn.impact]
+  return { blurSpread: level.blurSpread * k, rgbShiftPx: level.rgbShiftPx * k }
+}
+
 /** The punch-in a video gets and until when (the first shot's end). */
 export interface PunchInPlan {
   punchIn: PunchIn
