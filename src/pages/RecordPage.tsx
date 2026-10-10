@@ -9,6 +9,7 @@ import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
+import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
@@ -284,7 +285,7 @@ export default function RecordPage() {
 
         {/* Teleprompter text — top of screen, near front camera */}
         <div className={styles.promptArea}>
-          <p className={styles.promptText}>{currentShot && stripEmphasis(currentShot.text)}</p>
+          <p className={styles.promptText}>{currentShot && stripStickers(stripEmphasis(currentShot.text))}</p>
         </div>
 
         {/* Per-shot trim settings */}
@@ -465,7 +466,7 @@ export default function RecordPage() {
                   onClick={() => handleJumpToShot(i)}
                 >
                   <span className={styles.shotListNum}>{i + 1}</span>
-                  <span className={styles.shotListText}>{stripEmphasis(shot.text)}</span>
+                  <span className={styles.shotListText}>{stripStickers(stripEmphasis(shot.text))}</span>
                 </button>
               ))}
             </div>
