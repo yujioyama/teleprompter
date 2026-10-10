@@ -458,7 +458,7 @@ export default function SubtitleWorkflow({
                 />
                 フック字幕
               </label>
-              <p className={styles.hint}>最初のショットの字幕を大きく、上寄せで、1フレーム目から表示します</p>
+              <p className={styles.hint}>最初のショットの字幕を顔にかからない位置に、1フレーム目から表示します</p>
               <div className={styles.positionRow} role="group" aria-label="フック字幕の位置">
                 {SUBTITLE_POSITION_PRESETS.map(p => (
                   <button

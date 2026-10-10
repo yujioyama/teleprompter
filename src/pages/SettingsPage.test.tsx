@@ -66,7 +66,7 @@ describe('SettingsPage subtitle position', () => {
   it('sets a preset position with one tap', () => {
     renderSettings()
     fireEvent.click(screen.getByRole('button', { name: '上部' }))
-    expect(stored().subtitlePosition).toBe(13.75)
+    expect(stored().subtitlePosition).toBe(22.5)
     expect(screen.getByRole('button', { name: '上部' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

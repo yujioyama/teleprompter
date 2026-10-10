@@ -2,14 +2,20 @@
 export type SubtitlePosition = number
 
 /**
- * Preset percent values reproducing the exact pixel positions the old
- * top/center/bottom 3-value enum produced, at the production reference
- * geometry (VIDEO_HEIGHT=1920, and the old fixed 220px overlay height):
- * old top = round(1920*0.08) = 154, old center = round((1920-220)/2) = 850,
- * old bottom = round(1920*0.78-220) = 1278. Solving y = round(H*p/100 - overlayHeight/2)
- * for p at H=1920, overlayHeight=220 gives the constants below.
+ * Preset percent values. Center and bottom reproduce the exact pixel
+ * positions the old top/center/bottom 3-value enum produced, at the
+ * production reference geometry (VIDEO_HEIGHT=1920, and the old fixed 220px
+ * overlay height): old center = round((1920-220)/2) = 850, old bottom =
+ * round(1920*0.78-220) = 1278. Solving y = round(H*p/100 - overlayHeight/2)
+ * for p at H=1920, overlayHeight=220 gives those constants.
+ *
+ * Top sits lower than the old enum's top (13.75): the top ~15% of the frame
+ * is under the Reels/TikTok header and cropped off in Instagram's 4:5 feed,
+ * so a two-line cue (2 English + 1 Japanese, 274px) is centered just below it.
  */
-export const SUBTITLE_POSITION_TOP = 13.75
+export const SUBTITLE_POSITION_TOP = 22.5
+/** The top preset before it moved below the SNS header (2026-10-10). */
+export const LEGACY_SUBTITLE_POSITION_TOP = 13.75
 export const SUBTITLE_POSITION_CENTER = 50
 export const SUBTITLE_POSITION_BOTTOM = 72.2917
 

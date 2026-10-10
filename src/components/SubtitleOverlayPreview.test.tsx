@@ -71,7 +71,7 @@ describe('SubtitleOverlayPreview', () => {
       <SubtitleOverlayPreview cues={[cue]} position={72} currentTime={1} hook={{ style: true, position: 0, punchIn: null }} firstShotDuration={2} />,
     )
     const box = screen.getByTestId('subtitle-overlay-box')
-    const { height } = layoutCue(cue, createCanvasMeasure(), 'hook')
+    const { height } = layoutCue(cue, createCanvasMeasure())
     expect(box.style.top).toBe(`${clampedSubtitlePosition(0, height)}%`)
     expect(parseFloat(box.style.top)).toBeGreaterThan(0)
   })

@@ -478,8 +478,8 @@ describe('SubtitleWorkflow hook controls', () => {
   it('moves the hook subtitle with its own presets and slider', async () => {
     const onChange = await renderTranslated()
     fireEvent.click(hookGroup().getByText('上部'))
-    expect(onChange).toHaveBeenCalledWith({ hookPosition: 13.75 })
-    expect(screen.getByTestId('subtitle-overlay-box').style.top).toBe('13.75%')
+    expect(onChange).toHaveBeenCalledWith({ hookPosition: 22.5 })
+    expect(screen.getByTestId('subtitle-overlay-box').style.top).toBe('22.5%')
 
     fireEvent.click(screen.getByText('細かく調整'))
     fireEvent.change(screen.getByLabelText('フック字幕の上下位置'), { target: { value: '40' } })

@@ -148,6 +148,14 @@ describe('useSettings', () => {
     expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(SUBTITLE_POSITION_TOP)
   })
 
+  it('moves positions left at the old top preset down to the new one, below the SNS header', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: 13.75, subtitlePosition: 13.75, punchInZoom: 1.25 }))
+    expect(renderHook(() => useSettings()).result.current[0]).toMatchObject({
+      hookPosition: SUBTITLE_POSITION_TOP,
+      subtitlePosition: SUBTITLE_POSITION_TOP,
+    })
+  })
+
   it('keeps a hook position the user moved, and the center once saved in the new shape', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: 40 }))
     expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(40)

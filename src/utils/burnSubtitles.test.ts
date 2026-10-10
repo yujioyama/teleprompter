@@ -152,13 +152,6 @@ describe('renderCueImage', () => {
     expect(drawn[1]).toMatchObject({ text: 'やあ', color: '#ffffff' })
   })
 
-  it('draws a hook cue at 80px English over 60px Japanese', async () => {
-    const { drawn } = stubCanvas()
-    await renderCueImage({ id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ' }, 'hook')
-    expect(drawn.map(d => d.text)).toEqual(['Hi', 'やあ'])
-    expect(drawn[0].font).toBe(`800 80px ${SUBTITLE_FONT_FAMILY}`)
-    expect(drawn[1].font).toBe(`bold 60px ${SUBTITLE_FONT_FAMILY}`)
-  })
 })
 
 describe('renderSubtitleOverlays', () => {
@@ -169,7 +162,7 @@ describe('renderSubtitleOverlays', () => {
     const untranslated: StyledCue = { id: 'c', start: 3, end: 4, en: 'Hm', ja: null, variant: 'normal' }
     const overlays = await renderSubtitleOverlays([hook, normal, untranslated], LOOK)
     expect(overlays.map(o => [o.start, o.end, o.y])).toEqual([
-      [0, 1, subtitleY(50, 1920, layoutCue(hook, measure, 'hook').height)],
+      [0, 1, subtitleY(50, 1920, layoutCue(hook, measure).height)],
       [2, 3, subtitleY(72, 1920, layoutCue(normal, measure).height)],
     ])
   })

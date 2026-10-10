@@ -30,8 +30,9 @@ describe('preset percent constants', () => {
   const REF_HEIGHT = 1920
   const REF_OVERLAY = 220
 
-  it('top preset matches the legacy round(videoHeight * 0.08) result', () => {
-    expect(subtitleY(SUBTITLE_POSITION_TOP, REF_HEIGHT, REF_OVERLAY)).toBe(154)
+  it('top preset keeps a two-line cue below the top 15% that SNS apps cover or crop', () => {
+    // 2 English lines + 1 Japanese line at the normal sizes (see subtitleLayout).
+    expect(subtitleY(SUBTITLE_POSITION_TOP, REF_HEIGHT, 274)).toBeGreaterThanOrEqual(REF_HEIGHT * 0.15)
   })
 
   it('center preset matches the legacy round((videoHeight - overlayHeight) / 2) result', () => {

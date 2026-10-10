@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   EN_STYLE,
-  HOOK_EN_STYLE,
-  HOOK_JA_STYLE,
   JA_STYLE,
   MeasureText,
   SUBTITLE_FONT_FAMILY,
-  SUBTITLE_BLOCK_GAP,
   SUBTITLE_PADDING_Y,
   SUBTITLE_TEXT_WIDTH,
   fontFor,
@@ -124,34 +121,6 @@ describe('outlined subtitle geometry', () => {
   it('outlines at 12% of the font size', () => {
     expect(outlineWidth(60)).toBe(7)
     expect(outlineWidth(80)).toBe(10)
-  })
-})
-
-describe('layoutCue hook variant', () => {
-  it('uses the hook styles', () => {
-    expect(HOOK_EN_STYLE).toEqual({ weight: '800', maxPx: 80, minPx: 64, maxLines: 3, lineHeight: 1.2 })
-    expect(HOOK_JA_STYLE).toEqual({ weight: 'bold', maxPx: 60, minPx: 48, maxLines: 3, lineHeight: 1.35 })
-  })
-
-  it('lays a short hook cue out at 80px English over 60px Japanese', () => {
-    const layout = layoutCue({ en: 'Hello there', ja: 'こんにちは' }, measure, 'hook')
-    expect(layout.en).toMatchObject({ fontPx: 80, lines: ['Hello there'] })
-    expect(layout.ja).toMatchObject({ fontPx: 60, lines: ['こんにちは'] })
-    expect(layout.height).toBe(
-      SUBTITLE_PADDING_Y * 2 + Math.round(80 * 1.2) + SUBTITLE_BLOCK_GAP + Math.round(60 * 1.35),
-    )
-  })
-
-  it('lays an untranslated hook cue out as English only', () => {
-    const layout = layoutCue({ en: 'Hello there', ja: null }, measure, 'hook')
-    expect(layout.ja).toBeNull()
-    expect(layout.height).toBe(SUBTITLE_PADDING_Y * 2 + Math.round(80 * 1.2))
-  })
-
-  it('shrinks a hook cue only until it fits three lines, never below 64px', () => {
-    const fits = layoutCue({ en: 'I was sure the other singer would go through, and I told everyone.', ja: null }, measure, 'hook')
-    expect(fits.en.lines.length).toBeLessThanOrEqual(3)
-    expect(layoutCue({ en: 'word '.repeat(40), ja: null }, measure, 'hook').en.fontPx).toBe(64)
   })
 })
 

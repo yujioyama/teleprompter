@@ -20,6 +20,8 @@ import {
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
+  EN_STYLE,
+  JA_STYLE,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_PADDING_Y,
   SUBTITLE_REFERENCE_WIDTH,
@@ -28,8 +30,6 @@ import {
   fontFor,
   layoutCue,
   outlineWidth,
-  textStylesFor,
-  type CueVariant,
   type MeasureText,
 } from './subtitleLayout'
 
@@ -158,17 +158,14 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 /**
- * Render one cue's subtitle (English above, Japanese smaller below; both
- * bigger on a hook cue) as a transparent PNG as wide as the video and
+ * Render one cue's subtitle (English above, Japanese smaller below) as a
+ * transparent PNG as wide as the video and
  * exactly as tall as its layout: white outlined text, no box. Text is
  * wrapped onto balanced lines (see subtitleLayout); `*emphasized*` words are
  * yellow.
  */
-export async function renderCueImage(
-  cue: SubtitleCue,
-  variant: CueVariant = 'normal',
-): Promise<{ image: Blob; height: number }> {
-  const layout = layoutCue(cue, canvasMeasure(), variant)
+export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; height: number }> {
+  const layout = layoutCue(cue, canvasMeasure())
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
 
@@ -180,11 +177,10 @@ export async function renderCueImage(
       top += block.lineHeightPx
     }
   }
-  const styles = textStylesFor(variant)
-  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx))
+  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx))
   if (layout.ja) {
     top += SUBTITLE_BLOCK_GAP
-    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx))
+    drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx))
   }
   return { image: await toPng(canvas), height: layout.height }
 }
@@ -199,7 +195,7 @@ export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLo
   const overlays: SubtitleOverlay[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
-    const { image, height } = await renderCueImage(cue, cue.variant)
+    const { image, height } = await renderCueImage(cue)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   return overlays

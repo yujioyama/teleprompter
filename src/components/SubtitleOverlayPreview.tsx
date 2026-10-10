@@ -80,7 +80,7 @@ export default function SubtitleOverlayPreview({
     [cues, firstShotDuration, hookStyle],
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
-  const layout = useMemo(() => (cue ? layoutCue(cue, measure, cue.variant) : null), [cue, measure])
+  const layout = useMemo(() => (cue ? layoutCue(cue, measure) : null), [cue, measure])
 
   const hookPosition = hook?.position ?? position
 

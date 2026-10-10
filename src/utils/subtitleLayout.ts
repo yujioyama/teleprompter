@@ -47,17 +47,10 @@ export const EN_STYLE: TextStyle = { weight: '800', maxPx: 60, minPx: 44, maxLin
 export const JA_STYLE: TextStyle = { weight: 'bold', maxPx: 50, minPx: 38, maxLines: 3, lineHeight: 1.4 }
 
 /**
- * The first shot's cues: bigger English over bigger Japanese, near the top
- * so the frame below stays clear for the face and the zoom in (see
- * subtitleHook). The Japanese stays, or a Japanese viewer misses the hook.
+ * The first shot's cues are hook cues: drawn like any other, but at their
+ * own position and from the first frame (see subtitleHook).
  */
 export type CueVariant = 'normal' | 'hook'
-export const HOOK_EN_STYLE: TextStyle = { weight: '800', maxPx: 80, minPx: 64, maxLines: 3, lineHeight: 1.2 }
-export const HOOK_JA_STYLE: TextStyle = { weight: 'bold', maxPx: 60, minPx: 48, maxLines: 3, lineHeight: 1.35 }
-
-export function textStylesFor(variant: CueVariant): { en: TextStyle; ja: TextStyle } {
-  return variant === 'hook' ? { en: HOOK_EN_STYLE, ja: HOOK_JA_STYLE } : { en: EN_STYLE, ja: JA_STYLE }
-}
 
 /** Width in px of `text` rendered in the CSS `font` shorthand. */
 export type MeasureText = (text: string, font: string) => number
@@ -247,15 +240,10 @@ function layoutBlock(raw: string, style: TextStyle, measure: MeasureText): TextB
   return { fontPx: px, lines, runs: emphasisRuns(lines, emphasis), lineHeightPx: Math.round(px * style.lineHeight) }
 }
 
-/** Lay out one cue's subtitle (English, plus Japanese unless it's a hook cue) at the 1080px reference width. */
-export function layoutCue(
-  cue: Pick<SubtitleCue, 'en' | 'ja'>,
-  measure: MeasureText,
-  variant: CueVariant = 'normal',
-): CueLayout {
-  const styles = textStylesFor(variant)
-  const en = layoutBlock(cue.en, styles.en, measure)
-  const ja = cue.ja ? layoutBlock(cue.ja, styles.ja, measure) : null
+/** Lay out one cue's subtitle (English, plus Japanese once translated) at the 1080px reference width. */
+export function layoutCue(cue: Pick<SubtitleCue, 'en' | 'ja'>, measure: MeasureText): CueLayout {
+  const en = layoutBlock(cue.en, EN_STYLE, measure)
+  const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure) : null
   let height = SUBTITLE_PADDING_Y * 2 + en.lines.length * en.lineHeightPx
   if (ja) height += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
   return { en, ja, height }
