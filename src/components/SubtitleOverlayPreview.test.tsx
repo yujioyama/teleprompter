@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
 import { clampedSubtitlePosition } from '../utils/subtitlePosition'
@@ -57,8 +57,8 @@ describe('SubtitleOverlayPreview', () => {
     expect(box).toHaveAttribute('data-variant', 'hook')
     expect(box.style.top).toBe('50%')
     expect(box.style.backgroundColor).toBe('')
-    expect(screen.queryByText('こんにちは')).not.toBeInTheDocument()
-    expect(box.querySelectorAll('p')).toHaveLength(1)
+    expect(box.querySelectorAll('p')).toHaveLength(2)
+    expect(within(box).getByText('こんにちは')).toBeInTheDocument()
   })
 
   it('keeps a tall hook box on screen, as the burn does', () => {

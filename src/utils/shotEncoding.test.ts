@@ -69,13 +69,11 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], look(72)).key).not.toBe(base)
   })
 
-  it('ignores a hook cue\'s Japanese, which is not drawn, but not a normal cue\'s', () => {
+  it('re-encodes when a hook cue\'s Japanese changes, since it is drawn too', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
     const hookKey = burnRequest(shot, [hookCue], look(50)).key
-    expect(burnRequest(shot, [{ ...hookCue, ja: 'まったく別' }], look(50)).key).toBe(hookKey)
+    expect(burnRequest(shot, [{ ...hookCue, ja: 'まったく別' }], look(50)).key).not.toBe(hookKey)
     expect(burnRequest(shot, [{ ...hookCue, en: 'Hello' }], look(50)).key).not.toBe(hookKey)
-    const normalKey = burnRequest(shot, [cue], look(50)).key
-    expect(burnRequest(shot, [{ ...cue, ja: 'まったく別' }], look(50)).key).not.toBe(normalKey)
   })
 
   it('changes key with the cue style, and with the hook position only for a hook cue', () => {

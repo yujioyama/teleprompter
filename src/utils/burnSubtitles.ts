@@ -158,8 +158,8 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 /**
- * Render one cue's subtitle (English above, Japanese smaller below; a hook
- * cue is English only, bigger) as a transparent PNG as wide as the video and
+ * Render one cue's subtitle (English above, Japanese smaller below; both
+ * bigger on a hook cue) as a transparent PNG as wide as the video and
  * exactly as tall as its layout: white outlined text, no box. Text is
  * wrapped onto balanced lines (see subtitleLayout); `*emphasized*` words are
  * yellow.
@@ -182,7 +182,7 @@ export async function renderCueImage(
   }
   const styles = textStylesFor(variant)
   drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx))
-  if (layout.ja && styles.ja) {
+  if (layout.ja) {
     top += SUBTITLE_BLOCK_GAP
     drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx))
   }

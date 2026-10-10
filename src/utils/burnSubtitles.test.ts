@@ -152,11 +152,12 @@ describe('renderCueImage', () => {
     expect(drawn[1]).toMatchObject({ text: 'やあ', color: '#ffffff' })
   })
 
-  it('draws a hook cue at 80px, English only', async () => {
+  it('draws a hook cue at 80px English over 60px Japanese', async () => {
     const { drawn } = stubCanvas()
     await renderCueImage({ id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ' }, 'hook')
-    expect(drawn.map(d => d.text)).toEqual(['Hi'])
+    expect(drawn.map(d => d.text)).toEqual(['Hi', 'やあ'])
     expect(drawn[0].font).toBe(`800 80px ${SUBTITLE_FONT_FAMILY}`)
+    expect(drawn[1].font).toBe(`bold 60px ${SUBTITLE_FONT_FAMILY}`)
   })
 })
 
