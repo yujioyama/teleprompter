@@ -16,7 +16,9 @@ import {
   ZOOM_ANCHOR_Y,
   type HookSettings,
   type ImpactStrength,
+  type ZoomDirection,
 } from '../utils/subtitleHook'
+import { reapplySticker } from '../utils/subtitleSticker'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
@@ -95,6 +97,11 @@ const IMPACT_STRENGTHS: { label: string; value: ImpactStrength }[] = [
   { label: '弱', value: 'weak' },
   { label: '中', value: 'medium' },
   { label: '強', value: 'strong' },
+]
+
+const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
+  { label: 'ズームアウト', value: 'out' },
+  { label: 'ズームイン', value: 'in' },
 ]
 
 const SOURCES: { label: string; value: SubtitleSource }[] = [
@@ -214,7 +221,9 @@ export default function SubtitleWorkflow({
         return
       }
       // The script's *emphasis* (Claude marks it) carries over to what was said.
-      const cues = reapplyEmphasis(transcribed, shotCueInputs.map(s => s.text))
+      // So does the first line's emoji, the first shot's sticker.
+      const scriptTexts = shotCueInputs.map(s => s.text)
+      const cues = reapplySticker(reapplyEmphasis(transcribed, scriptTexts), scriptTexts)
       patch({ cues, stage: 'reviewing', source: 'speech', pasteText: '' })
     } catch (err) {
       if (signal.aborted) setNotice('中断しました')
@@ -385,6 +394,7 @@ export default function SubtitleWorkflow({
             </p>
             <SubtitleEditor cues={cues} onEditEn={handleEditEn} onEditJa={handleEditJa} />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
+            <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、顔の横に大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
           </div>
 
           {!hasAnyJapanese && (
@@ -478,11 +488,27 @@ export default function SubtitleWorkflow({
                   checked={hookSettings.punchInEnabled}
                   onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
                 />
-                ズームイン
+                ズーム
               </label>
-              <p className={styles.hint}>最初のショットの途中からゆっくり寄っていき、2つ目のショットで元に戻ります（字幕は拡大しません）</p>
+              <p className={styles.hint}>
+                {hookSettings.punchInDirection === 'out'
+                  ? '1フレーム目から寄った状態で始まり、ゆっくり引いて、最初のショットの終わりで元の大きさに戻ります（字幕は拡大しません）'
+                  : '最初のショットの途中からゆっくり寄っていき、2つ目のショットで元に戻ります（字幕は拡大しません）'}
+              </p>
               {hookSettings.punchInEnabled && (
                 <>
+                  <div className={styles.positionRow} role="group" aria-label="ズームの向き">
+                    {ZOOM_DIRECTIONS.map(d => (
+                      <button
+                        key={d.value}
+                        className={`${styles.positionBtn} ${hookSettings.punchInDirection === d.value ? styles.positionBtnActive : ''}`}
+                        aria-pressed={hookSettings.punchInDirection === d.value}
+                        onClick={() => onHookSettingsChange({ punchInDirection: d.value })}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className={styles.positionRow} role="group" aria-label="ズーム倍率">
                     {PUNCH_IN_ZOOMS.map(z => (
                       <button
@@ -496,10 +522,10 @@ export default function SubtitleWorkflow({
                     ))}
                   </div>
                   <div className={styles.fineTuneRow}>
-                    <label htmlFor="punch-in-at-slider">寄るタイミング {hookSettings.punchInAt.toFixed(1)}秒</label>
+                    <label htmlFor="punch-in-at-slider">動き始めるタイミング {hookSettings.punchInAt.toFixed(1)}秒</label>
                     <input
                       id="punch-in-at-slider"
-                      aria-label="寄るタイミング"
+                      aria-label="動き始めるタイミング"
                       type="range"
                       min={0}
                       max={1.5}
@@ -532,7 +558,7 @@ export default function SubtitleWorkflow({
                   </button>
                 ))}
               </div>
-              <p className={styles.hint}>寄った瞬間だけ、ブレと色ずれを一瞬重ねます（字幕にはかかりません。プレビューには出ません）</p>
+              <p className={styles.hint}>ズームが動き始める瞬間だけ、ブレと色ずれを一瞬重ねます（字幕にはかかりません。プレビューには出ません）</p>
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

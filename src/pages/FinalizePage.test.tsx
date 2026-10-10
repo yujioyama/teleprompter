@@ -1208,7 +1208,7 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
 
     await waitFor(() => {
       const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
-      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }, firstShotDuration: 5 })
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: { zoom: 1.25, direction: 'out', at: 0.4, impact: 'medium' } }, firstShotDuration: 5 })
     }, { timeout: 3000 })
   })
 })

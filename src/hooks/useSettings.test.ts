@@ -15,6 +15,7 @@ const DEFAULTS = {
   hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
   punchInZoom: 1.25,
+  punchInDirection: 'out',
   punchInAt: 0.4,
   impactEnabled: true,
   impactStrength: 'medium',

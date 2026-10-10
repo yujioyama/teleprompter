@@ -37,7 +37,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const PLAN = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: null }, until: 2 }
+const PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }, until: 2 }
 
 describe('createOverlayProcess zoom in', () => {
   it('draws the zoom so far about (50%, 40%)', async () => {
@@ -70,7 +70,7 @@ describe('createOverlayProcess zoom in', () => {
 })
 
 describe('createOverlayProcess impact', () => {
-  const IMPACT_PLAN = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 2 }
+  const IMPACT_PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }, until: 2 }
 
   it('uses a scratch canvas only on impact frames, and lets it go after', async () => {
     const { process } = await createOverlayProcess([], { punchIn: IMPACT_PLAN })
@@ -86,7 +86,7 @@ describe('createOverlayProcess impact', () => {
   })
 
   it('lets the scratch go when the first shot ends inside the impact window', async () => {
-    const plan = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 0.47 }
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }, until: 0.47 }
     const { process } = await createOverlayProcess([], { punchIn: plan })
     process(frameAt(0.45).sample)
     expect(canvases).toHaveLength(2)

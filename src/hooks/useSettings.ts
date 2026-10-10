@@ -6,7 +6,7 @@ import {
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_TOP,
 } from '../utils/subtitlePosition'
-import type { ImpactStrength, PunchInZoom } from '../utils/subtitleHook'
+import type { ImpactStrength, PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -23,11 +23,13 @@ export interface AppSettings {
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
-  /** Slowly zoom the first shot's picture in (ズームイン). */
+  /** Slowly zoom the first shot's picture (ズーム). */
   punchInEnabled: boolean
-  /** How far it has zoomed in by the first shot's end. */
+  /** How far in it is at its closest. */
   punchInZoom: PunchInZoom
-  /** Seconds into the first shot when the zoom starts. */
+  /** Push in, or start close and pull back (ズームアウト). */
+  punchInDirection: ZoomDirection
+  /** Seconds into the first shot when the zoom starts moving. */
   punchInAt: number
   /** A short zoom blur and RGB split as the zoom starts. */
   impactEnabled: boolean
@@ -51,6 +53,7 @@ const DEFAULTS: AppSettings = {
   hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
   punchInZoom: 1.25,
+  punchInDirection: 'out',
   punchInAt: 0.4,
   impactEnabled: true,
   impactStrength: 'medium',

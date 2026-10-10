@@ -27,6 +27,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   hookPosition: 50,
   punchInEnabled: true,
   punchInZoom: 1.25,
+  punchInDirection: 'in',
   punchInAt: 0.4,
   impactEnabled: true,
   impactStrength: 'medium',
@@ -493,7 +494,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, impact: 'medium' } }, firstShotDuration: 2 }),
     )
   })
 
@@ -535,7 +536,7 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(video.style.transform).toBe('scale(1.125)')
     expect(video.style.transformOrigin).toBe('50% 40%')
 
-    fireEvent.click(screen.getByLabelText('ズームイン'))
+    fireEvent.click(screen.getByLabelText('ズーム'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
   })
@@ -597,8 +598,16 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.click(zoomGroup.getByText('1.35倍'))
     expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.35 })
 
-    fireEvent.change(screen.getByLabelText('寄るタイミング'), { target: { value: '0.8' } })
+    fireEvent.change(screen.getByLabelText('動き始めるタイミング'), { target: { value: '0.8' } })
     expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
+  })
+
+  it('switches the zoom between pulling back and pushing in', async () => {
+    const onChange = await renderTranslated()
+    const direction = within(screen.getByRole('group', { name: 'ズームの向き' }))
+    expect(direction.getByText('ズームイン')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(direction.getByText('ズームアウト'))
+    expect(onChange).toHaveBeenCalledWith({ punchInDirection: 'out' })
   })
 
   it('sets the impact effect, which needs the zoom on', async () => {
@@ -612,7 +621,7 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(onChange).toHaveBeenCalledWith({ impactEnabled: false })
     for (const button of strength().getAllByRole('button')) expect(button).toBeDisabled()
 
-    fireEvent.click(screen.getByLabelText('ズームイン'))
+    fireEvent.click(screen.getByLabelText('ズーム'))
     expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
     expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
   })

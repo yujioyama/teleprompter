@@ -53,6 +53,7 @@ describe('hookOptionsOf', () => {
     hookPosition: 40,
     punchInEnabled: true,
     punchInZoom: 1.35 as const,
+    punchInDirection: 'in' as const,
     punchInAt: 0.6,
     impactEnabled: true,
     impactStrength: 'strong' as const,
@@ -62,7 +63,7 @@ describe('hookOptionsOf', () => {
     expect(hookOptionsOf(settings)).toEqual({
       style: false,
       position: 40,
-      punchIn: { zoom: 1.35, at: 0.6, impact: 'strong' },
+      punchIn: { zoom: 1.35, direction: 'in', at: 0.6, impact: 'strong' },
     })
   })
 
@@ -80,7 +81,7 @@ describe('startsInFirstShot', () => {
 })
 
 describe('punchInScale', () => {
-  const punchIn = { zoom: 1.25 as const, at: 0.4 }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }
 
   it('stays at 1x until the zoom starts', () => {
     expect(punchInScale(0, punchIn, 2)).toBe(1)
@@ -100,13 +101,33 @@ describe('punchInScale', () => {
   })
 
   it('never zooms a first shot that ends before the zoom starts', () => {
-    expect(punchInScale(0.3, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
-    expect(punchInScale(0.45, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
+    expect(punchInScale(0.3, { zoom: 1.25, direction: 'in', at: 0.5 }, 0.4)).toBe(1)
+    expect(punchInScale(0.45, { zoom: 1.25, direction: 'in', at: 0.5 }, 0.4)).toBe(1)
+  })
+})
+
+describe('punchInScale zooming out', () => {
+  const punchIn = { zoom: 1.25 as const, direction: 'out' as const, at: 0.4 }
+
+  it('is already zoomed in on the first frame and holds until `at`', () => {
+    expect(punchInScale(0, punchIn, 2)).toBe(1.25)
+    expect(punchInScale(0.399, punchIn, 2)).toBe(1.25)
+  })
+
+  it('pulls back steadily, reaching 1x as the first shot ends', () => {
+    expect(punchInScale(0.4, punchIn, 2)).toBeCloseTo(1.25)
+    expect(punchInScale(1.2, punchIn, 2)).toBeCloseTo(1.125)
+    expect(punchInScale(1.999, punchIn, 2)).toBeCloseTo(1, 3)
+  })
+
+  it('is 1x from the second shot on', () => {
+    expect(punchInScale(2, punchIn, 2)).toBe(1)
+    expect(punchInScale(5, punchIn, 2)).toBe(1)
   })
 })
 
 describe('first-shot extras', () => {
-  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }
   const hook: HookOptions = { style: true, position: 50, punchIn: null }
 
   it('only apply to a video starting with the first shot', () => {
@@ -123,7 +144,7 @@ describe('first-shot extras', () => {
 })
 
 describe('impactAt', () => {
-  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }
 
   it('is the full level as the zoom starts, decaying as (1-u)^4 to nothing', () => {
     expect(impactAt(0.4, punchIn, 2)).toEqual(IMPACT_LEVELS.medium)
@@ -149,7 +170,7 @@ describe('impactAt', () => {
 })
 
 describe('followsFrames', () => {
-  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }
 
   it('follows frames through the first shot and a short tail after it', () => {
     expect(followsFrames(0, punchIn, 2)).toBe(true)

@@ -25,3 +25,9 @@
   display: block;
   white-space: nowrap;
 }
+
+.sticker {
+  position: absolute;
+  line-height: 1;
+  pointer-events: none;
+}

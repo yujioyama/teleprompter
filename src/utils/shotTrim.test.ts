@@ -42,6 +42,7 @@ describe('resolveShotTrimSettings', () => {
     hookPosition: 50,
     punchInEnabled: true,
     punchInZoom: 1.25,
+    punchInDirection: 'in',
     punchInAt: 0.4,
     impactEnabled: true,
     impactStrength: 'medium',

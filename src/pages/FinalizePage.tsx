@@ -139,7 +139,7 @@ export default function FinalizePage() {
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
-  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInAt, impactEnabled, impactStrength } = settings
+  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, impactEnabled, impactStrength } = settings
   const { normalizeAudio } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
@@ -498,8 +498,8 @@ export default function FinalizePage() {
   // shots that changed.
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
   const hookSettings: HookSettings = useMemo(
-    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInAt, impactEnabled, impactStrength }),
-    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInAt, impactEnabled, impactStrength],
+    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, impactEnabled, impactStrength }),
+    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, impactEnabled, impactStrength],
   )
   const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
   useEffect(() => {
