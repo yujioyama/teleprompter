@@ -11,7 +11,7 @@ import {
 import {
   hookOptionsOf,
   PUNCH_IN_ZOOMS,
-  snapZoomScale,
+  punchInScale,
   followsFrames,
   ZOOM_ANCHOR_Y,
   type HookSettings,
@@ -121,7 +121,7 @@ export default function SubtitleWorkflow({
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [fineTune, setFineTune] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
-  // The snap zoom is only shown while playing: it would scale (and clip) the native controls.
+  // The zoom in is only shown while playing: it would scale (and clip) the native controls.
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [burnProgress, setBurnProgress] = useState(0)
@@ -333,10 +333,10 @@ export default function SubtitleWorkflow({
   }
 
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
-  // The snap zoom is previewed by zooming the player itself; the subtitle
+  // The zoom in is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
   const previewZoom = previewPlaying && hook.punchIn && firstShotDuration !== null
-    ? snapZoomScale(previewTime, hook.punchIn, firstShotDuration)
+    ? punchInScale(previewTime, hook.punchIn, firstShotDuration)
     : 1
 
   return (
@@ -478,9 +478,9 @@ export default function SubtitleWorkflow({
                   checked={hookSettings.punchInEnabled}
                   onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
                 />
-                スナップズーム
+                ズームイン
               </label>
-              <p className={styles.hint}>最初のショットの途中で一気に寄り、2つ目のショットで元に戻ります（字幕は拡大しません）</p>
+              <p className={styles.hint}>最初のショットの途中からゆっくり寄っていき、2つ目のショットで元に戻ります（字幕は拡大しません）</p>
               {hookSettings.punchInEnabled && (
                 <>
                   <div className={styles.positionRow} role="group" aria-label="ズーム倍率">

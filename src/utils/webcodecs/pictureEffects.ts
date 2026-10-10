@@ -3,7 +3,7 @@ import { ZOOM_ANCHOR_Y, type ImpactAmounts } from '../subtitleHook'
 
 /**
  * The first shot's picture effects, drawn with OffscreenCanvas 2D only (no
- * WebGL): the snap zoom itself, and the impact effect riding on it — a
+ * WebGL): the zoom in itself, and the impact effect as it starts — a
  * radial zoom blur plus an RGB split, for the few frames the impact lasts.
  * Subtitles are composited afterwards by the caller and never get these.
  */

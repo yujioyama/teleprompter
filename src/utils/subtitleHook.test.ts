@@ -7,8 +7,7 @@ import {
   IMPACT_DURATION,
   IMPACT_LEVELS,
   punchInPlan,
-  snapZoomScale,
-  SNAP_DURATION,
+  punchInScale,
   startsInFirstShot,
   styleCues,
   type HookOptions,
@@ -80,29 +79,29 @@ describe('startsInFirstShot', () => {
   })
 })
 
-describe('snapZoomScale', () => {
+describe('punchInScale', () => {
   const punchIn = { zoom: 1.25 as const, at: 0.4 }
 
-  it('stays at 1x until the snap starts', () => {
-    expect(snapZoomScale(0, punchIn, 2)).toBe(1)
-    expect(snapZoomScale(0.399, punchIn, 2)).toBe(1)
+  it('stays at 1x until the zoom starts', () => {
+    expect(punchInScale(0, punchIn, 2)).toBe(1)
+    expect(punchInScale(0.399, punchIn, 2)).toBe(1)
+    expect(punchInScale(0.4, punchIn, 2)).toBe(1)
   })
 
-  it('eases out (quint) to the zoom over SNAP_DURATION', () => {
-    const half = 1 - (1 - 0.5) ** 5
-    expect(snapZoomScale(0.4 + SNAP_DURATION / 2, punchIn, 2)).toBeCloseTo(1 + 0.25 * half)
-    expect(snapZoomScale(0.4 + SNAP_DURATION, punchIn, 2)).toBeCloseTo(1.25)
+  it('pushes in steadily, reaching the zoom as the first shot ends', () => {
+    expect(punchInScale(1.2, punchIn, 2)).toBeCloseTo(1.125)
+    expect(punchInScale(1.6, punchIn, 2)).toBeCloseTo(1.1875)
+    expect(punchInScale(1.999, punchIn, 2)).toBeCloseTo(1.25, 3)
   })
 
-  it('holds the zoom until the first shot ends, then cuts back to 1x', () => {
-    expect(snapZoomScale(1.9, punchIn, 2)).toBeCloseTo(1.25)
-    expect(snapZoomScale(2, punchIn, 2)).toBe(1)
-    expect(snapZoomScale(5, punchIn, 2)).toBe(1)
+  it('cuts back to 1x when the first shot ends', () => {
+    expect(punchInScale(2, punchIn, 2)).toBe(1)
+    expect(punchInScale(5, punchIn, 2)).toBe(1)
   })
 
-  it('never zooms a first shot that ends before the snap', () => {
-    expect(snapZoomScale(0.3, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
-    expect(snapZoomScale(0.45, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
+  it('never zooms a first shot that ends before the zoom starts', () => {
+    expect(punchInScale(0.3, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
+    expect(punchInScale(0.45, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
   })
 })
 
@@ -126,7 +125,7 @@ describe('first-shot extras', () => {
 describe('impactAt', () => {
   const punchIn = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
 
-  it('is the full level as the snap starts, decaying as (1-u)^4 to nothing', () => {
+  it('is the full level as the zoom starts, decaying as (1-u)^4 to nothing', () => {
     expect(impactAt(0.4, punchIn, 2)).toEqual(IMPACT_LEVELS.medium)
     const mid = impactAt(0.4 + IMPACT_DURATION / 2, punchIn, 2)!
     expect(mid.rgbShiftPx).toBeCloseTo(8 * 0.5 ** 4)
@@ -134,7 +133,7 @@ describe('impactAt', () => {
     expect(impactAt(0.4 + IMPACT_DURATION, punchIn, 2)).toBeNull()
   })
 
-  it('is null before the snap, without an impact, and past the first shot', () => {
+  it('is null before the zoom, without an impact, and past the first shot', () => {
     expect(impactAt(0.39, punchIn, 2)).toBeNull()
     expect(impactAt(0.45, { ...punchIn, impact: null }, 2)).toBeNull()
     expect(impactAt(0.45, punchIn, 0.42)).toBeNull()

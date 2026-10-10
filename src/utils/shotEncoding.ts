@@ -36,7 +36,7 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
 
 /**
  * The shot trimmed and normalized with `cues` (styled, in the shot's own
- * timeline) burned in by the same encode, plus the snap zoom
+ * timeline) burned in by the same encode, plus the zoom in
  * when it's the first shot. A shot with nothing of that is just its
  * normalized clip, so it's shared with the combine step's cache entry. The
  * key holds everything that changes the pixels, so a hook change re-encodes

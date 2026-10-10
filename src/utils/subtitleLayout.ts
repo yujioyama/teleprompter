@@ -48,7 +48,7 @@ export const JA_STYLE: TextStyle = { weight: 'bold', maxPx: 50, minPx: 38, maxLi
 
 /**
  * The first shot's cues: bigger English over bigger Japanese, near the top
- * so the frame below stays clear for the face and the snap zoom (see
+ * so the frame below stays clear for the face and the zoom in (see
  * subtitleHook). The Japanese stays, or a Japanese viewer misses the hook.
  */
 export type CueVariant = 'normal' | 'hook'
