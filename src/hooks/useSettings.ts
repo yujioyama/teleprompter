@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { MUSIC_TRACKS, MusicTrack } from '../data/musicTracks'
-import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER } from '../utils/subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER, SUBTITLE_POSITION_TOP } from '../utils/subtitlePosition'
+import type { ImpactStrength, PunchInZoom } from '../utils/subtitleHook'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -17,10 +18,15 @@ export interface AppSettings {
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
-  /** Show the per-video hook headline above the first shot's subtitle. */
-  hookHeadlineEnabled: boolean
-  /** Slowly zoom the first shot's picture in. */
+  /** Snap the first shot's picture in (スナップズーム). */
   punchInEnabled: boolean
+  /** How far the snap zooms in. */
+  punchInZoom: PunchInZoom
+  /** Seconds into the first shot when the snap starts. */
+  punchInAt: number
+  /** Ride a short zoom blur and RGB split on the snap. */
+  impactEnabled: boolean
+  impactStrength: ImpactStrength
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
@@ -37,17 +43,33 @@ const DEFAULTS: AppSettings = {
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
-  hookPosition: SUBTITLE_POSITION_CENTER,
-  hookHeadlineEnabled: true,
+  hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
+  punchInZoom: 1.25,
+  punchInAt: 0.4,
+  impactEnabled: true,
+  impactStrength: 'medium',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
+}
+
+/** Stored settings brought up to date with the current shape. */
+export function migrateSettings(stored: Record<string, unknown>): Partial<AppSettings> {
+  const next = { ...stored }
+  // The hook headline was removed (2026-10-10).
+  delete next.hookHeadlineEnabled
+  // Saved before the snap zoom (no punchInZoom): the hook moved from the
+  // center to the top, above the face. A position the user set is kept.
+  if (!('punchInZoom' in next) && next.hookPosition === SUBTITLE_POSITION_CENTER) {
+    next.hookPosition = SUBTITLE_POSITION_TOP
+  }
+  return next as Partial<AppSettings>
 }
 
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS
+    return raw ? { ...DEFAULTS, ...migrateSettings(JSON.parse(raw)) } : DEFAULTS
   } catch {
     return DEFAULTS
   }

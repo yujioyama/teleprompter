@@ -203,3 +203,17 @@ describe('RecordPage single import', () => {
     expect(await screen.findByText('撮影完了！')).toBeInTheDocument()
   })
 })
+
+describe('RecordPage teleprompter text', () => {
+  it('reads the script without its *emphasis* markers, in the prompt and the shot list', async () => {
+    const script = seedScript()
+    script.shots[0].text = 'I *carry a torch* for him'
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+
+    expect(await screen.findAllByText('I carry a torch for him')).not.toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: /≡/ }))
+    expect(screen.getAllByText('I carry a torch for him')).toHaveLength(2)
+    expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
+  })
+})

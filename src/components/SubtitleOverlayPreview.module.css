@@ -6,29 +6,22 @@
   pointer-events: none;
 }
 
-.en {
+/* The outline sits under the fill, as canvas strokeText then fillText draw it. */
+.en,
+.ja {
   color: #fff;
-  font-weight: 700;
+  paint-order: stroke fill;
+}
+
+.en {
+  font-weight: 800;
 }
 
 .ja {
-  color: rgba(255, 255, 255, 0.85);
+  font-weight: 700;
 }
 
 .line {
   display: block;
   white-space: nowrap;
-}
-
-.headline {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  pointer-events: none;
-}
-
-.headlineText {
-  color: #fff;
-  font-weight: 700;
 }

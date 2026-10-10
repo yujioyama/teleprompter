@@ -40,8 +40,11 @@ describe('resolveShotTrimSettings', () => {
     subtitlePosition: 72,
     hookStyleEnabled: true,
     hookPosition: 50,
-    hookHeadlineEnabled: true,
     punchInEnabled: true,
+    punchInZoom: 1.25,
+    punchInAt: 0.4,
+    impactEnabled: true,
+    impactStrength: 'medium',
     firstShotPaddingStart: 0.05,
     inboxKey: '',
   }

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import {
   EN_STYLE,
-  HEADLINE_STYLE,
   HOOK_EN_STYLE,
-  HOOK_JA_STYLE,
   JA_STYLE,
   MeasureText,
-  SUBTITLE_BOX_OPACITY,
+  SUBTITLE_FONT_FAMILY,
+  SUBTITLE_PADDING_Y,
   SUBTITLE_TEXT_WIDTH,
+  fontFor,
   layoutCue,
-  layoutHeadline,
+  outlineWidth,
   tokenize,
   wrapText,
 } from './subtitleLayout'
@@ -87,10 +87,10 @@ describe('layoutCue', () => {
     expect(layout.ja!.lines.length).toBeGreaterThan(1)
     expect(layout.en.fontPx).toBeGreaterThanOrEqual(EN_STYLE.minPx)
     for (const line of layout.en.lines) {
-      expect(measure(line, `bold ${layout.en.fontPx}px sans-serif`)).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
+      expect(measure(line, fontFor(EN_STYLE, layout.en.fontPx))).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
     }
     for (const line of layout.ja!.lines) {
-      expect(measure(line, `normal ${layout.ja!.fontPx}px sans-serif`)).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
+      expect(measure(line, fontFor(JA_STYLE, layout.ja!.fontPx))).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
     }
   })
 
@@ -105,34 +105,42 @@ describe('layoutCue', () => {
   })
 })
 
+describe('outlined subtitle geometry', () => {
+  it('draws in the system font stack, heavy English and bold Japanese', () => {
+    expect(fontFor(EN_STYLE, 60)).toBe(`800 60px ${SUBTITLE_FONT_FAMILY}`)
+    expect(fontFor(JA_STYLE, 50)).toBe(`bold 50px ${SUBTITLE_FONT_FAMILY}`)
+  })
+
+  it('wraps within 900px and sizes the image to the lines plus room for the outline', () => {
+    expect(SUBTITLE_TEXT_WIDTH).toBe(900)
+    const layout = layoutCue({ en: 'Hello there', ja: 'こんにちは' }, measure)
+    expect(layout.height).toBe(
+      SUBTITLE_PADDING_Y * 2 + layout.en.lineHeightPx + 14 + layout.ja!.lineHeightPx,
+    )
+  })
+
+  it('outlines at 12% of the font size', () => {
+    expect(outlineWidth(60)).toBe(7)
+    expect(outlineWidth(80)).toBe(10)
+  })
+})
+
 describe('layoutCue hook variant', () => {
-  it('uses the hook styles', () => {
-    expect(HOOK_EN_STYLE).toMatchObject({ weight: 'bold', maxPx: 100, minPx: 72, maxLines: 3 })
-    expect(HOOK_JA_STYLE).toMatchObject({ maxPx: 75, minPx: 57, maxLines: 3 })
+  it('uses the hook style for English', () => {
+    expect(HOOK_EN_STYLE).toEqual({ weight: '800', maxPx: 80, minPx: 64, maxLines: 3, lineHeight: 1.2 })
   })
 
-  it('lays a short hook cue out at the full hook sizes', () => {
+  it('lays a short hook cue out at 80px, English only', () => {
     const layout = layoutCue({ en: 'Hello there', ja: 'こんにちは' }, measure, 'hook')
-    expect(layout.en).toMatchObject({ fontPx: 100, lines: ['Hello there'] })
-    expect(layout.ja).toMatchObject({ fontPx: 75, lines: ['こんにちは'] })
+    expect(layout.en).toMatchObject({ fontPx: 80, lines: ['Hello there'] })
+    expect(layout.ja).toBeNull()
+    expect(layout.height).toBe(SUBTITLE_PADDING_Y * 2 + Math.round(80 * 1.2))
   })
 
-  it('shrinks a hook cue only until it fits three lines', () => {
-    // Four lines at 100px with the test measure; three fit somewhere above 72px.
-    const layout = layoutCue({ en: 'I was sure the other singer would go through.', ja: null }, measure, 'hook')
-    expect(layout.en.lines.length).toBeLessThanOrEqual(3)
-    expect(layout.en.fontPx).toBeGreaterThan(72)
-    expect(layout.en.fontPx).toBeLessThan(100)
-  })
-
-  it('never shrinks a hook cue below 72px', () => {
-    expect(layoutCue({ en: 'word '.repeat(20), ja: null }, measure, 'hook').en.fontPx).toBe(72)
-  })
-
-  it('gives a hook cue a taller box and a darker band than a normal one', () => {
-    const cue = { en: 'Hello there', ja: 'こんにちは' }
-    expect(layoutCue(cue, measure, 'hook').height).toBeGreaterThan(layoutCue(cue, measure).height)
-    expect(SUBTITLE_BOX_OPACITY).toEqual({ normal: 0.55, hook: 0.8 })
+  it('shrinks a hook cue only until it fits three lines, never below 64px', () => {
+    const fits = layoutCue({ en: 'I was sure the other singer would go through, and I told everyone.', ja: null }, measure, 'hook')
+    expect(fits.en.lines.length).toBeLessThanOrEqual(3)
+    expect(layoutCue({ en: 'word '.repeat(40), ja: null }, measure, 'hook').en.fontPx).toBe(64)
   })
 })
 
@@ -154,29 +162,5 @@ describe('layoutCue emphasis', () => {
     expect(layoutCue({ en: 'Hello there', ja: null }, measure).en.runs).toEqual([
       [{ text: 'Hello there', emphasized: false }],
     ])
-  })
-})
-
-describe('layoutHeadline', () => {
-  it('shrink-wraps its band around a short headline', () => {
-    const layout = layoutHeadline('Wait.', measure)
-    expect(HEADLINE_STYLE).toMatchObject({ weight: 'bold', maxPx: 72, minPx: 56, maxLines: 2 })
-    expect(layout.block).toMatchObject({ fontPx: 72, lines: ['Wait.'] })
-    // 5 chars at 36px each, plus 40px padding either side.
-    expect(layout.width).toBe(5 * 36 + 80)
-    expect(layout.height).toBe(28 * 2 + Math.round(72 * 1.2))
-  })
-
-  it('wraps a longer headline onto two lines, never wider than a subtitle band', () => {
-    const layout = layoutHeadline("'carry a torch' ≠ romantic? Not quite", measure)
-    expect(layout.block.lines.length).toBe(2)
-    expect(layout.width).toBeLessThanOrEqual(1080 - 90 * 2)
-  })
-
-  it('keeps emphasized words', () => {
-    expect(layoutHeadline('Wait *what*', measure).block.runs).toEqual([[
-      { text: 'Wait ', emphasized: false },
-      { text: 'what', emphasized: true },
-    ]])
   })
 })

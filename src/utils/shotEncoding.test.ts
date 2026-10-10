@@ -30,8 +30,8 @@ vi.mock('./webcodecs/concatClips', () => ({
 }))
 
 const JOINED = new Blob(['joined'])
-const NO_HOOK: HookOptions = { style: false, position: 50, headline: '', punchIn: false }
-const HOOK: HookOptions = { style: true, position: 50, headline: '', punchIn: false }
+const NO_HOOK: HookOptions = { style: false, position: 50, punchIn: null }
+const HOOK: HookOptions = { style: true, position: 50, punchIn: null }
 
 function look(position: number, extra: Partial<SubtitleLook> = {}): SubtitleLook {
   return { position, hook: NO_HOOK, firstShotDuration: null, ...extra }
@@ -69,6 +69,15 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], look(72)).key).not.toBe(base)
   })
 
+  it('ignores a hook cue\'s Japanese, which is not drawn, but not a normal cue\'s', () => {
+    const hookCue: StyledCue = { ...cue, variant: 'hook' }
+    const hookKey = burnRequest(shot, [hookCue], look(50)).key
+    expect(burnRequest(shot, [{ ...hookCue, ja: 'まったく別' }], look(50)).key).toBe(hookKey)
+    expect(burnRequest(shot, [{ ...hookCue, en: 'Hello' }], look(50)).key).not.toBe(hookKey)
+    const normalKey = burnRequest(shot, [cue], look(50)).key
+    expect(burnRequest(shot, [{ ...cue, ja: 'まったく別' }], look(50)).key).not.toBe(normalKey)
+  })
+
   it('changes key with the cue style, and with the hook position only for a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
     const at50 = look(50, { hook: { ...HOOK, position: 50 } })
@@ -78,17 +87,21 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], at30).key).toBe(burnRequest(shot, [cue], at50).key)
   })
 
-  it('changes key with the punch-in alone, on the first shot', () => {
+  it('changes the first shot\'s key with the punch-in\'s zoom, timing or impact', () => {
     const first = clip('a', 0, 2)
-    const off = burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn: false }, firstShotDuration: 2 })).key
-    const on = burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn: true }, firstShotDuration: 2 })).key
-    expect(on).not.toBe(off)
-    expect(off).toBe(normalizeRequest(first).key)
+    const at = (punchIn: HookOptions['punchIn']) =>
+      burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn }, firstShotDuration: 2 })).key
+    const base = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+    expect(at(null)).toBe(normalizeRequest(first).key)
+    expect(at(base)).not.toBe(at(null))
+    expect(at({ ...base, zoom: 1.35 })).not.toBe(at(base))
+    expect(at({ ...base, at: 0.6 })).not.toBe(at(base))
+    expect(at({ ...base, impact: null })).not.toBe(at(base))
   })
 
   it('ignores the normal position when every cue in the shot is a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
-    const HOOK = { style: true, position: 30, headline: '', punchIn: false }
+    const HOOK = { style: true, position: 30, punchIn: null }
     expect(burnRequest(shot, [hookCue], look(50, { hook: HOOK })).key)
       .toBe(burnRequest(shot, [hookCue], look(72, { hook: HOOK })).key)
   })
@@ -291,31 +304,31 @@ describe('cancelling (issue #34)', () => {
   })
 })
 
-describe('first-shot headline and punch-in', () => {
-  const EXTRAS: HookOptions = { style: true, position: 50, headline: 'Wait', punchIn: true }
+describe('first-shot punch-in', () => {
+  const EXTRAS: HookOptions = { style: true, position: 50, punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }
   const clips = [clip('a', 0, 2), clip('b', 0, 1)]
   const cues = translate(cuesFromShotEntries([
     { text: 'first', duration: 2 },
     { text: 'second', duration: 1 },
   ]))
 
-  it('go into the first shot\'s encode only', async () => {
+  it('goes into the first shot\'s encode only', async () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, EXTRAS)
     const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
     expect(looks.map(l => l.firstShotDuration)).toEqual([2, null])
   })
 
-  it('re-encode only the first shot when the headline changes', async () => {
+  it('re-encodes only the first shot when the punch-in changes', async () => {
     const cache = new ShotEncodeCache()
     await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, EXTRAS)
-    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, { ...EXTRAS, headline: 'Hold on' })
+    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, { ...EXTRAS, punchIn: { zoom: 1.35, at: 0.4, impact: 'medium' } })
     expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(3)
     expect(vi.mocked(burnModule.burnShotSubtitles).mock.calls[2][0]).toBe(clips[0].blob)
   })
 
-  it('still burn the first shot when it has no translated cue', () => {
+  it('still burns the first shot when it has no translated cue', () => {
     const shot = clip('a', 0, 2)
-    const first = look(50, { hook: { ...EXTRAS, punchIn: false }, firstShotDuration: 2 })
+    const first = look(50, { hook: EXTRAS, firstShotDuration: 2 })
     expect(burnRequest(shot, [], first).key).not.toBe(normalizeRequest(shot).key)
     expect(burnRequest(shot, [], { ...first, firstShotDuration: null }).key).toBe(normalizeRequest(shot).key)
   })

@@ -11,29 +11,24 @@ import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   hasFirstShotExtras,
-  headlineY,
-  PUNCH_IN_ZOOM,
-  punchInUntil,
-  startsInFirstShot,
+  punchInPlan,
+  SNAP_DURATION,
   styleCues,
+  ZOOM_ANCHOR_Y,
   type HookOptions,
-  type OverlayBox,
+  type PunchInPlan,
   type StyledCue,
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
-  HEADLINE_BOX_OPACITY,
-  HEADLINE_STYLE,
   SUBTITLE_BLOCK_GAP,
-  SUBTITLE_BOX_MARGIN_X,
-  SUBTITLE_BOX_OPACITY,
-  SUBTITLE_BOX_PADDING_Y,
-  SUBTITLE_BOX_RADIUS,
+  SUBTITLE_PADDING_Y,
   SUBTITLE_REFERENCE_WIDTH,
+  SUBTITLE_SHADOW,
   TextBlockLayout,
   fontFor,
   layoutCue,
-  layoutHeadline,
+  outlineWidth,
   textStylesFor,
   type CueVariant,
   type MeasureText,
@@ -42,12 +37,12 @@ import {
 /**
  * Build the chained overlay filtergraph for one subtitle image input per
  * entry of `ys` (indices 1..ys.length, input 0 is the base video), each
- * composited horizontally centered at its own Y (boxes differ in height
+ * composited horizontally centered at its own Y (images differ in height
  * with their line count). Each image input is itself time-bounded via
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
- * through the filter string itself. `baseFilter` (the punch-in) is applied
+ * through the filter string itself. `baseFilter` (the snap zoom) is applied
  * to the video first, under the overlays.
  */
 export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { filterGraph: string; outputLabel: string } {
@@ -66,17 +61,20 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 }
 
 /**
- * ffmpeg's punch-in: zoom the joined video's first `until` seconds in from
- * 1x to 1 + PUNCH_IN_ZOOM about the center, as punchInScale does on the
- * hardware path. `in` counts input frames, and the joined video is
- * normalized to OUTPUT_FRAME_RATE. zoompan crops to whole pixels, so the
- * zoom may judder slightly — accepted on this last-resort path.
+ * ffmpeg's snap zoom, as snapZoomScale does it on the hardware path: 1x
+ * until `at`, an ease-out (quint) to `zoom` about (50%, ZOOM_ANCHOR_Y),
+ * held until `until`. `in` counts input frames of the joined video, which is
+ * normalized to OUTPUT_FRAME_RATE; +0.5 takes the frame's midpoint, as the
+ * hardware path does. zoompan crops to whole pixels, so the zoom may judder
+ * slightly — accepted on this last-resort path, which has no impact effect.
  */
-export function punchInFilter(until: number): string {
-  const t = `in/${OUTPUT_FRAME_RATE}`
-  const d = until.toFixed(3)
-  return `zoompan=z='if(lt(${t},${d}),1+${PUNCH_IN_ZOOM}*${t}/${d},1)'`
-    + `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
+export function punchInFilter({ punchIn, until }: PunchInPlan): string {
+  const t = `(in+0.5)/${OUTPUT_FRAME_RATE}`
+  const at = punchIn.at.toFixed(3)
+  const p = `min((${t}-${at})/${SNAP_DURATION},1)`
+  const z = `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${(punchIn.zoom - 1).toFixed(2)}*(1-pow(1-${p},5)),1))`
+  return `zoompan=z='${z}':x='iw/2-iw/zoom/2':y='ih*${ZOOM_ANCHOR_Y}-ih*${ZOOM_ANCHOR_Y}/zoom'`
+    + `:d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }
 
 /** How subtitles look beyond the cues themselves. */
@@ -96,12 +94,32 @@ export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePositio
   return cue.variant === 'hook' ? look.hook.position : look.position
 }
 
-/** Draw one line's runs centered on `centerX`, emphasized ones in yellow. */
-function fillRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, color: string) {
+/**
+ * Draw one line's runs centered on `centerX`: first every run's black
+ * outline under a soft shadow, then the fills (white, emphasis yellow)
+ * without one, so the outline sits under the letters and never thins them.
+ */
+function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, fontPx: number) {
   const widths = runs.map(run => ctx.measureText(run.text).width)
-  let x = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
+  const left = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
+
+  ctx.save()
+  ctx.shadowColor = SUBTITLE_SHADOW.color
+  ctx.shadowBlur = fontPx * SUBTITLE_SHADOW.blurRatio
+  ctx.shadowOffsetY = fontPx * SUBTITLE_SHADOW.offsetYRatio
+  ctx.strokeStyle = '#000'
+  ctx.lineWidth = outlineWidth(fontPx)
+  ctx.lineJoin = 'round'
+  let x = left
   runs.forEach((run, i) => {
-    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : color
+    ctx.strokeText(run.text, x, y)
+    x += widths[i]
+  })
+  ctx.restore()
+
+  x = left
+  runs.forEach((run, i) => {
+    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : '#ffffff'
     ctx.fillText(run.text, x, y)
     x += widths[i]
   })
@@ -140,12 +158,11 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 /**
- * Render one cue's bilingual subtitle (English bold/larger above, Japanese
- * smaller below, on a semi-transparent rounded background) as a transparent
- * PNG as wide as the video and exactly as tall as its box. Text is wrapped
- * onto balanced lines (see subtitleLayout) rather than shrunk until it fits
- * one line, which left long cues unreadably small and still overflowing.
- * A hook cue is bigger on a darker band; `*emphasized*` words are yellow.
+ * Render one cue's subtitle (English above, Japanese smaller below; a hook
+ * cue is English only, bigger) as a transparent PNG as wide as the video and
+ * exactly as tall as its layout: white outlined text, no box. Text is
+ * wrapped onto balanced lines (see subtitleLayout); `*emphasized*` words are
+ * yellow.
  */
 export async function renderCueImage(
   cue: SubtitleCue,
@@ -153,47 +170,21 @@ export async function renderCueImage(
 ): Promise<{ image: Blob; height: number }> {
   const layout = layoutCue(cue, canvasMeasure(), variant)
   const width = SUBTITLE_REFERENCE_WIDTH
-  const height = layout.height
-  const { canvas, ctx } = overlayCanvas(height)
+  const { canvas, ctx } = overlayCanvas(layout.height)
 
-  ctx.fillStyle = `rgba(0, 0, 0, ${SUBTITLE_BOX_OPACITY[variant]})`
-  ctx.beginPath()
-  ctx.roundRect(SUBTITLE_BOX_MARGIN_X, 0, width - SUBTITLE_BOX_MARGIN_X * 2, height, SUBTITLE_BOX_RADIUS)
-  ctx.fill()
-
-  let top = SUBTITLE_BOX_PADDING_Y
-  const drawBlock = (block: TextBlockLayout, font: string, color: string) => {
+  let top = SUBTITLE_PADDING_Y
+  const drawBlock = (block: TextBlockLayout, font: string) => {
     ctx.font = font
     for (const runs of block.runs) {
-      fillRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, color)
+      drawOutlinedRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, block.fontPx)
       top += block.lineHeightPx
     }
   }
   const styles = textStylesFor(variant)
-  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx), '#ffffff')
-  if (layout.ja) {
+  drawBlock(layout.en, fontFor(styles.en, layout.en.fontPx))
+  if (layout.ja && styles.ja) {
     top += SUBTITLE_BLOCK_GAP
-    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx), 'rgba(255, 255, 255, 0.85)')
-  }
-  return { image: await toPng(canvas), height }
-}
-
-/** Render the hook headline: bold white, emphasis in yellow, on a band as wide as its text. */
-export async function renderHeadlineImage(text: string): Promise<{ image: Blob; height: number }> {
-  const layout = layoutHeadline(text, canvasMeasure())
-  const width = SUBTITLE_REFERENCE_WIDTH
-  const { canvas, ctx } = overlayCanvas(layout.height)
-
-  ctx.fillStyle = `rgba(0, 0, 0, ${HEADLINE_BOX_OPACITY})`
-  ctx.beginPath()
-  ctx.roundRect((width - layout.width) / 2, 0, layout.width, layout.height, SUBTITLE_BOX_RADIUS)
-  ctx.fill()
-
-  ctx.font = fontFor(HEADLINE_STYLE, layout.block.fontPx)
-  let top = SUBTITLE_BOX_PADDING_Y
-  for (const runs of layout.block.runs) {
-    fillRuns(ctx, runs, width / 2, top + layout.block.lineHeightPx / 2, '#ffffff')
-    top += layout.block.lineHeightPx
+    drawBlock(layout.ja, fontFor(styles.ja, layout.ja.fontPx))
   }
   return { image: await toPng(canvas), height: layout.height }
 }
@@ -202,28 +193,14 @@ export async function renderHeadlineImage(text: string): Promise<{ image: Blob; 
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
- * translation aren't burned in. A video starting with the first shot also
- * gets the hook headline over [0, D), even with no translated cue.
+ * translation aren't burned in.
  */
 export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
-  const firstShotBoxes: OverlayBox[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
     const { image, height } = await renderCueImage(cue, cue.variant)
-    const y = clampedSubtitleY(cuePosition(cue, look), height)
-    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
-    if (look.firstShotDuration !== null && startsInFirstShot(cue.start, look.firstShotDuration)) {
-      firstShotBoxes.push({ top: y, bottom: y + height })
-    }
-  }
-
-  const firstShot = look.firstShotDuration
-  if (firstShot !== null && look.hook.headline) {
-    // Above the topmost of the first shot's subtitles so it holds still
-    // while they change underneath it, or below them when there's no room.
-    const { image, height } = await renderHeadlineImage(look.hook.headline)
-    overlays.push({ start: 0, end: firstShot, image, y: headlineY(firstShotBoxes, height, look.hook.position) })
+    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   return overlays
 }
@@ -255,11 +232,11 @@ export async function burnSubtitles(
     return videoBlob
   }
   const overlays = await renderSubtitleOverlays(translated, look)
-  const zoomUntil = punchInUntil(look.hook, look.firstShotDuration)
+  const plan = punchInPlan(look.hook, look.firstShotDuration)
 
   if (await canUseWebCodecs()) {
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchInUntil: zoomUntil })
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan })
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -267,7 +244,7 @@ export async function burnSubtitles(
       onProgress?.(0)
     }
   }
-  return burnSubtitlesFFmpeg(videoBlob, overlays, zoomUntil, onProgress, signal)
+  return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal)
 }
 
 /**
@@ -290,7 +267,7 @@ export async function burnShotSubtitles(
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
   const overlays = await renderSubtitleOverlays(cues, look)
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
-    punchInUntil: punchInUntil(look.hook, look.firstShotDuration),
+    punchIn: punchInPlan(look.hook, look.firstShotDuration),
   })
 }
 
@@ -326,13 +303,13 @@ export function ffmpegProgressRatio(timeMicros: number, durationSec: number): nu
 
 /**
  * ffmpeg.wasm path: feed each overlay's PNG in as a time-bounded image input
- * and composite them via a chained overlay filtergraph, over the punch-in
+ * and composite them via a chained overlay filtergraph, over the snap zoom
  * when there is one.
  */
 async function burnSubtitlesFFmpeg(
   videoBlob: Blob,
   overlays: SubtitleOverlay[],
-  zoomUntil: number | null,
+  plan: PunchInPlan | null,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
@@ -365,7 +342,7 @@ async function burnSubtitlesFFmpeg(
 
     const { filterGraph, outputLabel } = buildOverlayFilterGraph(
       overlays.map(o => o.y),
-      zoomUntil !== null ? punchInFilter(zoomUntil) : undefined,
+      plan !== null ? punchInFilter(plan) : undefined,
     )
 
     // buildOverlayFilterGraph's chain references each overlay's image input by an
@@ -384,7 +361,7 @@ async function burnSubtitlesFFmpeg(
     // stay burned in (and, being the topmost stage, visually hide every
     // later overlay too) all the way to the end of the video. `pass` makes the
     // stage fall back to showing its unmodified input once the overlay
-    // stream ends, so the caption (or headline) correctly disappears at overlay.end.
+    // stream ends, so the caption correctly disappears at overlay.end.
     const aliasStages = overlays.map((_, i) => `[${i + 1}:v]copy[sub${i}]`)
     const overlayStages = filterGraph.replace(/overlay=/g, 'overlay=eof_action=pass:')
     const fullFilterGraph = [...aliasStages, overlayStages].filter(Boolean).join(';')

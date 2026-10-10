@@ -82,8 +82,6 @@
   width: 100%;
   border-radius: 8px;
   background: #000;
-  /* Smooths the punch-in, which the page sets a few times a second. */
-  transition: transform 250ms linear;
 }
 
 .previewWrapper {
@@ -144,15 +142,4 @@
 
 .positionBtn:disabled {
   opacity: 0.4;
-}
-
-.headlineInput {
-  width: 100%;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  padding: 8px;
-  /* ≥16px, or iOS Safari zooms in on focus and stays zoomed after blur. */
-  font-size: 1rem;
 }

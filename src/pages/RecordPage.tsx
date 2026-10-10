@@ -8,6 +8,7 @@ import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
+import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { Shot } from '../types'
 import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
@@ -173,11 +174,11 @@ export default function RecordPage() {
         // is still worth saving — just flagged as degraded rather than dropped.
         await saveShotVideo(safeScript.id, shot.id, processed.blob)
         if (!processed.ok) {
-          degradedShotTexts.push(shot.text)
+          degradedShotTexts.push(stripEmphasis(shot.text))
         }
       } catch (err) {
         console.error('Failed to import a recorded shot video', err)
-        failedShotTexts.push(shot.text)
+        failedShotTexts.push(stripEmphasis(shot.text))
       }
       setBulkImportProgress({ done: i + 1, total: targets.length })
     }
@@ -283,7 +284,7 @@ export default function RecordPage() {
 
         {/* Teleprompter text — top of screen, near front camera */}
         <div className={styles.promptArea}>
-          <p className={styles.promptText}>{currentShot?.text}</p>
+          <p className={styles.promptText}>{currentShot && stripEmphasis(currentShot.text)}</p>
         </div>
 
         {/* Per-shot trim settings */}
@@ -464,7 +465,7 @@ export default function RecordPage() {
                   onClick={() => handleJumpToShot(i)}
                 >
                   <span className={styles.shotListNum}>{i + 1}</span>
-                  <span className={styles.shotListText}>{shot.text}</span>
+                  <span className={styles.shotListText}>{stripEmphasis(shot.text)}</span>
                 </button>
               ))}
             </div>

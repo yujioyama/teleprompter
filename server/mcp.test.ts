@@ -80,6 +80,7 @@ describe('handleMcpRequest', () => {
     const { result } = await res.json()
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual([TOOL_NAME, SUBTITLES_TOOL_NAME])
     expect(result.tools[0].description).toContain('1ショット＝1行')
+    expect(result.tools[0].description).toContain('*…*')
     expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption'])
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
