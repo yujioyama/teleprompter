@@ -526,29 +526,29 @@ describe('SubtitleWorkflow punch-in', () => {
     Object.defineProperty(video, 'currentTime', { value: t, configurable: true })
   }
 
-  it('snaps the preview video in about (50%, 40%) during the first shot while playing, unless the zoom is off', async () => {
+  it('zooms the preview video in about (50%, 40%) during the first shot while playing, unless the zoom is off', async () => {
     const onChange = await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 1)
+    setTime(video, 1.2)
     fireEvent.play(video)
     fireEvent.timeUpdate(video)
-    expect(video.style.transform).toBe('scale(1.25)')
+    expect(video.style.transform).toBe('scale(1.125)')
     expect(video.style.transformOrigin).toBe('50% 40%')
 
-    fireEvent.click(screen.getByLabelText('スナップズーム'))
+    fireEvent.click(screen.getByLabelText('ズームイン'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
   })
 
-  it('shows the preview at 1x when paused, even inside the snap, so the controls stay reachable', async () => {
+  it('shows the preview at 1x when paused, even inside the zoom, so the controls stay reachable', async () => {
     await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 1)
+    setTime(video, 1.2)
     fireEvent.timeUpdate(video)
     expect(video.style.transform).toBe('')
 
     fireEvent.play(video)
-    expect(video.style.transform).toBe('scale(1.25)')
+    expect(video.style.transform).toBe('scale(1.125)')
     fireEvent.pause(video)
     expect(video.style.transform).toBe('')
 
@@ -575,22 +575,22 @@ describe('SubtitleWorkflow punch-in', () => {
       fireEvent.play(video)
       expect(video.style.transform).toBe('')
 
-      setTime(video, 1)
+      setTime(video, 1.2)
       act(() => frames.shift()!(0))
-      expect(video.style.transform).toBe('scale(1.25)')
+      expect(video.style.transform).toBe('scale(1.125)')
 
       // Past the first shot (2s) plus the short tail: the frame is ignored,
-      // so the last update (inside the snap) still stands.
+      // so the last update (inside the zoom) still stands.
       setTime(video, 5)
       act(() => frames.shift()!(0))
-      expect(video.style.transform).toBe('scale(1.25)')
+      expect(video.style.transform).toBe('scale(1.125)')
       // The slower timeupdate still moves the preview on.
       fireEvent.timeUpdate(video)
       expect(video.style.transform).toBe('')
     })
   })
 
-  it('sets the zoom and when it snaps, reporting them to be saved', async () => {
+  it('sets the zoom and when it starts, reporting them to be saved', async () => {
     const onChange = await renderTranslated()
     const zoomGroup = within(screen.getByRole('group', { name: 'ズーム倍率' }))
     expect(zoomGroup.getByText('1.25倍')).toHaveAttribute('aria-pressed', 'true')
@@ -612,7 +612,7 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(onChange).toHaveBeenCalledWith({ impactEnabled: false })
     for (const button of strength().getAllByRole('button')) expect(button).toBeDisabled()
 
-    fireEvent.click(screen.getByLabelText('スナップズーム'))
+    fireEvent.click(screen.getByLabelText('ズームイン'))
     expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
     expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
   })

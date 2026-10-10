@@ -48,7 +48,7 @@ export const JA_STYLE: TextStyle = { weight: 'bold', maxPx: 50, minPx: 38, maxLi
 
 /**
  * The first shot's cues: bigger English only, so the frame stays clear for
- * the face and the snap zoom (see subtitleHook).
+ * the face and the zoom in (see subtitleHook).
  */
 export type CueVariant = 'normal' | 'hook'
 export const HOOK_EN_STYLE: TextStyle = { weight: '800', maxPx: 80, minPx: 64, maxLines: 3, lineHeight: 1.2 }

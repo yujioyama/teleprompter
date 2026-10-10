@@ -12,7 +12,6 @@ import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   hasFirstShotExtras,
   punchInPlan,
-  SNAP_DURATION,
   styleCues,
   ZOOM_ANCHOR_Y,
   type HookOptions,
@@ -42,7 +41,7 @@ import {
  * `-loop 1 -t <duration>` and an `-itsoffset <start>` at the ffmpeg-input
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
- * through the filter string itself. `baseFilter` (the snap zoom) is applied
+ * through the filter string itself. `baseFilter` (the zoom in) is applied
  * to the video first, under the overlays.
  */
 export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { filterGraph: string; outputLabel: string } {
@@ -61,18 +60,19 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 }
 
 /**
- * ffmpeg's snap zoom, as snapZoomScale does it on the hardware path: 1x
- * until `at`, an ease-out (quint) to `zoom` about (50%, ZOOM_ANCHOR_Y),
- * held until `until`. `in` counts input frames of the joined video, which is
+ * ffmpeg's zoom in, as punchInScale does it on the hardware path: 1x until
+ * `at`, then a steady push in about (50%, ZOOM_ANCHOR_Y) reaching `zoom` at
+ * `until`. `in` counts input frames of the joined video, which is
  * normalized to OUTPUT_FRAME_RATE; +0.5 takes the frame's midpoint, as the
- * hardware path does. zoompan crops to whole pixels, so the zoom may judder
- * slightly — accepted on this last-resort path, which has no impact effect.
+ * hardware path does. zoompan crops to whole pixels, so the slow zoom may
+ * judder slightly — accepted on this last-resort path, which has no impact
+ * effect.
  */
 export function punchInFilter({ punchIn, until }: PunchInPlan): string {
   const t = `(in+0.5)/${OUTPUT_FRAME_RATE}`
   const at = punchIn.at.toFixed(3)
-  const p = `min((${t}-${at})/${SNAP_DURATION},1)`
-  const z = `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${(punchIn.zoom - 1).toFixed(2)}*(1-pow(1-${p},5)),1))`
+  const span = (until - punchIn.at).toFixed(3)
+  const z = `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${(punchIn.zoom - 1).toFixed(2)}*(${t}-${at})/${span},1))`
   return `zoompan=z='${z}':x='iw/2-iw/zoom/2':y='ih*${ZOOM_ANCHOR_Y}-ih*${ZOOM_ANCHOR_Y}/zoom'`
     + `:d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }
@@ -303,7 +303,7 @@ export function ffmpegProgressRatio(timeMicros: number, durationSec: number): nu
 
 /**
  * ffmpeg.wasm path: feed each overlay's PNG in as a time-bounded image input
- * and composite them via a chained overlay filtergraph, over the snap zoom
+ * and composite them via a chained overlay filtergraph, over the zoom in
  * when there is one.
  */
 async function burnSubtitlesFFmpeg(

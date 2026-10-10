@@ -215,10 +215,10 @@ describe('buildOverlayFilterGraph with a punch-in', () => {
 })
 
 describe('punchInFilter', () => {
-  it('snaps in about (50%, 40%) at `at`, holds, and drops back at `until`, at the output size and rate', () => {
+  it('pushes in about (50%, 40%) from `at` to `until`, then drops back, at the output size and rate', () => {
     const plan = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 2 }
     expect(punchInFilter(plan)).toBe(
-      "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,2.000),1+0.25*(1-pow(1-min(((in+0.5)/30-0.400)/0.12,1),5)),1))'"
+      "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,2.000),1+0.25*((in+0.5)/30-0.400)/1.600,1))'"
         + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
     )
   })

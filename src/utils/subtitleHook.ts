@@ -12,16 +12,16 @@ import type { SubtitlePosition } from './subtitlePosition'
 
 export type StyledCue = SubtitleCue & { variant: CueVariant }
 
-/** How far the first shot snaps in. */
+/** How far the first shot has zoomed in by its end. */
 export type PunchInZoom = 1.15 | 1.25 | 1.35
 export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
 export type ImpactStrength = 'weak' | 'medium' | 'strong'
 
 export interface PunchIn {
   zoom: PunchInZoom
-  /** Seconds into the first shot when the snap starts. */
+  /** Seconds into the first shot when the zoom starts. */
   at: number
-  /** The impact effect riding on the snap; null = off. */
+  /** The impact effect as the zoom starts; null = off. */
   impact: ImpactStrength | null
 }
 
@@ -30,7 +30,7 @@ export interface HookOptions {
   style: boolean
   /** 0-100, where hook cues are centered. */
   position: SubtitlePosition
-  /** The first shot's snap zoom; null = off. */
+  /** The first shot's zoom in; null = off. */
   punchIn: PunchIn | null
 }
 
@@ -88,38 +88,32 @@ export function styleCues(
   }))
 }
 
-/** Seconds the snap takes to land. */
-export const SNAP_DURATION = 0.12
 /** The zoom is about (50%, 40%) of the frame: roughly where the face is. */
 export const ZOOM_ANCHOR_Y = 0.4
 
-// Fast, then settling smoothly: reads as a camera move, not a ramp.
-const easeOutQuint = (p: number) => 1 - (1 - p) ** 5
-
 /**
- * How far the picture is zoomed at `t` seconds: 1x until `at`, then a
- * SNAP_DURATION ease-out to `zoom`, held until `until` (the end of the
- * first shot), where the cut drops it back to 1x.
+ * How far the picture is zoomed at `t` seconds: 1x until `at`, then a slow,
+ * steady push in that reaches `zoom` as the first shot ends at `until`,
+ * where the cut drops it back to 1x.
  */
-export function snapZoomScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, until: number): number {
+export function punchInScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, until: number): number {
   if (t < punchIn.at || t >= until) return 1
-  const p = Math.min((t - punchIn.at) / SNAP_DURATION, 1)
-  return 1 + (punchIn.zoom - 1) * easeOutQuint(p)
+  return 1 + (punchIn.zoom - 1) * (t - punchIn.at) / (until - punchIn.at)
 }
 
 /** Seconds past the first shot's end that frame-accurate time still matters, so the cut back to 1x lands. */
 const FRAME_FOLLOW_TAIL = 0.1
 
 /**
- * Whether the preview needs frame-accurate time at `t`: only while the snap
- * zoom is on and the playhead is in (or just past) the first shot. Elsewhere
+ * Whether the preview needs frame-accurate time at `t`: only while the
+ * zoom in is on and the playhead is in (or just past) the first shot. Elsewhere
  * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
  */
 export function followsFrames(t: number, punchIn: PunchIn | null, firstShotDuration: number | null): boolean {
   return punchIn !== null && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
 }
 
-/** Seconds the impact effect lasts from the start of the snap. */
+/** Seconds the impact effect lasts from the start of the zoom. */
 export const IMPACT_DURATION = 0.15
 
 export interface ImpactAmounts {
@@ -136,9 +130,9 @@ export const IMPACT_LEVELS: Record<ImpactStrength, ImpactAmounts> = {
 }
 
 /**
- * The impact effect at `t`, or null outside it. It peaks as the snap
- * starts and fades as (1-u)^4 over IMPACT_DURATION, the shape of the quint
- * ease-out's speed, so it reads as the hit of the camera move.
+ * The impact effect at `t`, or null outside it. It peaks as the zoom
+ * starts and fades as (1-u)^4 over IMPACT_DURATION, a quick hit that kicks
+ * off the slow push in.
  */
 export function impactAt(t: number, punchIn: PunchIn, until: number): ImpactAmounts | null {
   if (punchIn.impact === null || t < punchIn.at || t >= until) return null

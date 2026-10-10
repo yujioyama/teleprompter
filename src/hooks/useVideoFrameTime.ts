@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
  * Report `video`'s current time on every displayed frame while it plays
  * (requestVideoFrameCallback, or requestAnimationFrame where missing).
  * `timeupdate` fires only about 4 times a second, too coarse to show the
- * first shot's 0.12 s snap zoom in the preview.
+ * first shot's zoom in smoothly in the preview.
  */
 export function useVideoFrameTime(video: HTMLVideoElement | null, onTime: (t: number) => void): void {
   const onTimeRef = useRef(onTime)
