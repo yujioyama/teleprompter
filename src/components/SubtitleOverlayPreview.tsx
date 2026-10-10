@@ -15,6 +15,16 @@ import {
   layoutCue,
   outlineWidth,
 } from '../utils/subtitleLayout'
+import {
+  EMOJI_FONT_FAMILY,
+  STICKER_CENTER_X,
+  STICKER_CENTER_Y,
+  STICKER_EMOJI_PX,
+  STICKER_OUTLINE_PX,
+  STICKER_ROTATION_DEG,
+  stickerOf,
+  stripStickers,
+} from '../utils/subtitleSticker'
 import styles from './SubtitleOverlayPreview.module.css'
 
 interface SubtitleOverlayPreviewProps {
@@ -80,7 +90,13 @@ export default function SubtitleOverlayPreview({
     [cues, firstShotDuration, hookStyle],
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
-  const layout = useMemo(() => (cue ? layoutCue(cue, measure) : null), [cue, measure])
+  const layout = useMemo(
+    () => (cue ? layoutCue(cue.variant === 'hook' ? { ...cue, en: stripStickers(cue.en) } : cue, measure) : null),
+    [cue, measure],
+  )
+  // As burned: only translated cues count, and it stays up for the whole first shot.
+  const sticker = useMemo(() => stickerOf(styled.filter(c => c.ja !== null)), [styled])
+  const showSticker = sticker !== null && firstShotDuration !== null && currentTime < firstShotDuration
 
   const hookPosition = hook?.position ?? position
 
@@ -106,6 +122,36 @@ export default function SubtitleOverlayPreview({
     </div>
   )
 
-  if (!cueBox) return null
-  return cueBox
+  // The die-cut white border, approximated with hard white shadows on every side.
+  const o = cqw(STICKER_OUTLINE_PX)
+  const stickerBox = showSticker && (
+    <span
+      className={styles.sticker}
+      data-testid="subtitle-sticker"
+      style={{
+        left: `${STICKER_CENTER_X * 100}%`,
+        top: `${STICKER_CENTER_Y}%`,
+        fontFamily: EMOJI_FONT_FAMILY,
+        fontSize: cqw(STICKER_EMOJI_PX),
+        transform: `translate(-50%, -50%) rotate(${STICKER_ROTATION_DEG}deg)`,
+        filter: [
+          `drop-shadow(${o} 0 0 #fff)`,
+          `drop-shadow(-${o} 0 0 #fff)`,
+          `drop-shadow(0 ${o} 0 #fff)`,
+          `drop-shadow(0 -${o} 0 #fff)`,
+          `drop-shadow(0 ${cqw(8)} ${cqw(12)} rgba(0,0,0,0.35))`,
+        ].join(' '),
+      }}
+    >
+      {sticker}
+    </span>
+  )
+
+  if (!cueBox && !stickerBox) return null
+  return (
+    <>
+      {cueBox}
+      {stickerBox}
+    </>
+  )
 }

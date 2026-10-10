@@ -1,3 +1,4 @@
+import { STICKER_CENTER_Y, STICKER_IMAGE_HEIGHT } from './subtitleSticker'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   buildOverlayFilterGraph,
@@ -71,6 +72,10 @@ function stubCanvas() {
     },
     beginPath() {},
     fill() {},
+    translate() {},
+    rotate() {},
+    drawImage() {},
+    fillRect() {},
   }
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never)
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(cb => cb(new Blob(['png'])))
@@ -166,6 +171,24 @@ describe('renderSubtitleOverlays', () => {
       [2, 3, subtitleY(72, 1920, layoutCue(normal, measure).height)],
     ])
   })
+
+  it('turns a hook cue\'s emoji into a sticker for the whole first shot, not drawn in its text', async () => {
+    const { drawn } = stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const overlays = await renderSubtitleOverlays([hook], LOOK)
+    expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1], [0, 2]])
+    expect(overlays[1].y).toBe(subtitleY(STICKER_CENTER_Y, 1920, STICKER_IMAGE_HEIGHT))
+    expect(drawn.map(d => d.text)).toContain('🧴')
+    expect(drawn.some(d => d.text !== '🧴' && d.text.includes('🧴'))).toBe(false)
+  })
+
+  it('makes no sticker from a normal cue or an untranslated hook cue', async () => {
+    stubCanvas()
+    const normal: StyledCue = { id: 'b', start: 2, end: 3, en: 'Bye 👋', ja: 'じゃあ', variant: 'normal' }
+    const untranslated: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi 🧴', ja: null, variant: 'hook' }
+    const overlays = await renderSubtitleOverlays([untranslated, normal], LOOK)
+    expect(overlays.map(o => [o.start, o.end])).toEqual([[2, 3]])
+  })
 })
 
 describe('burnSubtitles', () => {
@@ -210,7 +233,7 @@ describe('buildOverlayFilterGraph with a punch-in', () => {
 
 describe('punchInFilter', () => {
   it('pushes in about (50%, 40%) from `at` to `until`, then drops back, at the output size and rate', () => {
-    const plan = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }, until: 2 }
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }, until: 2 }
     expect(punchInFilter(plan)).toBe(
       "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,2.000),1+0.25*((in+0.5)/30-0.400)/1.600,1))'"
         + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
@@ -218,7 +241,17 @@ describe('punchInFilter', () => {
   })
 })
 
-const PUNCH_IN = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+describe('punchInFilter zooming out', () => {
+  it('holds the zoom until `at`, then pulls back to 1x at `until`', () => {
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'out' as const, at: 0.4, impact: null }, until: 2 }
+    expect(punchInFilter(plan)).toBe(
+      "zoompan=z='if(lt((in+0.5)/30,0.400),1.25,if(lt((in+0.5)/30,2.000),1.25-0.25*((in+0.5)/30-0.400)/1.600,1))'"
+        + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
+    )
+  })
+})
+
+const PUNCH_IN = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }
 
 describe('burnSubtitles punch-in', () => {
   it('zooms the whole video\'s first shot on the hardware path', async () => {

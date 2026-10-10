@@ -20,6 +20,18 @@ import {
 } from './subtitleHook'
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
+  EMOJI_FONT_FAMILY,
+  STICKER_CENTER_X,
+  STICKER_CENTER_Y,
+  STICKER_EMOJI_PX,
+  STICKER_IMAGE_HEIGHT,
+  STICKER_OUTLINE_PX,
+  STICKER_ROTATION_DEG,
+  STICKER_SHADOW,
+  stickerOf,
+  stripStickers,
+} from './subtitleSticker'
+import {
   EN_STYLE,
   JA_STYLE,
   SUBTITLE_BLOCK_GAP,
@@ -60,8 +72,9 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 }
 
 /**
- * ffmpeg's zoom in, as punchInScale does it on the hardware path: 1x until
- * `at`, then a steady push in about (50%, ZOOM_ANCHOR_Y) reaching `zoom` at
+ * ffmpeg's zoom, as punchInScale does it on the hardware path, about
+ * (50%, ZOOM_ANCHOR_Y): pushing in from 1x at `at` to `zoom` at `until`, or
+ * (direction 'out') held at `zoom` until `at`, then pulled back to 1x at
  * `until`. `in` counts input frames of the joined video, which is
  * normalized to OUTPUT_FRAME_RATE; +0.5 takes the frame's midpoint, as the
  * hardware path does. zoompan crops to whole pixels, so the slow zoom may
@@ -72,7 +85,11 @@ export function punchInFilter({ punchIn, until }: PunchInPlan): string {
   const t = `(in+0.5)/${OUTPUT_FRAME_RATE}`
   const at = punchIn.at.toFixed(3)
   const span = (until - punchIn.at).toFixed(3)
-  const z = `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${(punchIn.zoom - 1).toFixed(2)}*(${t}-${at})/${span},1))`
+  const amount = (punchIn.zoom - 1).toFixed(2)
+  const progress = `(${t}-${at})/${span}`
+  const z = punchIn.direction === 'out'
+    ? `if(lt(${t},${at}),${punchIn.zoom.toFixed(2)},if(lt(${t},${until.toFixed(3)}),${punchIn.zoom.toFixed(2)}-${amount}*${progress},1))`
+    : `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${amount}*${progress},1))`
   return `zoompan=z='${z}':x='iw/2-iw/zoom/2':y='ih*${ZOOM_ANCHOR_Y}-ih*${ZOOM_ANCHOR_Y}/zoom'`
     + `:d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }
@@ -185,18 +202,81 @@ export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; h
   return { image: await toPng(canvas), height: layout.height }
 }
 
+/** A square canvas `size` px wide with a 2D context. */
+function squareCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  return { canvas, ctx }
+}
+
+/**
+ * Render the first shot's sticker: the emoji, big, with a white die-cut
+ * border and a soft shadow, tilted a little, on a transparent PNG as wide as
+ * the video and STICKER_IMAGE_HEIGHT tall (centered on STICKER_CENTER_X).
+ * The border is the emoji's own silhouette in white, stamped in a ring
+ * around it, so it follows the shape rather than being a box.
+ */
+export async function renderStickerImage(emoji: string): Promise<{ image: Blob; height: number }> {
+  const size = Math.ceil(STICKER_EMOJI_PX * 1.3) + STICKER_OUTLINE_PX * 2
+  const center = size / 2
+
+  const glyph = squareCanvas(size)
+  glyph.ctx.font = `${STICKER_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
+  glyph.ctx.textAlign = 'center'
+  glyph.ctx.textBaseline = 'middle'
+  glyph.ctx.fillText(emoji, center, center)
+
+  const silhouette = squareCanvas(size)
+  silhouette.ctx.drawImage(glyph.canvas, 0, 0)
+  silhouette.ctx.globalCompositeOperation = 'source-in'
+  silhouette.ctx.fillStyle = '#ffffff'
+  silhouette.ctx.fillRect(0, 0, size, size)
+
+  const sticker = squareCanvas(size)
+  const steps = 24
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * Math.PI * 2
+    sticker.ctx.drawImage(silhouette.canvas, Math.cos(a) * STICKER_OUTLINE_PX, Math.sin(a) * STICKER_OUTLINE_PX)
+  }
+  sticker.ctx.drawImage(glyph.canvas, 0, 0)
+
+  const { canvas, ctx } = overlayCanvas(STICKER_IMAGE_HEIGHT)
+  ctx.translate(SUBTITLE_REFERENCE_WIDTH * STICKER_CENTER_X, STICKER_IMAGE_HEIGHT / 2)
+  ctx.rotate((STICKER_ROTATION_DEG * Math.PI) / 180)
+  ctx.shadowColor = STICKER_SHADOW.color
+  ctx.shadowBlur = STICKER_SHADOW.blur
+  ctx.shadowOffsetY = STICKER_SHADOW.offsetY
+  ctx.drawImage(sticker.canvas, -center, -center)
+
+  for (const c of [glyph.canvas, silhouette.canvas, sticker.canvas]) {
+    c.width = 0
+    c.height = 0
+  }
+  return { image: await toPng(canvas), height: STICKER_IMAGE_HEIGHT }
+}
+
 /**
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
- * translation aren't burned in.
+ * translation aren't burned in. An emoji in a hook cue isn't drawn in its
+ * text: it becomes the sticker, from 0 s to the end of the first shot.
  */
 export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
-    const { image, height } = await renderCueImage(cue)
+    const drawn = cue.variant === 'hook' ? { ...cue, en: stripStickers(cue.en) } : cue
+    const { image, height } = await renderCueImage(drawn)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
+  }
+  const sticker = look.firstShotDuration !== null ? stickerOf(cues.filter(c => c.ja !== null)) : null
+  if (sticker && look.firstShotDuration !== null) {
+    const { image, height } = await renderStickerImage(sticker)
+    overlays.push({ start: 0, end: look.firstShotDuration, image, y: clampedSubtitleY(STICKER_CENTER_Y, height) })
   }
   return overlays
 }

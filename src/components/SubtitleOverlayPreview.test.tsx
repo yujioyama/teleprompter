@@ -61,6 +61,24 @@ describe('SubtitleOverlayPreview', () => {
     expect(within(box).getByText('こんにちは')).toBeInTheDocument()
   })
 
+  it('shows a hook cue\'s emoji as a sticker through the first shot, not in its text', () => {
+    const cues: SubtitleCue[] = [
+      { id: 'c1', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン' },
+      { id: 'c2', start: 1, end: 4, en: 'Every night', ja: '毎晩' },
+    ]
+    const { rerender } = render(
+      <SubtitleOverlayPreview cues={cues} position={72} currentTime={0.5} hook={HOOK} firstShotDuration={2} />,
+    )
+    expect(screen.getByTestId('subtitle-sticker')).toHaveTextContent('🧴')
+    expect(screen.getByTestId('subtitle-overlay-box')).not.toHaveTextContent('🧴')
+
+    rerender(<SubtitleOverlayPreview cues={cues} position={72} currentTime={1.5} hook={HOOK} firstShotDuration={2} />)
+    expect(screen.getByTestId('subtitle-sticker')).toBeInTheDocument()
+
+    rerender(<SubtitleOverlayPreview cues={cues} position={72} currentTime={2.5} hook={HOOK} firstShotDuration={2} />)
+    expect(screen.queryByTestId('subtitle-sticker')).not.toBeInTheDocument()
+  })
+
   it('keeps a tall hook box on screen, as the burn does', () => {
     const cue: SubtitleCue = {
       id: 'c1', start: 0, end: 2,

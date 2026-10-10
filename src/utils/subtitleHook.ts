@@ -16,9 +16,15 @@ export type StyledCue = SubtitleCue & { variant: CueVariant }
 export type PunchInZoom = 1.15 | 1.25 | 1.35
 export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
 export type ImpactStrength = 'weak' | 'medium' | 'strong'
+/**
+ * 'in': starts at 1x and pushes in. 'out': the first frame is already
+ * zoomed in, so the feed's first frame is a close-up, and it pulls back.
+ */
+export type ZoomDirection = 'in' | 'out'
 
 export interface PunchIn {
   zoom: PunchInZoom
+  direction: ZoomDirection
   /** Seconds into the first shot when the zoom starts. */
   at: number
   /** The impact effect as the zoom starts; null = off. */
@@ -36,7 +42,14 @@ export interface HookOptions {
 
 export type HookSettings = Pick<
   AppSettings,
-  'hookStyleEnabled' | 'hookPosition' | 'punchInEnabled' | 'punchInZoom' | 'punchInAt' | 'impactEnabled' | 'impactStrength'
+  | 'hookStyleEnabled'
+  | 'hookPosition'
+  | 'punchInEnabled'
+  | 'punchInZoom'
+  | 'punchInDirection'
+  | 'punchInAt'
+  | 'impactEnabled'
+  | 'impactStrength'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -46,6 +59,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     punchIn: settings.punchInEnabled
       ? {
           zoom: settings.punchInZoom,
+          direction: settings.punchInDirection,
           at: settings.punchInAt,
           impact: settings.impactEnabled ? settings.impactStrength : null,
         }
@@ -92,13 +106,23 @@ export function styleCues(
 export const ZOOM_ANCHOR_Y = 0.4
 
 /**
- * How far the picture is zoomed at `t` seconds: 1x until `at`, then a slow,
- * steady push in that reaches `zoom` as the first shot ends at `until`,
- * where the cut drops it back to 1x.
+ * How far the picture is zoomed at `t` seconds during the first shot (which
+ * ends at `until`; from there on it is 1x).
+ * - 'in': 1x until `at`, then a slow, steady push in that reaches `zoom` as
+ *   the first shot ends, where the cut drops it back to 1x.
+ * - 'out': `zoom` from the first frame until `at`, then a slow, steady pull
+ *   back that reaches 1x as the first shot ends, so the cut changes nothing.
  */
-export function punchInScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, until: number): number {
-  if (t < punchIn.at || t >= until) return 1
-  return 1 + (punchIn.zoom - 1) * (t - punchIn.at) / (until - punchIn.at)
+export function punchInScale(
+  t: number,
+  punchIn: Pick<PunchIn, 'zoom' | 'at'> & { direction?: ZoomDirection },
+  until: number,
+): number {
+  if (t >= until) return 1
+  const out = punchIn.direction === 'out'
+  if (t < punchIn.at) return out ? punchIn.zoom : 1
+  const progress = (t - punchIn.at) / (until - punchIn.at)
+  return out ? punchIn.zoom - (punchIn.zoom - 1) * progress : 1 + (punchIn.zoom - 1) * progress
 }
 
 /** Seconds past the first shot's end that frame-accurate time still matters, so the cut back to 1x lands. */
