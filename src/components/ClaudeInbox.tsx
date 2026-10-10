@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { fetchInbox, type InboxItem } from '../utils/inbox'
 import styles from './ClaudeInbox.module.css'
 
@@ -8,48 +9,26 @@ interface Props {
 }
 
 /**
- * Scripts sent from Claude chat and not yet made into a script. Checked on
- * mount and whenever the app returns to the foreground, since a home-screen
- * app often resumes on Home without remounting it. Any failure just hides
- * the section: Home must work the same without the inbox.
+ * Scripts sent from Claude chat and not yet made into a script, checked on
+ * mount and whenever the app returns to the foreground. Any failure just
+ * hides the section: Home must work the same without the inbox.
  */
 export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
   const [items, setItems] = useState<InboxItem[]>([])
 
-  useEffect(() => {
-    if (!inboxKey) {
-      setItems([])
-      return
-    }
-    let cancelled = false
-    // Only the latest check may update the list: an older one answering
-    // last could bring back an item that was taken in the meantime.
-    let latest = 0
-    function load() {
-      const request = ++latest
-      const isStale = () => cancelled || request !== latest
-      fetchInbox(inboxKey)
-        .then(next => {
-          if (!isStale()) setItems(next)
-        })
-        .catch(err => {
-          if (isStale()) return
-          console.error('Failed to check the Claude inbox', err)
-          setItems([])
-        })
-    }
-    function onVisibility() {
-      if (document.visibilityState === 'visible') load()
-    }
-    load()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      cancelled = true
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [inboxKey])
+  useForegroundCheck(inboxKey || null, (key, isStale) => {
+    fetchInbox(key)
+      .then(next => {
+        if (!isStale()) setItems(next)
+      })
+      .catch(err => {
+        if (isStale()) return
+        console.error('Failed to check the Claude inbox', err)
+        setItems([])
+      })
+  })
 
-  if (items.length === 0) return null
+  if (!inboxKey || items.length === 0) return null
 
   return (
     <section className={styles.inbox}>

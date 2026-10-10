@@ -8,7 +8,12 @@ export interface SubtitleCue {
   ja: string | null
 }
 
-export function buildClaudePrompt(cues: SubtitleCue[]): string {
+/**
+ * With a `requestId` (this device can receive from the connector), Claude is
+ * also asked to send the lines back with send_subtitles, so they arrive in
+ * the subtitle step without pasting.
+ */
+export function buildClaudePrompt(cues: SubtitleCue[], requestId?: string): string {
   // The *emphasis* markers are for the burn-in only, not for translating.
   const lines = cues.map((cue, i) => `${i + 1}. ${stripEmphasis(cue.en)}`).join('\n')
   return `以下は、僕（Yuji）のショート動画の英語セリフです。動画に焼き込む日本語字幕を作ってください。
@@ -46,9 +51,19 @@ export function buildClaudePrompt(cues: SubtitleCue[]): string {
 【出力】
 - 「番号. 日本語訳」の形式のみ。番号と行数は英語と完全に一致させる
 - 前置きや説明は不要
-
+${requestId ? sendBackSection(requestId, cues.length) : ''}
 【英語セリフ】
 ${lines}`
+}
+
+function sendBackSection(requestId: string, lineCount: number): string {
+  return `
+【teleprompterへの送信】
+まず teleprompter コネクタの send_subtitles ツールを呼び出して、翻訳した各行を送ってください。そのあとで、上の【出力】の形式で訳を表示してください。
+- request_id: ${requestId}
+- lines: 翻訳した各行を番号なしで1行ずつ、英語セリフと同じ順番で（${lineCount}行）
+ツールが見つからないときは、【出力】の形式で表示するだけで構いません。
+`
 }
 
 interface ParseSuccess {
@@ -87,10 +102,18 @@ export function parseJapanesePaste(text: string, cues: SubtitleCue[]): ParseSucc
     }
   }
 
-  return {
-    ok: true,
-    cues: cues.map((cue, i) => ({ ...cue, ja: map.get(i + 1)! })),
+  return withJapaneseLines(cues, cues.map((_, i) => map.get(i + 1)!))
+}
+
+/** Japanese lines onto the cues in the same positions, when the counts match. */
+export function withJapaneseLines(cues: SubtitleCue[], lines: string[]): ParseSuccess | ParseFailure {
+  if (lines.length !== cues.length) {
+    return {
+      ok: false,
+      error: `行数が一致しません（英語${cues.length}行 / 日本語${lines.length}行）。`,
+    }
   }
+  return { ok: true, cues: cues.map((cue, i) => ({ ...cue, ja: lines[i] })) }
 }
 
 export interface ShotCueInput {

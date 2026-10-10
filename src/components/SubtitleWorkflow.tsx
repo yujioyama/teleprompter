@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste } from '../utils/subtitleCues'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines } from '../utils/subtitleCues'
+import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
+import { useForegroundCheck } from '../hooks/useForegroundCheck'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import {
   SubtitlePosition,
   SUBTITLE_POSITION_BOTTOM,
@@ -81,6 +84,11 @@ interface SubtitleWorkflowProps {
     onProgress: (progress: WhisperProgress) => void,
     signal: AbortSignal,
   ) => Promise<SubtitleCue[]>
+  /**
+   * The Claude inbox key (受け取り用キー). With one, the copied prompt asks
+   * Claude to send the Japanese back and this step picks it up by itself.
+   */
+  inboxKey?: string
 }
 
 const IMPACT_STRENGTHS: { label: string; value: ImpactStrength }[] = [
@@ -104,8 +112,10 @@ export default function SubtitleWorkflow({
   burn,
   onBurned,
   transcribe = transcribeSpeech,
+  inboxKey = '',
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
+  const hasAnyJapanese = cues.some(c => c.ja !== null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -232,7 +242,7 @@ export default function SubtitleWorkflow({
   }
 
   async function handleCopyPrompt() {
-    await navigator.clipboard.writeText(buildClaudePrompt(cues))
+    await navigator.clipboard.writeText(buildClaudePrompt(cues, inboxKey ? requestId : undefined))
     if (copyToastTimerRef.current !== null) clearTimeout(copyToastTimerRef.current)
     setCopyToastVisible(true)
     copyToastTimerRef.current = setTimeout(() => {
@@ -240,6 +250,39 @@ export default function SubtitleWorkflow({
       copyToastTimerRef.current = null
     }, 2000)
   }
+
+  // Lines Claude sent back through the connector for exactly these English
+  // cues: looked for on arrival and whenever the user returns from Claude.
+  // While the English is being edited, wait for it to settle rather than
+  // asking about every keystroke's version.
+  const requestId = subtitleRequestId(cues)
+  const settledRequestId = useDebouncedValue(requestId, 500)
+  const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !hasAnyJapanese
+  // The cues as they are when an answer arrives, not when the check began.
+  const latestCuesRef = useRef(cues)
+  useLayoutEffect(() => {
+    latestCuesRef.current = cues
+  })
+  useForegroundCheck(awaitingClaude ? settledRequestId : null, (id, isStale) => {
+    fetchSubtitles(inboxKey, id)
+      .then(lines => {
+        const current = latestCuesRef.current
+        // The English may have moved on while the check was out.
+        if (!lines || isStale() || subtitleRequestId(current) !== id) return
+        const result = withJapaneseLines(current, lines)
+        if (!result.ok) {
+          setPasteError(result.error)
+          return
+        }
+        setPasteError(null)
+        setNotice('Claudeの日本語訳を反映しました')
+        patch({ cues: result.cues })
+        deleteSubtitles(inboxKey, id).catch(err => console.error('Failed to clear Claude subtitles', err))
+      })
+      .catch(err => {
+        if (!isStale()) console.error('Failed to check for Claude subtitles', err)
+      })
+  })
 
   function handleApplyPaste() {
     const result = parseJapanesePaste(pasteText, cues)
@@ -289,7 +332,6 @@ export default function SubtitleWorkflow({
     }
   }
 
-  const hasAnyJapanese = cues.some(c => c.ja !== null)
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
   // The snap zoom is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
@@ -351,6 +393,7 @@ export default function SubtitleWorkflow({
               <button className={styles.copyBtn} onClick={handleCopyPrompt}>
                 📋 Claude用プロンプトをコピー
               </button>
+              {inboxKey && <p className={styles.hint}>Claudeチャットに貼ると、訳がこの画面に自動で入ります</p>}
               <textarea
                 className={styles.pasteArea}
                 placeholder="Claudeからの返信をここに貼り付け"

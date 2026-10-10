@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, cuesFromShotEntries, cuesForShot, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -30,6 +30,41 @@ describe('buildClaudePrompt emphasis', () => {
     const prompt = buildClaudePrompt([{ id: 'c0', start: 0, end: 1, en: 'I *love* it', ja: null }])
     expect(prompt).toContain('1. I love it')
     expect(prompt).not.toContain('*love*')
+  })
+})
+
+describe('buildClaudePrompt with a request id', () => {
+  it('asks Claude to send the lines back to the teleprompter under that id', () => {
+    const prompt = buildClaudePrompt(makeCues(['Hello there', 'This is a test']), 'k3x9-2')
+    expect(prompt).toContain('【teleprompterへの送信】')
+    expect(prompt).toContain('send_subtitles')
+    expect(prompt).toContain('request_id: k3x9-2')
+    expect(prompt).toContain('（2行）')
+    // Sent before the list appears, so the lines are there by the time the user goes back.
+    expect(prompt).toContain('まず teleprompter コネクタの send_subtitles')
+    expect(prompt.indexOf('send_subtitles')).toBeLessThan(prompt.indexOf('そのあと'))
+    // The English still comes last, numbered as before.
+    expect(prompt.trimEnd().endsWith('2. This is a test')).toBe(true)
+  })
+
+  it('leaves the prompt unchanged without one', () => {
+    const cues = makeCues(['Hello there'])
+    expect(buildClaudePrompt(cues)).not.toContain('send_subtitles')
+    expect(buildClaudePrompt(cues)).toBe(buildClaudePrompt(cues, undefined))
+  })
+})
+
+describe('withJapaneseLines', () => {
+  it('puts each line on the cue in the same position', () => {
+    const result = withJapaneseLines(makeCues(['Hello', 'World']), ['こんにちは', '世界'])
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) expect(result.cues.map(c => c.ja)).toEqual(['こんにちは', '世界'])
+  })
+
+  it('refuses a different number of lines', () => {
+    const result = withJapaneseLines(makeCues(['Hello', 'World']), ['こんにちは'])
+    expect(result).toMatchObject({ ok: false })
+    if (!result.ok) expect(result.error).toContain('行数が一致しません')
   })
 })
 

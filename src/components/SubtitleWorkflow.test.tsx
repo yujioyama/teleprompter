@@ -6,8 +6,14 @@ import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
 import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
+import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 
 vi.mock('../utils/burnSubtitles')
+vi.mock('../utils/subtitleRequest', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/subtitleRequest')>()),
+  fetchSubtitles: vi.fn(async () => null),
+  deleteSubtitles: vi.fn(async () => {}),
+}))
 
 const BLOB = new Blob(['x'], { type: 'video/mp4' })
 const SHOT_CUE_INPUTS: ShotCueInput[] = [{ text: 'Hello', duration: 2 }]
@@ -36,12 +42,14 @@ function ControlledSubtitleWorkflow({
   onBurned,
   transcribe,
   onHookSettingsChange,
+  inboxKey,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
   onBurned: (blob: Blob) => void
   transcribe?: (blob: Blob, onProgress: (p: WhisperProgress) => void, signal: AbortSignal) => Promise<SubtitleCue[]>
   onHookSettingsChange?: (patch: Partial<HookSettings>) => void
+  inboxKey?: string
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>(DEFAULT_HOOK_SETTINGS)
@@ -65,6 +73,7 @@ function ControlledSubtitleWorkflow({
       }
       onBurned={onBurned}
       transcribe={transcribe}
+      inboxKey={inboxKey}
     />
   )
 }
@@ -606,5 +615,120 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.click(screen.getByLabelText('スナップズーム'))
     expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
     expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
+  })
+})
+
+describe('SubtitleWorkflow Japanese sent back by Claude', () => {
+  const INPUTS: ShotCueInput[] = [{ text: 'Hello', duration: 2 }, { text: 'World', duration: 2 }]
+  const REQUEST_ID = subtitleRequestId([
+    { id: 'a', start: 0, end: 2, en: 'Hello', ja: null },
+    { id: 'b', start: 2, end: 4, en: 'World', ja: null },
+  ])
+
+  beforeEach(() => {
+    vi.mocked(fetchSubtitles).mockReset().mockResolvedValue(null)
+    vi.mocked(deleteSubtitles).mockClear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function renderWith(inboxKey?: string) {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={INPUTS} onBurned={vi.fn()} inboxKey={inboxKey} />)
+  }
+
+  it('applies the lines Claude already sent for these subtitles, then clears them', async () => {
+    vi.mocked(fetchSubtitles).mockResolvedValue(['こんにちは', '世界'])
+    renderWith('secret')
+
+    expect(await screen.findByDisplayValue('こんにちは')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('世界')).toBeInTheDocument()
+    expect(screen.getByText('Claudeの日本語訳を反映しました')).toBeInTheDocument()
+    expect(fetchSubtitles).toHaveBeenCalledWith('secret', REQUEST_ID)
+    await waitFor(() => expect(deleteSubtitles).toHaveBeenCalledWith('secret', REQUEST_ID))
+  })
+
+  it('checks again when the app comes back from Claude', async () => {
+    renderWith('secret')
+    await screen.findByDisplayValue('Hello')
+    expect(screen.queryByDisplayValue('こんにちは')).not.toBeInTheDocument()
+
+    vi.mocked(fetchSubtitles).mockResolvedValue(['こんにちは', '世界'])
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(await screen.findByDisplayValue('こんにちは')).toBeInTheDocument()
+  })
+
+  it('puts the request id in the copied prompt, and says the lines will come back', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderWith('secret')
+    await screen.findByDisplayValue('Hello')
+
+    expect(screen.getByText('Claudeチャットに貼ると、訳がこの画面に自動で入ります')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByText('📋 Claude用プロンプトをコピー'))
+    })
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`request_id: ${REQUEST_ID}`))
+  })
+
+  it('keeps today\'s prompt and never asks the server without a key', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderWith()
+    await screen.findByDisplayValue('Hello')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('📋 Claude用プロンプトをコピー'))
+    })
+    expect(writeText).toHaveBeenCalledWith(expect.not.stringContaining('send_subtitles'))
+    expect(screen.queryByText('Claudeチャットに貼ると、訳がこの画面に自動で入ります')).not.toBeInTheDocument()
+    expect(fetchSubtitles).not.toHaveBeenCalled()
+  })
+
+  it('stops looking once the Japanese is in', async () => {
+    renderWith('secret')
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは\n2. 世界' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    vi.mocked(fetchSubtitles).mockClear()
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(fetchSubtitles).not.toHaveBeenCalled()
+  })
+
+  it('waits for the English to settle before asking about edited lines', async () => {
+    renderWith('secret')
+    const english = await screen.findByDisplayValue('Hello')
+    await waitFor(() => expect(fetchSubtitles).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(english, { target: { value: 'Hell' } })
+    fireEvent.change(english, { target: { value: 'Hel' } })
+    fireEvent.change(english, { target: { value: 'Help' } })
+    expect(fetchSubtitles).toHaveBeenCalledTimes(1)
+
+    await waitFor(() => expect(fetchSubtitles).toHaveBeenCalledTimes(2))
+    const edited = subtitleRequestId([
+      { id: 'a', start: 0, end: 2, en: 'Help', ja: null },
+      { id: 'b', start: 2, end: 4, en: 'World', ja: null },
+    ])
+    expect(fetchSubtitles).toHaveBeenLastCalledWith('secret', edited)
+  })
+
+  it('shows the paste error instead of applying lines that do not line up', async () => {
+    vi.mocked(fetchSubtitles).mockResolvedValue(['こんにちは'])
+    renderWith('secret')
+
+    expect(await screen.findByText(/行数が一致しません/)).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('こんにちは')).not.toBeInTheDocument()
+    expect(deleteSubtitles).not.toHaveBeenCalled()
   })
 })
