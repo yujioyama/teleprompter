@@ -1,7 +1,7 @@
 import type { AppSettings } from '../hooks/useSettings'
 import type { SubtitleCue } from './subtitleCues'
-import { SUBTITLE_BLOCK_GAP, type CueVariant } from './subtitleLayout'
-import { clampedSubtitleY, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from './subtitlePosition'
+import type { CueVariant } from './subtitleLayout'
+import type { SubtitlePosition } from './subtitlePosition'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -12,29 +12,44 @@ import { clampedSubtitleY, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from '
 
 export type StyledCue = SubtitleCue & { variant: CueVariant }
 
+/** How far the first shot snaps in. */
+export type PunchInZoom = 1.15 | 1.25 | 1.35
+export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
+export type ImpactStrength = 'weak' | 'medium' | 'strong'
+
+export interface PunchIn {
+  zoom: PunchInZoom
+  /** Seconds into the first shot when the snap starts. */
+  at: number
+  /** The impact effect riding on the snap; null = off. */
+  impact: ImpactStrength | null
+}
+
 export interface HookOptions {
   /** Hook style for the first shot's cues, the first one from 0 s. */
   style: boolean
   /** 0-100, where hook cues are centered. */
   position: SubtitlePosition
-  /** Shown above the hook subtitle during the first shot; '' = none. */
-  headline: string
-  /** Zoom the first shot's picture in (see punchInScale). */
-  punchIn: boolean
+  /** The first shot's snap zoom; null = off. */
+  punchIn: PunchIn | null
 }
 
 export type HookSettings = Pick<
   AppSettings,
-  'hookStyleEnabled' | 'hookPosition' | 'hookHeadlineEnabled' | 'punchInEnabled'
+  'hookStyleEnabled' | 'hookPosition' | 'punchInEnabled' | 'punchInZoom' | 'punchInAt' | 'impactEnabled' | 'impactStrength'
 >
 
-/** The hook as burned: settings plus this video's headline text. */
-export function hookOptionsOf(settings: HookSettings, headline = ''): HookOptions {
+export function hookOptionsOf(settings: HookSettings): HookOptions {
   return {
     style: settings.hookStyleEnabled,
     position: settings.hookPosition,
-    headline: settings.hookHeadlineEnabled ? headline.trim() : '',
-    punchIn: settings.punchInEnabled,
+    punchIn: settings.punchInEnabled
+      ? {
+          zoom: settings.punchInZoom,
+          at: settings.punchInAt,
+          impact: settings.impactEnabled ? settings.impactStrength : null,
+        }
+      : null,
   }
 }
 
@@ -73,53 +88,79 @@ export function styleCues(
   }))
 }
 
-export const PUNCH_IN_ZOOM = 0.08
+/** Seconds the snap takes to land. */
+export const SNAP_DURATION = 0.12
+/** The zoom is about (50%, 40%) of the frame: roughly where the face is. */
+export const ZOOM_ANCHOR_Y = 0.4
+
+// Fast, then settling smoothly: reads as a camera move, not a ramp.
+const easeOutQuint = (p: number) => 1 - (1 - p) ** 5
 
 /**
- * How far the first shot's picture is zoomed at `t` seconds into it: a slow
- * push from 1x to 1 + PUNCH_IN_ZOOM over its `duration`, and 1x after it.
+ * How far the picture is zoomed at `t` seconds: 1x until `at`, then a
+ * SNAP_DURATION ease-out to `zoom`, held until `until` (the end of the
+ * first shot), where the cut drops it back to 1x.
  */
-export function punchInScale(t: number, duration: number): number {
-  if (!(duration > 0) || t >= duration) return 1
-  return 1 + (PUNCH_IN_ZOOM * Math.max(t, 0)) / duration
+export function snapZoomScale(t: number, punchIn: Pick<PunchIn, 'zoom' | 'at'>, until: number): number {
+  if (t < punchIn.at || t >= until) return 1
+  const p = Math.min((t - punchIn.at) / SNAP_DURATION, 1)
+  return 1 + (punchIn.zoom - 1) * easeOutQuint(p)
+}
+
+/** Seconds past the first shot's end that frame-accurate time still matters, so the cut back to 1x lands. */
+const FRAME_FOLLOW_TAIL = 0.1
+
+/**
+ * Whether the preview needs frame-accurate time at `t`: only while the snap
+ * zoom is on and the playhead is in (or just past) the first shot. Elsewhere
+ * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
+ */
+export function followsFrames(t: number, punchIn: PunchIn | null, firstShotDuration: number | null): boolean {
+  return punchIn !== null && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+}
+
+/** Seconds the impact effect lasts from the start of the snap. */
+export const IMPACT_DURATION = 0.15
+
+export interface ImpactAmounts {
+  /** How much wider the outermost zoom-blur layer is (0.06 = +6%). */
+  blurSpread: number
+  /** Red goes this far left and blue this far right, in output px (1080 wide). */
+  rgbShiftPx: number
+}
+
+export const IMPACT_LEVELS: Record<ImpactStrength, ImpactAmounts> = {
+  weak: { blurSpread: 0.03, rgbShiftPx: 4 },
+  medium: { blurSpread: 0.06, rgbShiftPx: 8 },
+  strong: { blurSpread: 0.09, rgbShiftPx: 12 },
 }
 
 /**
- * Until when a video is zoomed in, or null: only a video starting with the
- * first shot (`firstShotDuration` set) gets the punch-in.
+ * The impact effect at `t`, or null outside it. It peaks as the snap
+ * starts and fades as (1-u)^4 over IMPACT_DURATION, the shape of the quint
+ * ease-out's speed, so it reads as the hit of the camera move.
  */
-export function punchInUntil(hook: HookOptions, firstShotDuration: number | null): number | null {
-  return hook.punchIn ? firstShotDuration : null
+export function impactAt(t: number, punchIn: PunchIn, until: number): ImpactAmounts | null {
+  if (punchIn.impact === null || t < punchIn.at || t >= until) return null
+  const u = (t - punchIn.at) / IMPACT_DURATION
+  if (u >= 1) return null
+  const k = (1 - u) ** 4
+  const level = IMPACT_LEVELS[punchIn.impact]
+  return { blurSpread: level.blurSpread * k, rgbShiftPx: level.rgbShiftPx * k }
+}
+
+/** The punch-in a video gets and until when (the first shot's end). */
+export interface PunchInPlan {
+  punchIn: PunchIn
+  until: number
+}
+
+/** Only a video starting with the first shot (`firstShotDuration` set) gets the punch-in. */
+export function punchInPlan(hook: HookOptions, firstShotDuration: number | null): PunchInPlan | null {
+  return hook.punchIn && firstShotDuration !== null ? { punchIn: hook.punchIn, until: firstShotDuration } : null
 }
 
 /** Whether a video starting with the first shot needs an encode even without subtitles. */
 export function hasFirstShotExtras(hook: HookOptions, firstShotDuration: number | null): boolean {
-  return firstShotDuration !== null && (hook.headline !== '' || hook.punchIn)
-}
-
-/** Space between the headline and the subtitle box under it, in output px. */
-export const HEADLINE_GAP = SUBTITLE_BLOCK_GAP * 2
-
-/** A first-shot subtitle box on the output video, in px. */
-export interface OverlayBox {
-  top: number
-  bottom: number
-}
-
-/**
- * Top of the headline: just above the topmost of the first shot's subtitle
- * `boxes`, so it stays put while they change. When there is no room above
- * (a hook position near the top), just below the bottom-most box instead, so
- * it never covers the subtitle. With no box it is centered at the hook
- * position. Always kept inside the frame.
- */
-export function headlineY(boxes: OverlayBox[], headlineHeight: number, hookPosition: SubtitlePosition): number {
-  let y: number
-  if (boxes.length === 0) {
-    y = clampedSubtitleY(hookPosition, headlineHeight)
-  } else {
-    const above = Math.min(...boxes.map(b => b.top)) - HEADLINE_GAP - headlineHeight
-    y = above >= 0 ? above : Math.max(...boxes.map(b => b.bottom)) + HEADLINE_GAP
-  }
-  return Math.min(Math.max(0, y), SUBTITLE_VIDEO_HEIGHT - headlineHeight)
+  return punchInPlan(hook, firstShotDuration) !== null
 }

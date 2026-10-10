@@ -79,3 +79,77 @@ export function emphasisRuns(lines: string[], emphasis: Emphasis): Run[][] {
     return runs
   })
 }
+
+// Words compare without case, width or punctuation: "Don't," matches "dont".
+const normalizeWord = (word: string) => word.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+
+interface SpokenWord {
+  norm: string
+  /** Where the word sits in the cue's text, without punctuation around it. */
+  start: number
+  end: number
+}
+
+function spokenWords(text: string): SpokenWord[] {
+  const words: SpokenWord[] = []
+  for (const m of text.matchAll(/\S+/g)) {
+    const raw = m[0]
+    const norm = normalizeWord(raw)
+    if (!norm) continue
+    const lead = /^[^\p{L}\p{N}]*/u.exec(raw)![0].length
+    const trail = /[^\p{L}\p{N}]*$/u.exec(raw)![0].length
+    words.push({ norm, start: m.index! + lead, end: m.index! + raw.length - trail })
+  }
+  return words
+}
+
+function emphasizedPhrases(scriptTexts: string[]): string[][] {
+  const phrases: string[][] = []
+  for (const text of scriptTexts) {
+    for (const m of text.matchAll(new RegExp(MARKER.source, 'g'))) {
+      const words = m[1].split(/\s+/).map(normalizeWord).filter(Boolean)
+      if (words.length > 0) phrases.push(words)
+    }
+  }
+  return phrases
+}
+
+/**
+ * Put the script's `*phrases*` back on cues transcribed from speech. The
+ * phrases are taken in script order, and each one marks the first place it
+ * is said after the previous match, within a single cue, so the script's
+ * emphasis keeps its count and order. A phrase that wasn't said (or was
+ * misheard, or is split across two cues) is skipped. Punctuation next to a
+ * matched word stays outside the markers.
+ */
+export function reapplyEmphasis<T extends { en: string }>(cues: T[], scriptTexts: string[]): T[] {
+  const phrases = emphasizedPhrases(scriptTexts)
+  if (phrases.length === 0) return cues
+  const words = cues.map(c => spokenWords(c.en))
+  const spans: [number, number][][] = cues.map(() => [])
+  let cueAt = 0
+  let wordAt = 0
+  for (const phrase of phrases) {
+    search: for (let c = cueAt; c < cues.length; c++) {
+      const list = words[c]
+      for (let w = c === cueAt ? wordAt : 0; w + phrase.length <= list.length; w++) {
+        if (phrase.every((p, k) => list[w + k].norm === p)) {
+          spans[c].push([list[w].start, list[w + phrase.length - 1].end])
+          cueAt = c
+          wordAt = w + phrase.length
+          break search
+        }
+      }
+    }
+  }
+  return cues.map((cue, i) => {
+    if (spans[i].length === 0) return cue
+    let en = ''
+    let last = 0
+    for (const [start, end] of spans[i]) {
+      en += `${cue.en.slice(last, start)}*${cue.en.slice(start, end)}*`
+      last = end
+    }
+    return { ...cue, en: en + cue.en.slice(last) }
+  })
+}

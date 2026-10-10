@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
-  HEADLINE_GAP,
+  followsFrames,
   hasFirstShotExtras,
-  headlineY,
   hookOptionsOf,
-  punchInScale,
-  punchInUntil,
+  impactAt,
+  IMPACT_DURATION,
+  IMPACT_LEVELS,
+  punchInPlan,
+  snapZoomScale,
+  SNAP_DURATION,
   startsInFirstShot,
   styleCues,
   type HookOptions,
 } from './subtitleHook'
-import { clampedSubtitleY } from './subtitlePosition'
 import type { SubtitleCue } from './subtitleCues'
 
 const cue = (id: string, start: number, end: number): SubtitleCue => ({ id, start, end, en: id, ja: `${id}-ja` })
@@ -47,15 +49,27 @@ describe('styleCues', () => {
 })
 
 describe('hookOptionsOf', () => {
-  const settings = { hookStyleEnabled: false, hookPosition: 40, hookHeadlineEnabled: true, punchInEnabled: true }
+  const settings = {
+    hookStyleEnabled: false,
+    hookPosition: 40,
+    punchInEnabled: true,
+    punchInZoom: 1.35 as const,
+    punchInAt: 0.6,
+    impactEnabled: true,
+    impactStrength: 'strong' as const,
+  }
 
-  it('reads the hook settings, with the headline trimmed', () => {
-    expect(hookOptionsOf(settings, '  Wait  ')).toEqual({ style: false, position: 40, headline: 'Wait', punchIn: true })
+  it('reads the hook settings into a punch-in with its impact', () => {
+    expect(hookOptionsOf(settings)).toEqual({
+      style: false,
+      position: 40,
+      punchIn: { zoom: 1.35, at: 0.6, impact: 'strong' },
+    })
   })
 
-  it('has no headline when it is switched off or not given', () => {
-    expect(hookOptionsOf({ ...settings, hookHeadlineEnabled: false }, 'Wait').headline).toBe('')
-    expect(hookOptionsOf(settings).headline).toBe('')
+  it('has no impact with the effect off, and no punch-in with the zoom off', () => {
+    expect(hookOptionsOf({ ...settings, impactEnabled: false }).punchIn?.impact).toBeNull()
+    expect(hookOptionsOf({ ...settings, punchInEnabled: false }).punchIn).toBeNull()
   })
 })
 
@@ -66,54 +80,87 @@ describe('startsInFirstShot', () => {
   })
 })
 
-describe('punchInScale', () => {
-  it('zooms from 1x to 1.08x over the first shot, then stops', () => {
-    expect(punchInScale(0, 2)).toBe(1)
-    expect(punchInScale(1, 2)).toBeCloseTo(1.04)
-    expect(punchInScale(1.999, 2)).toBeCloseTo(1.08, 3)
-    expect(punchInScale(2, 2)).toBe(1)
-    expect(punchInScale(5, 2)).toBe(1)
+describe('snapZoomScale', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4 }
+
+  it('stays at 1x until the snap starts', () => {
+    expect(snapZoomScale(0, punchIn, 2)).toBe(1)
+    expect(snapZoomScale(0.399, punchIn, 2)).toBe(1)
   })
 
-  it('does nothing for a shot without length', () => {
-    expect(punchInScale(0.5, 0)).toBe(1)
+  it('eases out (quint) to the zoom over SNAP_DURATION', () => {
+    const half = 1 - (1 - 0.5) ** 5
+    expect(snapZoomScale(0.4 + SNAP_DURATION / 2, punchIn, 2)).toBeCloseTo(1 + 0.25 * half)
+    expect(snapZoomScale(0.4 + SNAP_DURATION, punchIn, 2)).toBeCloseTo(1.25)
+  })
+
+  it('holds the zoom until the first shot ends, then cuts back to 1x', () => {
+    expect(snapZoomScale(1.9, punchIn, 2)).toBeCloseTo(1.25)
+    expect(snapZoomScale(2, punchIn, 2)).toBe(1)
+    expect(snapZoomScale(5, punchIn, 2)).toBe(1)
+  })
+
+  it('never zooms a first shot that ends before the snap', () => {
+    expect(snapZoomScale(0.3, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
+    expect(snapZoomScale(0.45, { zoom: 1.25, at: 0.5 }, 0.4)).toBe(1)
   })
 })
 
 describe('first-shot extras', () => {
-  const hook: HookOptions = { style: true, position: 50, headline: '', punchIn: false }
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+  const hook: HookOptions = { style: true, position: 50, punchIn: null }
 
   it('only apply to a video starting with the first shot', () => {
-    expect(hasFirstShotExtras({ ...hook, headline: 'Hi' }, 2)).toBe(true)
-    expect(hasFirstShotExtras({ ...hook, punchIn: true }, 2)).toBe(true)
+    expect(hasFirstShotExtras({ ...hook, punchIn }, 2)).toBe(true)
     expect(hasFirstShotExtras(hook, 2)).toBe(false)
-    expect(hasFirstShotExtras({ ...hook, headline: 'Hi', punchIn: true }, null)).toBe(false)
+    expect(hasFirstShotExtras({ ...hook, punchIn }, null)).toBe(false)
   })
 
-  it('zoom until the end of the first shot when the punch-in is on', () => {
-    expect(punchInUntil({ ...hook, punchIn: true }, 2)).toBe(2)
-    expect(punchInUntil(hook, 2)).toBeNull()
-    expect(punchInUntil({ ...hook, punchIn: true }, null)).toBeNull()
+  it('plan the punch-in until the end of the first shot', () => {
+    expect(punchInPlan({ ...hook, punchIn }, 2)).toEqual({ punchIn, until: 2 })
+    expect(punchInPlan(hook, 2)).toBeNull()
+    expect(punchInPlan({ ...hook, punchIn }, null)).toBeNull()
   })
 })
 
-describe('headlineY', () => {
-  it('sits the headline just above the topmost first-shot box', () => {
-    const boxes = [{ top: 900, bottom: 1000 }, { top: 800, bottom: 950 }]
-    expect(headlineY(boxes, 100, 50)).toBe(800 - HEADLINE_GAP - 100)
+describe('impactAt', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: 'medium' as const }
+
+  it('is the full level as the snap starts, decaying as (1-u)^4 to nothing', () => {
+    expect(impactAt(0.4, punchIn, 2)).toEqual(IMPACT_LEVELS.medium)
+    const mid = impactAt(0.4 + IMPACT_DURATION / 2, punchIn, 2)!
+    expect(mid.rgbShiftPx).toBeCloseTo(8 * 0.5 ** 4)
+    expect(mid.blurSpread).toBeCloseTo(0.06 * 0.5 ** 4)
+    expect(impactAt(0.4 + IMPACT_DURATION, punchIn, 2)).toBeNull()
   })
 
-  it('centers it at the hook position with no box under it', () => {
-    expect(headlineY([], 100, 50)).toBe(clampedSubtitleY(50, 100))
+  it('is null before the snap, without an impact, and past the first shot', () => {
+    expect(impactAt(0.39, punchIn, 2)).toBeNull()
+    expect(impactAt(0.45, { ...punchIn, impact: null }, 2)).toBeNull()
+    expect(impactAt(0.45, punchIn, 0.42)).toBeNull()
   })
 
-  it('goes below the bottom-most box when there is no room above', () => {
-    expect(headlineY([{ top: 117, bottom: 412 }], 142, 13.75)).toBe(412 + HEADLINE_GAP)
+  it('has the three strengths', () => {
+    expect(IMPACT_LEVELS).toEqual({
+      weak: { blurSpread: 0.03, rgbShiftPx: 4 },
+      medium: { blurSpread: 0.06, rgbShiftPx: 8 },
+      strong: { blurSpread: 0.09, rgbShiftPx: 12 },
+    })
+  })
+})
+
+describe('followsFrames', () => {
+  const punchIn = { zoom: 1.25 as const, at: 0.4, impact: null }
+
+  it('follows frames through the first shot and a short tail after it', () => {
+    expect(followsFrames(0, punchIn, 2)).toBe(true)
+    expect(followsFrames(2.05, punchIn, 2)).toBe(true)
+    expect(followsFrames(2.1, punchIn, 2)).toBe(false)
+    expect(followsFrames(30, punchIn, 2)).toBe(false)
   })
 
-  it('stays within the frame when it fits neither above nor below', () => {
-    const y = headlineY([{ top: 10, bottom: 1900 }], 142, 50)
-    expect(y).toBeGreaterThanOrEqual(0)
-    expect(y).toBeLessThanOrEqual(1920 - 142)
+  it('does not follow without the zoom or a first shot', () => {
+    expect(followsFrames(0.5, null, 2)).toBe(false)
+    expect(followsFrames(0.5, punchIn, null)).toBe(false)
   })
 })

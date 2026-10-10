@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
@@ -16,7 +16,15 @@ function seedBurnMock() {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['out'], { type: 'video/mp4' }))
 }
 
-const DEFAULT_HOOK_SETTINGS: HookSettings = { hookStyleEnabled: true, hookPosition: 50, hookHeadlineEnabled: true, punchInEnabled: true }
+const DEFAULT_HOOK_SETTINGS: HookSettings = {
+  hookStyleEnabled: true,
+  hookPosition: 50,
+  punchInEnabled: true,
+  punchInZoom: 1.25,
+  punchInAt: 0.4,
+  impactEnabled: true,
+  impactStrength: 'medium',
+}
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
 // to FinalizePage, so subtitle work survives the component unmounting on
@@ -51,7 +59,7 @@ function ControlledSubtitleWorkflow({
       burn={(cues, position) =>
         burnModule.burnSubtitles(combinedBlob, cues, {
           position,
-          hook: hookOptionsOf(hookSettings, state.hookHeadline),
+          hook: hookOptionsOf(hookSettings),
           firstShotDuration: shotCueInputs[0]?.duration ?? null,
         })
       }
@@ -386,6 +394,23 @@ describe('SubtitleWorkflow subtitles from speech', () => {
     expect(screen.getByDisplayValue('Hello')).toBeInTheDocument()
   })
 
+  it('puts the script\'s *emphasis* back on what was said', async () => {
+    const transcribe = vi.fn().mockResolvedValue([
+      { id: 'speech-0', start: 0, end: 2, en: 'I really, really mean it.', ja: null },
+    ])
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={[{ text: 'I *really* mean it', duration: 2 }]}
+        onBurned={vi.fn()}
+        transcribe={transcribe}
+      />,
+    )
+    await screen.findByDisplayValue('I *really* mean it')
+    fireEvent.click(screen.getByText('話した音声から'))
+    expect(await screen.findByDisplayValue('I *really*, really mean it.')).toBeInTheDocument()
+  })
+
   it('asks before throwing away a translation, and keeps it if declined', async () => {
     const transcribe = vi.fn().mockResolvedValue(SPOKEN)
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -459,7 +484,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, headline: '', punchIn: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, at: 0.4, impact: 'medium' } }, firstShotDuration: 2 }),
     )
   })
 
@@ -469,7 +494,7 @@ describe('SubtitleWorkflow hook controls', () => {
   })
 })
 
-describe('SubtitleWorkflow headline and punch-in', () => {
+describe('SubtitleWorkflow punch-in', () => {
   async function renderTranslated(onHookSettingsChange = vi.fn()) {
     seedBurnMock()
     render(
@@ -488,38 +513,98 @@ describe('SubtitleWorkflow headline and punch-in', () => {
     return onHookSettingsChange
   }
 
-  it('shows a typed headline over the first shot, and drops it when switched off', async () => {
-    const onChange = await renderTranslated()
-    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
-    expect(screen.getByTestId('hook-headline')).toHaveTextContent('Wait')
+  function setTime(video: HTMLVideoElement, t: number) {
+    Object.defineProperty(video, 'currentTime', { value: t, configurable: true })
+  }
 
-    fireEvent.click(screen.getByLabelText('フック見出し'))
-    expect(onChange).toHaveBeenCalledWith({ hookHeadlineEnabled: false })
-    expect(screen.queryByLabelText('フック見出しのテキスト')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('hook-headline')).not.toBeInTheDocument()
-  })
-
-  it('burns with the headline', async () => {
-    await renderTranslated()
-    fireEvent.change(screen.getByLabelText('フック見出しのテキスト'), { target: { value: 'Wait' } })
-    fireEvent.click(screen.getByText('次へ'))
-    await waitFor(() => expect(burnModule.burnSubtitles).toHaveBeenCalled())
-    expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
-      BLOB,
-      expect.anything(),
-      expect.objectContaining({ hook: expect.objectContaining({ headline: 'Wait', punchIn: true }) }),
-    )
-  })
-
-  it('zooms the preview video during the first shot, unless the punch-in is off', async () => {
+  it('snaps the preview video in about (50%, 40%) during the first shot while playing, unless the zoom is off', async () => {
     const onChange = await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
-    Object.defineProperty(video, 'currentTime', { value: 1, configurable: true })
+    setTime(video, 1)
+    fireEvent.play(video)
     fireEvent.timeUpdate(video)
-    expect(video.style.transform).toBe('scale(1.04)')
+    expect(video.style.transform).toBe('scale(1.25)')
+    expect(video.style.transformOrigin).toBe('50% 40%')
 
-    fireEvent.click(screen.getByLabelText('パンチイン'))
+    fireEvent.click(screen.getByLabelText('スナップズーム'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
+  })
+
+  it('shows the preview at 1x when paused, even inside the snap, so the controls stay reachable', async () => {
+    await renderTranslated()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 1)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    expect(video.style.transform).toBe('scale(1.25)')
+    fireEvent.pause(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    fireEvent.ended(video)
+    expect(video.style.transform).toBe('')
+  })
+
+  describe('frame following', () => {
+    let frames: FrameRequestCallback[] = []
+    beforeEach(() => {
+      frames = []
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+      vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    })
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('follows frames within the first shot, but ignores them once it is over', async () => {
+      await renderTranslated()
+      const video = document.querySelector('video') as HTMLVideoElement
+      setTime(video, 0.1)
+      fireEvent.play(video)
+      expect(video.style.transform).toBe('')
+
+      setTime(video, 1)
+      act(() => frames.shift()!(0))
+      expect(video.style.transform).toBe('scale(1.25)')
+
+      // Past the first shot (2s) plus the short tail: the frame is ignored,
+      // so the last update (inside the snap) still stands.
+      setTime(video, 5)
+      act(() => frames.shift()!(0))
+      expect(video.style.transform).toBe('scale(1.25)')
+      // The slower timeupdate still moves the preview on.
+      fireEvent.timeUpdate(video)
+      expect(video.style.transform).toBe('')
+    })
+  })
+
+  it('sets the zoom and when it snaps, reporting them to be saved', async () => {
+    const onChange = await renderTranslated()
+    const zoomGroup = within(screen.getByRole('group', { name: 'ズーム倍率' }))
+    expect(zoomGroup.getByText('1.25倍')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(zoomGroup.getByText('1.35倍'))
+    expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.35 })
+
+    fireEvent.change(screen.getByLabelText('寄るタイミング'), { target: { value: '0.8' } })
+    expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
+  })
+
+  it('sets the impact effect, which needs the zoom on', async () => {
+    const onChange = await renderTranslated()
+    const strength = () => within(screen.getByRole('group', { name: 'インパクトの強さ' }))
+    expect(strength().getByText('中')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(strength().getByText('強'))
+    expect(onChange).toHaveBeenCalledWith({ impactStrength: 'strong' })
+
+    fireEvent.click(screen.getByLabelText('インパクト効果'))
+    expect(onChange).toHaveBeenCalledWith({ impactEnabled: false })
+    for (const button of strength().getAllByRole('button')) expect(button).toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('スナップズーム'))
+    expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
+    expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
   })
 })
