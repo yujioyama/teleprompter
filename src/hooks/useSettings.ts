@@ -18,13 +18,13 @@ export interface AppSettings {
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
-  /** Snap the first shot's picture in (スナップズーム). */
+  /** Slowly zoom the first shot's picture in (ズームイン). */
   punchInEnabled: boolean
-  /** How far the snap zooms in. */
+  /** How far it has zoomed in by the first shot's end. */
   punchInZoom: PunchInZoom
-  /** Seconds into the first shot when the snap starts. */
+  /** Seconds into the first shot when the zoom starts. */
   punchInAt: number
-  /** Ride a short zoom blur and RGB split on the snap. */
+  /** A short zoom blur and RGB split as the zoom starts. */
   impactEnabled: boolean
   impactStrength: ImpactStrength
   /** Seconds of silence auto-trim keeps before the first shot's speech. */

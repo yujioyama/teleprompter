@@ -1,5 +1,5 @@
 import type { VideoSample } from 'mediabunny'
-import { impactAt, snapZoomScale, type PunchInPlan } from '../subtitleHook'
+import { impactAt, punchInScale, type PunchInPlan } from '../subtitleHook'
 import { drawImpactFrame, drawZoomed } from './pictureEffects'
 
 export interface SubtitleOverlay {
@@ -11,7 +11,7 @@ export interface SubtitleOverlay {
 }
 
 export interface OverlayOptions {
-  /** The first shot's snap zoom and when it ends; null = never zoom. */
+  /** The first shot's zoom in and when it ends; null = never zoom. */
   punchIn?: PunchInPlan | null
 }
 
@@ -24,7 +24,7 @@ export interface OverlayProcess {
 /**
  * Build a Mediabunny `video.process` callback that composites each cue's
  * pre-rendered PNG at (centered, its y) during [start, end), in the frame's
- * own timeline, over the picture with the first shot's snap zoom, plus the
+ * own timeline, over the picture with the first shot's zoom in, plus the
  * impact effect (zoom blur and RGB split) during its first IMPACT_DURATION.
  * Only the picture gets these, the subtitles keep their size. Frames with no
  * active cue and no zoom are passed through untouched. Mediabunny calls this
@@ -58,7 +58,7 @@ export async function createOverlayProcess(
       // frame edge doesn't flicker on for a single extra frame.
       const t = sample.timestamp + sample.duration / 2
       const active = cues.filter(c => t >= c.start && t < c.end)
-      const scale = punchIn ? snapZoomScale(t, punchIn.punchIn, punchIn.until) : 1
+      const scale = punchIn ? punchInScale(t, punchIn.punchIn, punchIn.until) : 1
       const impact = punchIn ? impactAt(t, punchIn.punchIn, punchIn.until) : null
       // Free the scratch on any frame without the effect, before the
       // pass-through below can skip the release.

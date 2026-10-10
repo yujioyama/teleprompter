@@ -39,20 +39,21 @@ afterEach(() => {
 
 const PLAN = { punchIn: { zoom: 1.25 as const, at: 0.4, impact: null }, until: 2 }
 
-describe('createOverlayProcess snap zoom', () => {
-  it('draws the held zoom about (50%, 40%)', async () => {
+describe('createOverlayProcess zoom in', () => {
+  it('draws the zoom so far about (50%, 40%)', async () => {
     const { process } = await createOverlayProcess([], { punchIn: PLAN })
-    const { sample, draw } = frameAt(1)
+    // Halfway from 0.4 to 2: 1 + 0.25 * 0.5.
+    const { sample, draw } = frameAt(1.2)
 
     expect(process(sample)).toBeInstanceOf(FakeCanvas)
     const [, x, y, w, h] = draw.mock.calls[0]
-    expect(w).toBeCloseTo(1080 * 1.25)
-    expect(h).toBeCloseTo(1920 * 1.25)
-    expect(x).toBeCloseTo((1080 - 1080 * 1.25) / 2)
-    expect(y).toBeCloseTo(0.4 * (1920 - 1920 * 1.25))
+    expect(w).toBeCloseTo(1080 * 1.125)
+    expect(h).toBeCloseTo(1920 * 1.125)
+    expect(x).toBeCloseTo((1080 - 1080 * 1.125) / 2)
+    expect(y).toBeCloseTo(0.4 * (1920 - 1920 * 1.125))
   })
 
-  it('passes frames before the snap and after the first shot through untouched', async () => {
+  it('passes frames before the zoom and after the first shot through untouched', async () => {
     const { process } = await createOverlayProcess([], { punchIn: PLAN })
     for (const t of [0.2, 2.5]) {
       const { sample, draw } = frameAt(t)

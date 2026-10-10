@@ -43,7 +43,7 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  *
  * `signal` cancels the conversion (中断する, issue #34).
  *
- * `options.punchIn` snaps the first shot's picture in during the same encode.
+ * `options.punchIn` zooms the first shot's picture in during the same encode.
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
