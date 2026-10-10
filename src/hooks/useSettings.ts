@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { MUSIC_TRACKS, MusicTrack } from '../data/musicTracks'
-import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER, SUBTITLE_POSITION_TOP } from '../utils/subtitlePosition'
+import {
+  LEGACY_SUBTITLE_POSITION_TOP,
+  SUBTITLE_POSITION_BOTTOM,
+  SUBTITLE_POSITION_CENTER,
+  SUBTITLE_POSITION_TOP,
+} from '../utils/subtitlePosition'
 import type { ImpactStrength, PunchInZoom } from '../utils/subtitleHook'
 
 export interface AppSettings {
@@ -14,7 +19,7 @@ export interface AppSettings {
   bgmVolume: number
   /** 0-100, where the subtitle step starts its position. */
   subtitlePosition: number
-  /** Draw the first shot's cues in the big hook style, from its first frame. */
+  /** Draw the first shot's cues at the hook position, from its first frame. */
   hookStyleEnabled: boolean
   /** 0-100, where the hook cues are centered. */
   hookPosition: number
@@ -62,6 +67,11 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // center to the top, above the face. A position the user set is kept.
   if (!('punchInZoom' in next) && next.hookPosition === SUBTITLE_POSITION_CENTER) {
     next.hookPosition = SUBTITLE_POSITION_TOP
+  }
+  // The top preset moved below the SNS header (2026-10-10); a position left
+  // on the old one follows it.
+  for (const key of ['hookPosition', 'subtitlePosition'] as const) {
+    if (next[key] === LEGACY_SUBTITLE_POSITION_TOP) next[key] = SUBTITLE_POSITION_TOP
   }
   return next as Partial<AppSettings>
 }
