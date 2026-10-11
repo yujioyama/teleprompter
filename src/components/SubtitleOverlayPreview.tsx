@@ -17,11 +17,10 @@ import {
 } from '../utils/subtitleLayout'
 import {
   EMOJI_FONT_FAMILY,
-  STICKER_CENTER_X,
-  STICKER_CENTER_Y,
+  DEFAULT_STICKER_PLACEMENT,
   STICKER_EMOJI_PX,
   STICKER_OUTLINE_PX,
-  STICKER_ROTATION_DEG,
+  STICKER_PLACEMENTS,
   stickerOf,
   stripStickers,
 } from '../utils/subtitleSticker'
@@ -96,7 +95,9 @@ export default function SubtitleOverlayPreview({
   )
   // As burned: only translated cues count, and it stays up for the whole first shot.
   const sticker = useMemo(() => stickerOf(styled.filter(c => c.ja !== null)), [styled])
-  const showSticker = sticker !== null && firstShotDuration !== null && currentTime < firstShotDuration
+  const placement = hook?.sticker ?? DEFAULT_STICKER_PLACEMENT
+  const at = placement === 'off' ? null : STICKER_PLACEMENTS[placement]
+  const showSticker = sticker !== null && at !== null && firstShotDuration !== null && currentTime < firstShotDuration
 
   const hookPosition = hook?.position ?? position
 
@@ -124,16 +125,16 @@ export default function SubtitleOverlayPreview({
 
   // The die-cut white border, approximated with hard white shadows on every side.
   const o = cqw(STICKER_OUTLINE_PX)
-  const stickerBox = showSticker && (
+  const stickerBox = showSticker && at && (
     <span
       className={styles.sticker}
       data-testid="subtitle-sticker"
       style={{
-        left: `${STICKER_CENTER_X * 100}%`,
-        top: `${STICKER_CENTER_Y}%`,
+        left: `${at.x * 100}%`,
+        top: `${at.y}%`,
         fontFamily: EMOJI_FONT_FAMILY,
         fontSize: cqw(STICKER_EMOJI_PX),
-        transform: `translate(-50%, -50%) rotate(${STICKER_ROTATION_DEG}deg)`,
+        transform: `translate(-50%, -50%) rotate(${at.rotation}deg)`,
         filter: [
           `drop-shadow(${o} 0 0 #fff)`,
           `drop-shadow(-${o} 0 0 #fff)`,

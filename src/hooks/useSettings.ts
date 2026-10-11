@@ -7,6 +7,7 @@ import {
   SUBTITLE_POSITION_TOP,
 } from '../utils/subtitlePosition'
 import type { PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
+import type { StickerPlacement } from '../utils/subtitleSticker'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -31,6 +32,8 @@ export interface AppSettings {
   punchInDirection: ZoomDirection
   /** Seconds into the first shot when the zoom starts moving. */
   punchInAt: number
+  /** Where the first line's emoji shows as a sticker. */
+  stickerPlacement: StickerPlacement
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
@@ -52,6 +55,7 @@ const DEFAULTS: AppSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'out',
   punchInAt: 0.4,
+  stickerPlacement: 'chest',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

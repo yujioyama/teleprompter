@@ -17,7 +17,7 @@ import {
   type HookSettings,
   type ZoomDirection,
 } from '../utils/subtitleHook'
-import { reapplySticker } from '../utils/subtitleSticker'
+import { reapplySticker, type StickerPlacement } from '../utils/subtitleSticker'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
@@ -95,6 +95,13 @@ interface SubtitleWorkflowProps {
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
   { label: 'ズームアウト', value: 'out' },
   { label: 'ズームイン', value: 'in' },
+]
+
+const STICKER_PLACEMENT_OPTIONS: { label: string; value: StickerPlacement }[] = [
+  { label: '胸元', value: 'chest' },
+  { label: '左', value: 'left' },
+  { label: '右', value: 'right' },
+  { label: 'なし', value: 'off' },
 ]
 
 const SOURCES: { label: string; value: SubtitleSource }[] = [
@@ -387,7 +394,7 @@ export default function SubtitleWorkflow({
             </p>
             <SubtitleEditor cues={cues} onEditEn={handleEditEn} onEditJa={handleEditJa} />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
-            <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、顔の横に大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
+            <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
           </div>
 
           {!hasAnyJapanese && (
@@ -529,6 +536,20 @@ export default function SubtitleWorkflow({
                   </div>
                 </>
               )}
+              <p className={styles.sectionTitle}>ステッカーの位置</p>
+              <div className={styles.positionRow} role="group" aria-label="ステッカーの位置">
+                {STICKER_PLACEMENT_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    className={`${styles.positionBtn} ${hookSettings.stickerPlacement === o.value ? styles.positionBtnActive : ''}`}
+                    aria-pressed={hookSettings.stickerPlacement === o.value}
+                    onClick={() => onHookSettingsChange({ stickerPlacement: o.value })}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.hint}>1つ目の字幕に入れた絵文字を、最初のショットの間ステッカーとして表示します</p>
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

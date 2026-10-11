@@ -44,18 +44,25 @@ export function reapplySticker<T extends { en: string }>(cues: T[], scriptTexts:
 }
 
 /**
- * Geometry on the 1080×1920 output. The sticker sits beside the face, on
- * the right and just above the TikTok/Reels button column (which starts at
- * about half the height), about a quarter of the frame wide, tilted a little
- * so it reads as stuck on rather than part of the picture.
+ * Where the sticker goes on the 1080×1920 output (x as a fraction of the
+ * width, y as a percent of the height, like subtitle positions), tilted a
+ * little so it reads as stuck on rather than part of the picture.
+ * - chest: below the chin, centered, clear of the face, the hook subtitle
+ *   at the top and the TikTok/Reels button column on the right
+ * - left / right: beside the face
+ * - off: no sticker, and the emoji is still kept out of the text
  */
-export const STICKER_EMOJI_PX = 250
+export type StickerPlacement = 'chest' | 'left' | 'right' | 'off'
+export const STICKER_PLACEMENTS: Record<Exclude<StickerPlacement, 'off'>, { x: number; y: number; rotation: number }> = {
+  chest: { x: 0.5, y: 66, rotation: -6 },
+  left: { x: 0.18, y: 42, rotation: -8 },
+  right: { x: 0.82, y: 42, rotation: 8 },
+}
+export const DEFAULT_STICKER_PLACEMENT: StickerPlacement = 'chest'
+
+export const STICKER_EMOJI_PX = 220
 /** The white border around it, like a die-cut sticker. */
 export const STICKER_OUTLINE_PX = 14
-export const STICKER_CENTER_X = 0.78
-/** Percent of the video height (as subtitle positions are). */
-export const STICKER_CENTER_Y = 37
-export const STICKER_ROTATION_DEG = -8
 export const STICKER_SHADOW = { color: 'rgba(0,0,0,0.35)', blur: 24, offsetY: 8 }
 /** Height of the full-width overlay image that carries the sticker. */
 export const STICKER_IMAGE_HEIGHT = 420

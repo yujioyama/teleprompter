@@ -1,4 +1,4 @@
-import { STICKER_CENTER_Y, STICKER_IMAGE_HEIGHT } from './subtitleSticker'
+import { STICKER_IMAGE_HEIGHT, STICKER_PLACEMENTS } from './subtitleSticker'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   buildOverlayFilterGraph,
@@ -177,9 +177,20 @@ describe('renderSubtitleOverlays', () => {
     const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
     const overlays = await renderSubtitleOverlays([hook], LOOK)
     expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1], [0, 2]])
-    expect(overlays[1].y).toBe(subtitleY(STICKER_CENTER_Y, 1920, STICKER_IMAGE_HEIGHT))
+    expect(overlays[1].y).toBe(subtitleY(STICKER_PLACEMENTS.chest.y, 1920, STICKER_IMAGE_HEIGHT))
     expect(drawn.map(d => d.text)).toContain('🧴')
     expect(drawn.some(d => d.text !== '🧴' && d.text.includes('🧴'))).toBe(false)
+  })
+
+  it('puts the sticker where the hook says, or nowhere when it is off', async () => {
+    const { drawn } = stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const right = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' } })
+    expect(right[1].y).toBe(subtitleY(STICKER_PLACEMENTS.right.y, 1920, STICKER_IMAGE_HEIGHT))
+    drawn.length = 0
+    const off = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'off' } })
+    expect(off).toHaveLength(1)
+    expect(drawn.some(d => d.text.includes('🧴'))).toBe(false)
   })
 
   it('makes no sticker from a normal cue or an untranslated hook cue', async () => {

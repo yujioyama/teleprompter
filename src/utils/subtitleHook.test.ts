@@ -52,6 +52,7 @@ describe('hookOptionsOf', () => {
     punchInZoom: 1.35 as const,
     punchInDirection: 'in' as const,
     punchInAt: 0.6,
+    stickerPlacement: 'chest' as const,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -59,6 +60,7 @@ describe('hookOptionsOf', () => {
       style: false,
       position: 40,
       punchIn: { zoom: 1.35, direction: 'in', at: 0.6 },
+      sticker: 'chest',
     })
   })
 
