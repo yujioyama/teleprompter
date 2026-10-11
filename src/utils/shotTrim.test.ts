@@ -44,8 +44,6 @@ describe('resolveShotTrimSettings', () => {
     punchInZoom: 1.25,
     punchInDirection: 'in',
     punchInAt: 0.4,
-    impactEnabled: true,
-    impactStrength: 'medium',
     firstShotPaddingStart: 0.05,
     inboxKey: '',
   }

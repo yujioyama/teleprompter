@@ -1,6 +1,6 @@
 import type { VideoSample } from 'mediabunny'
-import { impactAt, punchInScale, type PunchInPlan } from '../subtitleHook'
-import { drawImpactFrame, drawZoomed } from './pictureEffects'
+import { punchInScale, type PunchInPlan } from '../subtitleHook'
+import { drawZoomed } from './pictureEffects'
 
 export interface SubtitleOverlay {
   start: number
@@ -24,9 +24,8 @@ export interface OverlayProcess {
 /**
  * Build a Mediabunny `video.process` callback that composites each cue's
  * pre-rendered PNG at (centered, its y) during [start, end), in the frame's
- * own timeline, over the picture with the first shot's zoom in, plus the
- * impact effect (zoom blur and RGB split) during its first IMPACT_DURATION.
- * Only the picture gets these, the subtitles keep their size. Frames with no
+ * own timeline, over the picture with the first shot's zoom in. Only the
+ * picture is zoomed, the subtitles keep their size. Frames with no
  * active cue and no zoom are passed through untouched. Mediabunny calls this
  * after resizing to the output size. Call `dispose` once the conversion ends
  * to release the decoded images.
@@ -39,18 +38,6 @@ export async function createOverlayProcess(
   const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, y: o.y, bitmap: bitmaps[i] }))
   let canvas: OffscreenCanvas | null = null
   let ctx: OffscreenCanvasRenderingContext2D | null = null
-  // The impact effect's second canvas: made on its first frame and released
-  // as soon as the effect is over, so it doesn't sit in a phone's memory for
-  // the rest of the encode.
-  let scratch: OffscreenCanvas | null = null
-  let scratchCtx: OffscreenCanvasRenderingContext2D | null = null
-  const releaseScratch = () => {
-    if (!scratch) return
-    scratch.width = 0
-    scratch.height = 0
-    scratch = null
-    scratchCtx = null
-  }
 
   return {
     process: (sample: VideoSample) => {
@@ -59,11 +46,7 @@ export async function createOverlayProcess(
       const t = sample.timestamp + sample.duration / 2
       const active = cues.filter(c => t >= c.start && t < c.end)
       const scale = punchIn ? punchInScale(t, punchIn.punchIn, punchIn.until) : 1
-      const impact = punchIn ? impactAt(t, punchIn.punchIn, punchIn.until) : null
-      // Free the scratch on any frame without the effect, before the
-      // pass-through below can skip the release.
-      if (!impact) releaseScratch()
-      if (active.length === 0 && scale === 1 && !impact) return sample
+      if (active.length === 0 && scale === 1) return sample
       const width = sample.displayWidth
       const height = sample.displayHeight
       if (!canvas || canvas.width !== width || canvas.height !== height) {
@@ -73,24 +56,13 @@ export async function createOverlayProcess(
         // For the zoom's upscale of the picture.
         ctx.imageSmoothingQuality = 'high'
       }
-      if (impact) {
-        if (!scratch) {
-          scratch = new OffscreenCanvas(width, height)
-          scratchCtx = scratch.getContext('2d')
-          if (!scratchCtx) throw new Error('OffscreenCanvas 2D context unavailable')
-          scratchCtx.imageSmoothingQuality = 'high'
-        }
-        drawImpactFrame(ctx!, scratchCtx!, sample, scale, impact, width, height)
-      } else {
-        drawZoomed(ctx!, sample, scale, width, height)
-      }
+      drawZoomed(ctx!, sample, scale, width, height)
       for (const cue of active) {
         ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
       }
       return canvas
     },
     dispose: () => {
-      releaseScratch()
       bitmaps.forEach(b => b.close())
     },
   }

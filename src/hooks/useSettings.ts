@@ -6,7 +6,7 @@ import {
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_TOP,
 } from '../utils/subtitlePosition'
-import type { ImpactStrength, PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
+import type { PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -31,9 +31,6 @@ export interface AppSettings {
   punchInDirection: ZoomDirection
   /** Seconds into the first shot when the zoom starts moving. */
   punchInAt: number
-  /** A short zoom blur and RGB split as the zoom starts. */
-  impactEnabled: boolean
-  impactStrength: ImpactStrength
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
@@ -55,8 +52,6 @@ const DEFAULTS: AppSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'out',
   punchInAt: 0.4,
-  impactEnabled: true,
-  impactStrength: 'medium',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }
@@ -66,6 +61,9 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   const next = { ...stored }
   // The hook headline was removed (2026-10-10).
   delete next.hookHeadlineEnabled
+  // The impact effect was removed (2026-10-11).
+  delete next.impactEnabled
+  delete next.impactStrength
   // Saved before the snap zoom (no punchInZoom): the hook moved from the
   // center to the top, above the face. A position the user set is kept.
   if (!('punchInZoom' in next) && next.hookPosition === SUBTITLE_POSITION_CENTER) {

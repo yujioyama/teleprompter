@@ -3,9 +3,6 @@ import {
   followsFrames,
   hasFirstShotExtras,
   hookOptionsOf,
-  impactAt,
-  IMPACT_DURATION,
-  IMPACT_LEVELS,
   punchInPlan,
   punchInScale,
   startsInFirstShot,
@@ -55,20 +52,17 @@ describe('hookOptionsOf', () => {
     punchInZoom: 1.35 as const,
     punchInDirection: 'in' as const,
     punchInAt: 0.6,
-    impactEnabled: true,
-    impactStrength: 'strong' as const,
   }
 
-  it('reads the hook settings into a punch-in with its impact', () => {
+  it('reads the hook settings into a punch-in', () => {
     expect(hookOptionsOf(settings)).toEqual({
       style: false,
       position: 40,
-      punchIn: { zoom: 1.35, direction: 'in', at: 0.6, impact: 'strong' },
+      punchIn: { zoom: 1.35, direction: 'in', at: 0.6 },
     })
   })
 
-  it('has no impact with the effect off, and no punch-in with the zoom off', () => {
-    expect(hookOptionsOf({ ...settings, impactEnabled: false }).punchIn?.impact).toBeNull()
+  it('has no punch-in with the zoom off', () => {
     expect(hookOptionsOf({ ...settings, punchInEnabled: false }).punchIn).toBeNull()
   })
 })
@@ -127,7 +121,7 @@ describe('punchInScale zooming out', () => {
 })
 
 describe('first-shot extras', () => {
-  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }
   const hook: HookOptions = { style: true, position: 50, punchIn: null }
 
   it('only apply to a video starting with the first shot', () => {
@@ -143,34 +137,8 @@ describe('first-shot extras', () => {
   })
 })
 
-describe('impactAt', () => {
-  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }
-
-  it('is the full level as the zoom starts, decaying as (1-u)^4 to nothing', () => {
-    expect(impactAt(0.4, punchIn, 2)).toEqual(IMPACT_LEVELS.medium)
-    const mid = impactAt(0.4 + IMPACT_DURATION / 2, punchIn, 2)!
-    expect(mid.rgbShiftPx).toBeCloseTo(8 * 0.5 ** 4)
-    expect(mid.blurSpread).toBeCloseTo(0.06 * 0.5 ** 4)
-    expect(impactAt(0.4 + IMPACT_DURATION, punchIn, 2)).toBeNull()
-  })
-
-  it('is null before the zoom, without an impact, and past the first shot', () => {
-    expect(impactAt(0.39, punchIn, 2)).toBeNull()
-    expect(impactAt(0.45, { ...punchIn, impact: null }, 2)).toBeNull()
-    expect(impactAt(0.45, punchIn, 0.42)).toBeNull()
-  })
-
-  it('has the three strengths', () => {
-    expect(IMPACT_LEVELS).toEqual({
-      weak: { blurSpread: 0.03, rgbShiftPx: 4 },
-      medium: { blurSpread: 0.06, rgbShiftPx: 8 },
-      strong: { blurSpread: 0.09, rgbShiftPx: 12 },
-    })
-  })
-})
-
 describe('followsFrames', () => {
-  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }
+  const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }
 
   it('follows frames through the first shot and a short tail after it', () => {
     expect(followsFrames(0, punchIn, 2)).toBe(true)
