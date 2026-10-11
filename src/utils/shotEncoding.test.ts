@@ -85,16 +85,15 @@ describe('burnRequest', () => {
     expect(burnRequest(shot, [cue], at30).key).toBe(burnRequest(shot, [cue], at50).key)
   })
 
-  it('changes the first shot\'s key with the punch-in\'s zoom, timing or impact', () => {
+  it('changes the first shot\'s key with the punch-in\'s zoom or timing', () => {
     const first = clip('a', 0, 2)
     const at = (punchIn: HookOptions['punchIn']) =>
       burnRequest(first, [], look(50, { hook: { ...HOOK, punchIn }, firstShotDuration: 2 })).key
-    const base = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }
+    const base = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }
     expect(at(null)).toBe(normalizeRequest(first).key)
     expect(at(base)).not.toBe(at(null))
     expect(at({ ...base, zoom: 1.35 })).not.toBe(at(base))
     expect(at({ ...base, at: 0.6 })).not.toBe(at(base))
-    expect(at({ ...base, impact: null })).not.toBe(at(base))
   })
 
   it('ignores the normal position when every cue in the shot is a hook cue', () => {
@@ -303,7 +302,7 @@ describe('cancelling (issue #34)', () => {
 })
 
 describe('first-shot punch-in', () => {
-  const EXTRAS: HookOptions = { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, impact: 'medium' } }
+  const EXTRAS: HookOptions = { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4 } }
   const clips = [clip('a', 0, 2), clip('b', 0, 1)]
   const cues = translate(cuesFromShotEntries([
     { text: 'first', duration: 2 },
@@ -319,7 +318,7 @@ describe('first-shot punch-in', () => {
   it('re-encodes only the first shot when the punch-in changes', async () => {
     const cache = new ShotEncodeCache()
     await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, EXTRAS)
-    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, { ...EXTRAS, punchIn: { zoom: 1.35, direction: 'in', at: 0.4, impact: 'medium' } })
+    await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, { ...EXTRAS, punchIn: { zoom: 1.35, direction: 'in', at: 0.4 } })
     expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(3)
     expect(vi.mocked(burnModule.burnShotSubtitles).mock.calls[2][0]).toBe(clips[0].blob)
   })

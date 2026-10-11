@@ -15,7 +15,6 @@ export type StyledCue = SubtitleCue & { variant: CueVariant }
 /** How far the first shot has zoomed in by its end. */
 export type PunchInZoom = 1.15 | 1.25 | 1.35
 export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
-export type ImpactStrength = 'weak' | 'medium' | 'strong'
 /**
  * 'in': starts at 1x and pushes in. 'out': the first frame is already
  * zoomed in, so the feed's first frame is a close-up, and it pulls back.
@@ -27,8 +26,6 @@ export interface PunchIn {
   direction: ZoomDirection
   /** Seconds into the first shot when the zoom starts. */
   at: number
-  /** The impact effect as the zoom starts; null = off. */
-  impact: ImpactStrength | null
 }
 
 export interface HookOptions {
@@ -48,8 +45,6 @@ export type HookSettings = Pick<
   | 'punchInZoom'
   | 'punchInDirection'
   | 'punchInAt'
-  | 'impactEnabled'
-  | 'impactStrength'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -61,7 +56,6 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
           zoom: settings.punchInZoom,
           direction: settings.punchInDirection,
           at: settings.punchInAt,
-          impact: settings.impactEnabled ? settings.impactStrength : null,
         }
       : null,
   }
@@ -135,36 +129,6 @@ const FRAME_FOLLOW_TAIL = 0.1
  */
 export function followsFrames(t: number, punchIn: PunchIn | null, firstShotDuration: number | null): boolean {
   return punchIn !== null && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
-}
-
-/** Seconds the impact effect lasts from the start of the zoom. */
-export const IMPACT_DURATION = 0.15
-
-export interface ImpactAmounts {
-  /** How much wider the outermost zoom-blur layer is (0.06 = +6%). */
-  blurSpread: number
-  /** Red goes this far left and blue this far right, in output px (1080 wide). */
-  rgbShiftPx: number
-}
-
-export const IMPACT_LEVELS: Record<ImpactStrength, ImpactAmounts> = {
-  weak: { blurSpread: 0.03, rgbShiftPx: 4 },
-  medium: { blurSpread: 0.06, rgbShiftPx: 8 },
-  strong: { blurSpread: 0.09, rgbShiftPx: 12 },
-}
-
-/**
- * The impact effect at `t`, or null outside it. It peaks as the zoom
- * starts and fades as (1-u)^4 over IMPACT_DURATION, a quick hit that kicks
- * off the slow push in.
- */
-export function impactAt(t: number, punchIn: PunchIn, until: number): ImpactAmounts | null {
-  if (punchIn.impact === null || t < punchIn.at || t >= until) return null
-  const u = (t - punchIn.at) / IMPACT_DURATION
-  if (u >= 1) return null
-  const k = (1 - u) ** 4
-  const level = IMPACT_LEVELS[punchIn.impact]
-  return { blurSpread: level.blurSpread * k, rgbShiftPx: level.rgbShiftPx * k }
 }
 
 /** The punch-in a video gets and until when (the first shot's end). */

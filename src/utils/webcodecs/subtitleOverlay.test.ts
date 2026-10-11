@@ -11,7 +11,7 @@ class FakeCanvas {
   constructor(width: number, height: number) {
     this.width = width
     this.height = height
-    this.ctx = { canvas: this, drawImage: vi.fn(), fillRect: vi.fn(), globalAlpha: 1, globalCompositeOperation: 'source-over' }
+    this.ctx = { canvas: this, drawImage: vi.fn() }
     canvases.push(this)
   }
   getContext() {
@@ -37,7 +37,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: null }, until: 2 }
+const PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }, until: 2 }
 
 describe('createOverlayProcess zoom in', () => {
   it('draws the zoom so far about (50%, 40%)', async () => {
@@ -67,59 +67,12 @@ describe('createOverlayProcess zoom in', () => {
     const { sample } = frameAt(1)
     expect(process(sample)).toBe(sample)
   })
-})
 
-describe('createOverlayProcess impact', () => {
-  const IMPACT_PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }, until: 2 }
-
-  it('uses a scratch canvas only on impact frames, and lets it go after', async () => {
-    const { process } = await createOverlayProcess([], { punchIn: IMPACT_PLAN })
-    const impact = frameAt(0.45)
-    process(impact.sample)
-    expect(canvases).toHaveLength(2)
-    expect(impact.draw).toHaveBeenCalledTimes(15)
-
-    const held = frameAt(1)
-    process(held.sample)
-    expect(held.draw).toHaveBeenCalledTimes(1)
-    expect(canvases[1].width).toBe(0)
-  })
-
-  it('lets the scratch go when the first shot ends inside the impact window', async () => {
-    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, impact: 'medium' as const }, until: 0.47 }
-    const { process } = await createOverlayProcess([], { punchIn: plan })
-    process(frameAt(0.45).sample)
-    expect(canvases).toHaveLength(2)
-    expect(canvases[1].width).toBe(1080)
-
-    const after = frameAt(0.5)
-    expect(process(after.sample)).toBe(after.sample)
-    expect(after.draw).not.toHaveBeenCalled()
-    expect(canvases[1].width).toBe(0)
-  })
-
-  it('releases a live scratch on dispose', async () => {
-    const { process, dispose } = await createOverlayProcess([], { punchIn: IMPACT_PLAN })
-    process(frameAt(0.45).sample)
-    expect(canvases[1].width).toBe(1080)
-    dispose()
-    expect(canvases[1].width).toBe(0)
-  })
-
-  it('draws no impact with it switched off', async () => {
-    const { process } = await createOverlayProcess([], { punchIn: { ...IMPACT_PLAN, punchIn: { ...IMPACT_PLAN.punchIn, impact: null } } })
-    const { sample, draw } = frameAt(0.45)
-    process(sample)
-    expect(draw).toHaveBeenCalledTimes(1)
-    expect(canvases).toHaveLength(1)
-  })
-
-  it('composites the subtitles after the effect, untouched', async () => {
-    const overlay = { start: 0, end: 1, image: new Blob(['png']), y: 300 }
-    const { process } = await createOverlayProcess([overlay], { punchIn: IMPACT_PLAN })
-    process(frameAt(0.45).sample)
+  it('composites the subtitles after the zoom, untouched', async () => {
+    const overlay = { start: 0, end: 2, image: new Blob(['png']), y: 300 }
+    const { process } = await createOverlayProcess([overlay], { punchIn: PLAN })
+    process(frameAt(1.2).sample)
     const drawImage = canvases[0].ctx.drawImage as ReturnType<typeof vi.fn>
-    const last = drawImage.mock.calls[drawImage.mock.calls.length - 1]
-    expect(last).toEqual([expect.objectContaining({ width: 900 }), 90, 300])
+    expect(drawImage.mock.calls[drawImage.mock.calls.length - 1]).toEqual([expect.objectContaining({ width: 900 }), 90, 300])
   })
 })

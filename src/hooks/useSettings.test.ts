@@ -17,8 +17,6 @@ const DEFAULTS = {
   punchInZoom: 1.25,
   punchInDirection: 'out',
   punchInAt: 0.4,
-  impactEnabled: true,
-  impactStrength: 'medium',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }
@@ -168,6 +166,13 @@ describe('useSettings', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ hookHeadlineEnabled: false }))
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).not.toHaveProperty('hookHeadlineEnabled')
+  })
+
+  it('drops the removed impact effect settings from stored settings', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ impactEnabled: false, impactStrength: 'strong' }))
+    const { result } = renderHook(() => useSettings())
+    expect(result.current[0]).not.toHaveProperty('impactEnabled')
+    expect(result.current[0]).not.toHaveProperty('impactStrength')
   })
 })
 

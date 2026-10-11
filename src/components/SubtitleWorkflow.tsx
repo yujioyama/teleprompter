@@ -15,7 +15,6 @@ import {
   followsFrames,
   ZOOM_ANCHOR_Y,
   type HookSettings,
-  type ImpactStrength,
   type ZoomDirection,
 } from '../utils/subtitleHook'
 import { reapplySticker } from '../utils/subtitleSticker'
@@ -92,12 +91,6 @@ interface SubtitleWorkflowProps {
    */
   inboxKey?: string
 }
-
-const IMPACT_STRENGTHS: { label: string; value: ImpactStrength }[] = [
-  { label: '弱', value: 'weak' },
-  { label: '中', value: 'medium' },
-  { label: '強', value: 'strong' },
-]
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
   { label: 'ズームアウト', value: 'out' },
@@ -536,29 +529,6 @@ export default function SubtitleWorkflow({
                   </div>
                 </>
               )}
-              <label className={styles.toggleRow}>
-                <input
-                  type="checkbox"
-                  checked={hookSettings.impactEnabled}
-                  disabled={!hookSettings.punchInEnabled}
-                  onChange={e => onHookSettingsChange({ impactEnabled: e.target.checked })}
-                />
-                インパクト効果
-              </label>
-              <div className={styles.positionRow} role="group" aria-label="インパクトの強さ">
-                {IMPACT_STRENGTHS.map(s => (
-                  <button
-                    key={s.value}
-                    className={`${styles.positionBtn} ${hookSettings.impactStrength === s.value ? styles.positionBtnActive : ''}`}
-                    aria-pressed={hookSettings.impactStrength === s.value}
-                    disabled={!hookSettings.punchInEnabled || !hookSettings.impactEnabled}
-                    onClick={() => onHookSettingsChange({ impactStrength: s.value })}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              <p className={styles.hint}>ズームが動き始める瞬間だけ、ブレと色ずれを一瞬重ねます（字幕にはかかりません。プレビューには出ません）</p>
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

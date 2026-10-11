@@ -29,8 +29,6 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'in',
   punchInAt: 0.4,
-  impactEnabled: true,
-  impactStrength: 'medium',
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -494,7 +492,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, impact: 'medium' } }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4 } }, firstShotDuration: 2 }),
     )
   })
 
@@ -608,22 +606,6 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(direction.getByText('ズームイン')).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(direction.getByText('ズームアウト'))
     expect(onChange).toHaveBeenCalledWith({ punchInDirection: 'out' })
-  })
-
-  it('sets the impact effect, which needs the zoom on', async () => {
-    const onChange = await renderTranslated()
-    const strength = () => within(screen.getByRole('group', { name: 'インパクトの強さ' }))
-    expect(strength().getByText('中')).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(strength().getByText('強'))
-    expect(onChange).toHaveBeenCalledWith({ impactStrength: 'strong' })
-
-    fireEvent.click(screen.getByLabelText('インパクト効果'))
-    expect(onChange).toHaveBeenCalledWith({ impactEnabled: false })
-    for (const button of strength().getAllByRole('button')) expect(button).toBeDisabled()
-
-    fireEvent.click(screen.getByLabelText('ズーム'))
-    expect(screen.getByLabelText('インパクト効果')).toBeDisabled()
-    expect(screen.queryByRole('group', { name: 'ズーム倍率' })).not.toBeInTheDocument()
   })
 })
 
