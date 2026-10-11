@@ -21,12 +21,11 @@ import {
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
   EMOJI_FONT_FAMILY,
-  STICKER_CENTER_X,
-  STICKER_CENTER_Y,
+  DEFAULT_STICKER_PLACEMENT,
   STICKER_EMOJI_PX,
   STICKER_IMAGE_HEIGHT,
   STICKER_OUTLINE_PX,
-  STICKER_ROTATION_DEG,
+  STICKER_PLACEMENTS,
   STICKER_SHADOW,
   stickerOf,
   stripStickers,
@@ -215,11 +214,15 @@ function squareCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRen
 /**
  * Render the first shot's sticker: the emoji, big, with a white die-cut
  * border and a soft shadow, tilted a little, on a transparent PNG as wide as
- * the video and STICKER_IMAGE_HEIGHT tall (centered on STICKER_CENTER_X).
+ * the video and STICKER_IMAGE_HEIGHT tall (centered on `x`, a fraction of the width).
  * The border is the emoji's own silhouette in white, stamped in a ring
  * around it, so it follows the shape rather than being a box.
  */
-export async function renderStickerImage(emoji: string): Promise<{ image: Blob; height: number }> {
+export async function renderStickerImage(
+  emoji: string,
+  x: number,
+  rotation: number,
+): Promise<{ image: Blob; height: number }> {
   const size = Math.ceil(STICKER_EMOJI_PX * 1.3) + STICKER_OUTLINE_PX * 2
   const center = size / 2
 
@@ -244,8 +247,8 @@ export async function renderStickerImage(emoji: string): Promise<{ image: Blob; 
   sticker.ctx.drawImage(glyph.canvas, 0, 0)
 
   const { canvas, ctx } = overlayCanvas(STICKER_IMAGE_HEIGHT)
-  ctx.translate(SUBTITLE_REFERENCE_WIDTH * STICKER_CENTER_X, STICKER_IMAGE_HEIGHT / 2)
-  ctx.rotate((STICKER_ROTATION_DEG * Math.PI) / 180)
+  ctx.translate(SUBTITLE_REFERENCE_WIDTH * x, STICKER_IMAGE_HEIGHT / 2)
+  ctx.rotate((rotation * Math.PI) / 180)
   ctx.shadowColor = STICKER_SHADOW.color
   ctx.shadowBlur = STICKER_SHADOW.blur
   ctx.shadowOffsetY = STICKER_SHADOW.offsetY
@@ -273,10 +276,12 @@ export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLo
     const { image, height } = await renderCueImage(drawn)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
-  const sticker = look.firstShotDuration !== null ? stickerOf(cues.filter(c => c.ja !== null)) : null
-  if (sticker && look.firstShotDuration !== null) {
-    const { image, height } = await renderStickerImage(sticker)
-    overlays.push({ start: 0, end: look.firstShotDuration, image, y: clampedSubtitleY(STICKER_CENTER_Y, height) })
+  const placement = look.hook.sticker ?? DEFAULT_STICKER_PLACEMENT
+  const sticker = look.firstShotDuration !== null && placement !== 'off' ? stickerOf(cues.filter(c => c.ja !== null)) : null
+  if (sticker && look.firstShotDuration !== null && placement !== 'off') {
+    const at = STICKER_PLACEMENTS[placement]
+    const { image, height } = await renderStickerImage(sticker, at.x, at.rotation)
+    overlays.push({ start: 0, end: look.firstShotDuration, image, y: clampedSubtitleY(at.y, height) })
   }
   return overlays
 }

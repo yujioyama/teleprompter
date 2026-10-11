@@ -17,6 +17,7 @@ const DEFAULTS = {
   punchInZoom: 1.25,
   punchInDirection: 'out',
   punchInAt: 0.4,
+  stickerPlacement: 'chest',
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

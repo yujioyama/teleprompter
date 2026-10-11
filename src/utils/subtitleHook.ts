@@ -2,6 +2,7 @@ import type { AppSettings } from '../hooks/useSettings'
 import type { SubtitleCue } from './subtitleCues'
 import type { CueVariant } from './subtitleLayout'
 import type { SubtitlePosition } from './subtitlePosition'
+import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleSticker'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -35,6 +36,8 @@ export interface HookOptions {
   position: SubtitlePosition
   /** The first shot's zoom in; null = off. */
   punchIn: PunchIn | null
+  /** Where the first shot's emoji sticker goes (default: chest). */
+  sticker?: StickerPlacement
 }
 
 export type HookSettings = Pick<
@@ -45,6 +48,7 @@ export type HookSettings = Pick<
   | 'punchInZoom'
   | 'punchInDirection'
   | 'punchInAt'
+  | 'stickerPlacement'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -58,6 +62,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
           at: settings.punchInAt,
         }
       : null,
+    sticker: settings.stickerPlacement ?? DEFAULT_STICKER_PLACEMENT,
   }
 }
 

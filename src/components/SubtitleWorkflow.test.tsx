@@ -29,6 +29,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'in',
   punchInAt: 0.4,
+  stickerPlacement: 'chest',
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -492,7 +493,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4 } }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4 }, sticker: 'chest' }, firstShotDuration: 2 }),
     )
   })
 
@@ -598,6 +599,14 @@ describe('SubtitleWorkflow punch-in', () => {
 
     fireEvent.change(screen.getByLabelText('動き始めるタイミング'), { target: { value: '0.8' } })
     expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
+  })
+
+  it('picks where the sticker goes', async () => {
+    const onChange = await renderTranslated()
+    const group = within(screen.getByRole('group', { name: 'ステッカーの位置' }))
+    expect(group.getByText('胸元')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByText('なし'))
+    expect(onChange).toHaveBeenCalledWith({ stickerPlacement: 'off' })
   })
 
   it('switches the zoom between pulling back and pushing in', async () => {
