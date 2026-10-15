@@ -46,6 +46,8 @@ describe('resolveShotTrimSettings', () => {
     punchInAt: 0.4,
     punchInDuration: null,
     stickerPlacement: 'chest',
+    stickerMotion: 'random',
+    stickerRoute: 0,
     firstShotPaddingStart: 0.05,
     inboxKey: '',
   }
