@@ -11,6 +11,7 @@ import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import {
   hasFirstShotExtras,
+  punchInEnd,
   punchInPlan,
   styleCues,
   ZOOM_ANCHOR_Y,
@@ -72,23 +73,27 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 
 /**
  * ffmpeg's zoom, as punchInScale does it on the hardware path, about
- * (50%, ZOOM_ANCHOR_Y): pushing in from 1x at `at` to `zoom` at `until`, or
- * (direction 'out') held at `zoom` until `at`, then pulled back to 1x at
- * `until`. `in` counts input frames of the joined video, which is
- * normalized to OUTPUT_FRAME_RATE; +0.5 takes the frame's midpoint, as the
- * hardware path does. zoompan crops to whole pixels, so the slow zoom may
- * judder slightly — accepted on this last-resort path, which has no impact
- * effect.
+ * (50%, ZOOM_ANCHOR_Y): pushing in from 1x at `at` to `zoom` at punchInEnd
+ * and holding it until `until`, or (direction 'out') held at `zoom` until
+ * `at`, then pulled back to 1x at punchInEnd. `in` counts input frames of
+ * the joined video, which is normalized to OUTPUT_FRAME_RATE; +0.5 takes
+ * the frame's midpoint, as the hardware path does. zoompan crops to whole
+ * pixels, so the slow zoom may judder slightly — accepted on this
+ * last-resort path, which has no impact effect.
  */
 export function punchInFilter({ punchIn, until }: PunchInPlan): string {
   const t = `(in+0.5)/${OUTPUT_FRAME_RATE}`
   const at = punchIn.at.toFixed(3)
-  const span = (until - punchIn.at).toFixed(3)
+  const end = punchInEnd(punchIn, until)
+  const span = (end - punchIn.at).toFixed(3)
   const amount = (punchIn.zoom - 1).toFixed(2)
+  const zoom = punchIn.zoom.toFixed(2)
   const progress = `(${t}-${at})/${span}`
+  // Pushing in stops short of the cut: hold the zoom from `end` to `until`.
+  const after = end < until ? `if(lt(${t},${until.toFixed(3)}),${zoom},1)` : '1'
   const z = punchIn.direction === 'out'
-    ? `if(lt(${t},${at}),${punchIn.zoom.toFixed(2)},if(lt(${t},${until.toFixed(3)}),${punchIn.zoom.toFixed(2)}-${amount}*${progress},1))`
-    : `if(lt(${t},${at}),1,if(lt(${t},${until.toFixed(3)}),1+${amount}*${progress},1))`
+    ? `if(lt(${t},${at}),${zoom},if(lt(${t},${end.toFixed(3)}),${zoom}-${amount}*${progress},1))`
+    : `if(lt(${t},${at}),1,if(lt(${t},${end.toFixed(3)}),1+${amount}*${progress},${after}))`
   return `zoompan=z='${z}':x='iw/2-iw/zoom/2':y='ih*${ZOOM_ANCHOR_Y}-ih*${ZOOM_ANCHOR_Y}/zoom'`
     + `:d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FRAME_RATE}`
 }

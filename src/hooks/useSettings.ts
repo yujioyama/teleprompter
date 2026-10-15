@@ -6,7 +6,7 @@ import {
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_TOP,
 } from '../utils/subtitlePosition'
-import type { PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
+import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
 import type { StickerPlacement } from '../utils/subtitleSticker'
 
 export interface AppSettings {
@@ -32,6 +32,8 @@ export interface AppSettings {
   punchInDirection: ZoomDirection
   /** Seconds into the first shot when the zoom starts moving. */
   punchInAt: number
+  /** Seconds the zoom takes once it starts; null = until the first shot ends. */
+  punchInDuration: PunchInDuration
   /** Where the first line's emoji shows as a sticker. */
   stickerPlacement: StickerPlacement
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
@@ -55,6 +57,7 @@ const DEFAULTS: AppSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'out',
   punchInAt: 0.4,
+  punchInDuration: 1.2,
   stickerPlacement: 'chest',
   firstShotPaddingStart: 0.05,
   inboxKey: '',

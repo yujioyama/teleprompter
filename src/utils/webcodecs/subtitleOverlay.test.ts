@@ -37,7 +37,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }, until: 2 }
+const PLAN = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, duration: null }, until: 2 }
 
 describe('createOverlayProcess zoom in', () => {
   it('draws the zoom so far about (50%, 40%)', async () => {
