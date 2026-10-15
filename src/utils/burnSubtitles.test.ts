@@ -244,7 +244,7 @@ describe('buildOverlayFilterGraph with a punch-in', () => {
 
 describe('punchInFilter', () => {
   it('pushes in about (50%, 40%) from `at` to `until`, then drops back, at the output size and rate', () => {
-    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }, until: 2 }
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, duration: null }, until: 2 }
     expect(punchInFilter(plan)).toBe(
       "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,2.000),1+0.25*((in+0.5)/30-0.400)/1.600,1))'"
         + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
@@ -254,7 +254,7 @@ describe('punchInFilter', () => {
 
 describe('punchInFilter zooming out', () => {
   it('holds the zoom until `at`, then pulls back to 1x at `until`', () => {
-    const plan = { punchIn: { zoom: 1.25 as const, direction: 'out' as const, at: 0.4 }, until: 2 }
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'out' as const, at: 0.4, duration: null }, until: 2 }
     expect(punchInFilter(plan)).toBe(
       "zoompan=z='if(lt((in+0.5)/30,0.400),1.25,if(lt((in+0.5)/30,2.000),1.25-0.25*((in+0.5)/30-0.400)/1.600,1))'"
         + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
@@ -262,7 +262,25 @@ describe('punchInFilter zooming out', () => {
   })
 })
 
-const PUNCH_IN = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4 }
+describe('punchInFilter with a duration', () => {
+  it('pulls back to 1x by `at` + `duration`', () => {
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'out' as const, at: 0.4, duration: 0.6 as const }, until: 2 }
+    expect(punchInFilter(plan)).toBe(
+      "zoompan=z='if(lt((in+0.5)/30,0.400),1.25,if(lt((in+0.5)/30,1.000),1.25-0.25*((in+0.5)/30-0.400)/0.600,1))'"
+        + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
+    )
+  })
+
+  it('pushes in by `at` + `duration` and holds the zoom until `until`', () => {
+    const plan = { punchIn: { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, duration: 0.6 as const }, until: 2 }
+    expect(punchInFilter(plan)).toBe(
+      "zoompan=z='if(lt((in+0.5)/30,0.400),1,if(lt((in+0.5)/30,1.000),1+0.25*((in+0.5)/30-0.400)/0.600,if(lt((in+0.5)/30,2.000),1.25,1)))'"
+        + ":x='iw/2-iw/zoom/2':y='ih*0.4-ih*0.4/zoom':d=1:s=1080x1920:fps=30",
+    )
+  })
+})
+
+const PUNCH_IN = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, duration: null }
 
 describe('burnSubtitles punch-in', () => {
   it('zooms the whole video\'s first shot on the hardware path', async () => {

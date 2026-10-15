@@ -29,6 +29,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   punchInZoom: 1.25,
   punchInDirection: 'in',
   punchInAt: 0.4,
+  punchInDuration: null,
   stickerPlacement: 'chest',
 }
 
@@ -493,7 +494,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4 }, sticker: 'chest' }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest' }, firstShotDuration: 2 }),
     )
   })
 
@@ -599,6 +600,14 @@ describe('SubtitleWorkflow punch-in', () => {
 
     fireEvent.change(screen.getByLabelText('動き始めるタイミング'), { target: { value: '0.8' } })
     expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
+  })
+
+  it('sets how fast the zoom moves', async () => {
+    const onChange = await renderTranslated()
+    const speed = within(screen.getByRole('group', { name: 'ズームの速さ' }))
+    expect(speed.getByText('ゆっくり')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(speed.getByText('速い'))
+    expect(onChange).toHaveBeenCalledWith({ punchInDuration: 0.6 })
   })
 
   it('picks where the sticker goes', async () => {

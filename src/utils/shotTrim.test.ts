@@ -44,6 +44,7 @@ describe('resolveShotTrimSettings', () => {
     punchInZoom: 1.25,
     punchInDirection: 'in',
     punchInAt: 0.4,
+    punchInDuration: null,
     stickerPlacement: 'chest',
     firstShotPaddingStart: 0.05,
     inboxKey: '',

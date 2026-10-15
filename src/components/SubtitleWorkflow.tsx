@@ -15,6 +15,7 @@ import {
   followsFrames,
   ZOOM_ANCHOR_Y,
   type HookSettings,
+  type PunchInDuration,
   type ZoomDirection,
 } from '../utils/subtitleHook'
 import { reapplySticker, type StickerPlacement } from '../utils/subtitleSticker'
@@ -95,6 +96,12 @@ interface SubtitleWorkflowProps {
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
   { label: 'ズームアウト', value: 'out' },
   { label: 'ズームイン', value: 'in' },
+]
+
+const ZOOM_SPEEDS: { label: string; value: PunchInDuration }[] = [
+  { label: '速い', value: 0.6 },
+  { label: '普通', value: 1.2 },
+  { label: 'ゆっくり', value: null },
 ]
 
 const STICKER_PLACEMENT_OPTIONS: { label: string; value: StickerPlacement }[] = [
@@ -492,8 +499,8 @@ export default function SubtitleWorkflow({
               </label>
               <p className={styles.hint}>
                 {hookSettings.punchInDirection === 'out'
-                  ? '1フレーム目から寄った状態で始まり、ゆっくり引いて、最初のショットの終わりで元の大きさに戻ります（字幕は拡大しません）'
-                  : '最初のショットの途中からゆっくり寄っていき、2つ目のショットで元に戻ります（字幕は拡大しません）'}
+                  ? '1フレーム目から寄った状態で始まり、引いて元の大きさに戻ります。「ゆっくり」は最初のショットの終わりまでかけて戻ります（字幕は拡大しません）'
+                  : '最初のショットの途中から寄っていき、2つ目のショットで元に戻ります。「ゆっくり」は最初のショットの終わりまでかけて寄ります（字幕は拡大しません）'}
               </p>
               {hookSettings.punchInEnabled && (
                 <>
@@ -518,6 +525,18 @@ export default function SubtitleWorkflow({
                         onClick={() => onHookSettingsChange({ punchInZoom: z })}
                       >
                         {z}倍
+                      </button>
+                    ))}
+                  </div>
+                  <div className={styles.positionRow} role="group" aria-label="ズームの速さ">
+                    {ZOOM_SPEEDS.map(s => (
+                      <button
+                        key={s.label}
+                        className={`${styles.positionBtn} ${hookSettings.punchInDuration === s.value ? styles.positionBtnActive : ''}`}
+                        aria-pressed={hookSettings.punchInDuration === s.value}
+                        onClick={() => onHookSettingsChange({ punchInDuration: s.value })}
+                      >
+                        {s.label}
                       </button>
                     ))}
                   </div>
