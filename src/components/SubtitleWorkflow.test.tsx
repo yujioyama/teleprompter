@@ -597,8 +597,8 @@ describe('SubtitleWorkflow punch-in', () => {
     const onChange = await renderTranslated()
     const zoomGroup = within(screen.getByRole('group', { name: 'ズーム倍率' }))
     expect(zoomGroup.getByText('1.25倍')).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(zoomGroup.getByText('1.35倍'))
-    expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.35 })
+    fireEvent.click(zoomGroup.getByText('1.5倍'))
+    expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.5 })
 
     fireEvent.change(screen.getByLabelText('動き始めるタイミング'), { target: { value: '0.8' } })
     expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })

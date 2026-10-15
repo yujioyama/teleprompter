@@ -70,10 +70,10 @@ export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { fi
 }
 
 /**
- * ffmpeg's zoom, as punchInScale does it on the hardware path, about
- * (50%, ZOOM_ANCHOR_Y): pushing in from 1x at `at` to `zoom` at punchInEnd
- * and holding it until `until`, or (direction 'out') held at `zoom` until
- * `at`, then pulled back to 1x at punchInEnd. `in` counts input frames of
+ * ffmpeg's zoom, as punchInScale does it on the hardware path (eased the
+ * same way), about (50%, ZOOM_ANCHOR_Y): pushing in from 1x at `at` to
+ * `zoom` at punchInEnd and holding it until `until`, or (direction 'out')
+ * held at `zoom` until `at`, then pulled back to 1x at punchInEnd. `in` counts input frames of
  * the joined video, which is normalized to OUTPUT_FRAME_RATE; +0.5 takes
  * the frame's midpoint, as the hardware path does. zoompan crops to whole
  * pixels, so the slow zoom may judder slightly — accepted on this
@@ -86,7 +86,9 @@ export function punchInFilter({ punchIn, until }: PunchInPlan): string {
   const span = (end - punchIn.at).toFixed(3)
   const amount = (punchIn.zoom - 1).toFixed(2)
   const zoom = punchIn.zoom.toFixed(2)
-  const progress = `(${t}-${at})/${span}`
+  const linear = `((${t}-${at})/${span})`
+  // easeZoom's smoothstep, p*p*(3-2p).
+  const progress = `${linear}*${linear}*(3-2*${linear})`
   // Pushing in stops short of the cut: hold the zoom from `end` to `until`.
   const after = end < until ? `if(lt(${t},${until.toFixed(3)}),${zoom},1)` : '1'
   const z = punchIn.direction === 'out'

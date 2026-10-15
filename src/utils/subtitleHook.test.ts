@@ -4,6 +4,7 @@ import {
   hasFirstShotExtras,
   hookOptionsOf,
   punchInPlan,
+  easeZoom,
   punchInEnd,
   punchInScale,
   startsInFirstShot,
@@ -91,9 +92,9 @@ describe('punchInScale', () => {
     expect(punchInScale(0.4, punchIn, 2)).toBe(1)
   })
 
-  it('pushes in steadily, reaching the zoom as the first shot ends', () => {
+  it('pushes in, eased, reaching the zoom as the first shot ends', () => {
     expect(punchInScale(1.2, punchIn, 2)).toBeCloseTo(1.125)
-    expect(punchInScale(1.6, punchIn, 2)).toBeCloseTo(1.1875)
+    expect(punchInScale(1.6, punchIn, 2)).toBeCloseTo(1.2109)
     expect(punchInScale(1.999, punchIn, 2)).toBeCloseTo(1.25, 3)
   })
 
@@ -116,7 +117,7 @@ describe('punchInScale zooming out', () => {
     expect(punchInScale(0.399, punchIn, 2)).toBe(1.25)
   })
 
-  it('pulls back steadily, reaching 1x as the first shot ends', () => {
+  it('pulls back, eased, reaching 1x as the first shot ends', () => {
     expect(punchInScale(0.4, punchIn, 2)).toBeCloseTo(1.25)
     expect(punchInScale(1.2, punchIn, 2)).toBeCloseTo(1.125)
     expect(punchInScale(1.999, punchIn, 2)).toBeCloseTo(1, 3)
@@ -125,6 +126,16 @@ describe('punchInScale zooming out', () => {
   it('is 1x from the second shot on', () => {
     expect(punchInScale(2, punchIn, 2)).toBe(1)
     expect(punchInScale(5, punchIn, 2)).toBe(1)
+  })
+})
+
+describe('easeZoom', () => {
+  it('leaves the hold and comes to a stop slowly, fastest halfway', () => {
+    expect(easeZoom(0)).toBe(0)
+    expect(easeZoom(0.1)).toBeCloseTo(0.028)
+    expect(easeZoom(0.5)).toBe(0.5)
+    expect(easeZoom(0.9)).toBeCloseTo(0.972)
+    expect(easeZoom(1)).toBe(1)
   })
 })
 
