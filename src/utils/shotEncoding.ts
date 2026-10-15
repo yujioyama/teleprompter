@@ -52,6 +52,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     hasNormalCue ? look.position : null,
     hasHookCue ? look.hook.position : null,
     hasHookCue ? (look.hook.sticker ?? null) : null,
+    hasHookCue ? (look.hook.stickerMotion ?? null) : null,
+    hasHookCue ? (look.hook.stickerRoute ?? 0) : null,
   ])
   const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))

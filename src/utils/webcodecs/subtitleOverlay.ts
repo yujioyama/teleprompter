@@ -1,13 +1,37 @@
 import type { VideoSample } from 'mediabunny'
 import { punchInScale, type PunchInPlan } from '../subtitleHook'
+import { STICKER_SHADOW } from '../subtitleSticker'
+import type { StickerPath } from '../stickerMotion'
 import { drawZoomed } from './pictureEffects'
 
 export interface SubtitleOverlay {
   start: number
   end: number
   image: Blob
-  /** Top edge of the image in the output frame. */
+  /** Top edge of the image in the output frame (unused for a sprite). */
   y: number
+  /**
+   * The travelling sticker: `image` is its upright sprite, drawn centered
+   * on path(t) with its pose's turn and size, over `shadow` kept below it.
+   */
+  sprite?: {
+    shadow: Blob
+    path: StickerPath
+    /** Sprite px per px at its normal size. */
+    resolution: number
+  }
+}
+
+type Ctx = OffscreenCanvasRenderingContext2D
+
+/** Draw `bitmap` centered on (x, y), turned by `rotation` degrees and scaled by `scale`. */
+function drawTurned(ctx: Ctx, bitmap: ImageBitmap, x: number, y: number, rotation: number, scale: number) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.scale(scale, scale)
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2)
+  ctx.restore()
 }
 
 export interface OverlayOptions {
@@ -24,7 +48,8 @@ export interface OverlayProcess {
 /**
  * Build a Mediabunny `video.process` callback that composites each cue's
  * pre-rendered PNG at (centered, its y) during [start, end), in the frame's
- * own timeline, over the picture with the first shot's zoom in. Only the
+ * own timeline, over the picture with the first shot's zoom in, and the
+ * travelling sticker's sprite at each frame's pose. Only the
  * picture is zoomed, the subtitles keep their size. Frames with no
  * active cue and no zoom are passed through untouched. Mediabunny calls this
  * after resizing to the output size. Call `dispose` once the conversion ends
@@ -35,7 +60,8 @@ export async function createOverlayProcess(
   { punchIn = null }: OverlayOptions = {},
 ): Promise<OverlayProcess> {
   const bitmaps = await Promise.all(overlays.map(o => createImageBitmap(o.image)))
-  const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, y: o.y, bitmap: bitmaps[i] }))
+  const shadows = await Promise.all(overlays.map(o => (o.sprite ? createImageBitmap(o.sprite.shadow) : null)))
+  const cues = overlays.map((o, i) => ({ start: o.start, end: o.end, y: o.y, bitmap: bitmaps[i], shadow: shadows[i], sprite: o.sprite }))
   let canvas: OffscreenCanvas | null = null
   let ctx: OffscreenCanvasRenderingContext2D | null = null
 
@@ -58,12 +84,23 @@ export async function createOverlayProcess(
       }
       drawZoomed(ctx!, sample, scale, width, height)
       for (const cue of active) {
-        ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
+        if (cue.sprite && cue.shadow) {
+          const pose = cue.sprite.path(t)
+          const scale = pose.scale / cue.sprite.resolution
+          if (scale <= 0) continue
+          const x = pose.x * width
+          const y = pose.y * height
+          drawTurned(ctx!, cue.shadow, x, y + STICKER_SHADOW.offsetY * pose.scale, pose.rotation, scale)
+          drawTurned(ctx!, cue.bitmap, x, y, pose.rotation, scale)
+        } else {
+          ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
+        }
       }
       return canvas
     },
     dispose: () => {
       bitmaps.forEach(b => b.close())
+      shadows.forEach(b => b?.close())
     },
   }
 }

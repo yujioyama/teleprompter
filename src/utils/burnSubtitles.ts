@@ -22,15 +22,13 @@ import {
 import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
 import {
   EMOJI_FONT_FAMILY,
-  DEFAULT_STICKER_PLACEMENT,
   STICKER_EMOJI_PX,
   STICKER_IMAGE_HEIGHT,
   STICKER_OUTLINE_PX,
-  STICKER_PLACEMENTS,
   STICKER_SHADOW,
-  stickerOf,
   stripStickers,
 } from './subtitleSticker'
+import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import {
   EN_STYLE,
   JA_STYLE,
@@ -217,22 +215,18 @@ function squareCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRen
 }
 
 /**
- * Render the first shot's sticker: the emoji, big, with a white die-cut
- * border and a soft shadow, tilted a little, on a transparent PNG as wide as
- * the video and STICKER_IMAGE_HEIGHT tall (centered on `x`, a fraction of the width).
- * The border is the emoji's own silhouette in white, stamped in a ring
- * around it, so it follows the shape rather than being a box.
+ * The emoji, big, with a white die-cut border, on a transparent square
+ * canvas, all `resolution` times its normal size. The border is the emoji's
+ * own silhouette in white, stamped in a ring around it, so it follows the
+ * shape rather than being a box.
  */
-export async function renderStickerImage(
-  emoji: string,
-  x: number,
-  rotation: number,
-): Promise<{ image: Blob; height: number }> {
-  const size = Math.ceil(STICKER_EMOJI_PX * 1.3) + STICKER_OUTLINE_PX * 2
+function dieCutSticker(emoji: string, resolution: number): HTMLCanvasElement {
+  const outline = STICKER_OUTLINE_PX * resolution
+  const size = Math.ceil(STICKER_EMOJI_PX * resolution * 1.3 + outline * 2)
   const center = size / 2
 
   const glyph = squareCanvas(size)
-  glyph.ctx.font = `${STICKER_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
+  glyph.ctx.font = `${STICKER_EMOJI_PX * resolution}px ${EMOJI_FONT_FAMILY}`
   glyph.ctx.textAlign = 'center'
   glyph.ctx.textBaseline = 'middle'
   glyph.ctx.fillText(emoji, center, center)
@@ -247,9 +241,29 @@ export async function renderStickerImage(
   const steps = 24
   for (let i = 0; i < steps; i++) {
     const a = (i / steps) * Math.PI * 2
-    sticker.ctx.drawImage(silhouette.canvas, Math.cos(a) * STICKER_OUTLINE_PX, Math.sin(a) * STICKER_OUTLINE_PX)
+    sticker.ctx.drawImage(silhouette.canvas, Math.cos(a) * outline, Math.sin(a) * outline)
   }
   sticker.ctx.drawImage(glyph.canvas, 0, 0)
+
+  for (const c of [glyph.canvas, silhouette.canvas]) {
+    c.width = 0
+    c.height = 0
+  }
+  return sticker.canvas
+}
+
+/**
+ * Render the first shot's sticker where it stays put: the die-cut emoji
+ * with a soft shadow, tilted a little, on a transparent PNG as wide as the
+ * video and STICKER_IMAGE_HEIGHT tall (centered on `x`, a fraction of the width).
+ */
+export async function renderStickerImage(
+  emoji: string,
+  x: number,
+  rotation: number,
+): Promise<{ image: Blob; height: number }> {
+  const sticker = dieCutSticker(emoji, 1)
+  const center = sticker.width / 2
 
   const { canvas, ctx } = overlayCanvas(STICKER_IMAGE_HEIGHT)
   ctx.translate(SUBTITLE_REFERENCE_WIDTH * x, STICKER_IMAGE_HEIGHT / 2)
@@ -257,13 +271,44 @@ export async function renderStickerImage(
   ctx.shadowColor = STICKER_SHADOW.color
   ctx.shadowBlur = STICKER_SHADOW.blur
   ctx.shadowOffsetY = STICKER_SHADOW.offsetY
-  ctx.drawImage(sticker.canvas, -center, -center)
+  ctx.drawImage(sticker, -center, -center)
 
-  for (const c of [glyph.canvas, silhouette.canvas, sticker.canvas]) {
+  sticker.width = 0
+  sticker.height = 0
+  return { image: await toPng(canvas), height: STICKER_IMAGE_HEIGHT }
+}
+
+/**
+ * Render the travelling sticker as two upright sprites the overlay draws
+ * at every frame's pose: the die-cut emoji, and its soft shadow on its own
+ * (so the shadow can stay below it while it spins). Both are drawn at
+ * STICKER_MAX_SCALE, so it stays sharp when it grows, and padded for the blur.
+ */
+export async function renderStickerSprite(emoji: string): Promise<{ image: Blob; shadow: Blob }> {
+  const resolution = STICKER_MAX_SCALE
+  const sticker = dieCutSticker(emoji, resolution)
+  const blur = STICKER_SHADOW.blur * resolution
+  const size = sticker.width + Math.ceil(blur) * 4
+  const offset = (size - sticker.width) / 2
+
+  const image = squareCanvas(size)
+  image.ctx.drawImage(sticker, offset, offset)
+
+  // Only the shadow lands on the canvas: the sticker is drawn far off to
+  // the left, and its shadow offset by as much back into place.
+  const shadow = squareCanvas(size)
+  const away = size * 2
+  shadow.ctx.shadowColor = STICKER_SHADOW.color
+  shadow.ctx.shadowBlur = blur
+  shadow.ctx.shadowOffsetX = away
+  shadow.ctx.drawImage(sticker, offset - away, offset)
+
+  const out = { image: await toPng(image.canvas), shadow: await toPng(shadow.canvas) }
+  for (const c of [sticker, image.canvas, shadow.canvas]) {
     c.width = 0
     c.height = 0
   }
-  return { image: await toPng(canvas), height: STICKER_IMAGE_HEIGHT }
+  return out
 }
 
 /**
@@ -271,9 +316,15 @@ export async function renderStickerImage(
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
  * translation aren't burned in. An emoji in a hook cue isn't drawn in its
- * text: it becomes the sticker, from 0 s to the end of the first shot.
+ * text: it becomes the sticker, from 0 s to the end of the first shot,
+ * travelling around as the hook says unless `still` (the ffmpeg path,
+ * which can only place it).
  */
-export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLook): Promise<SubtitleOverlay[]> {
+export async function renderSubtitleOverlays(
+  cues: StyledCue[],
+  look: SubtitleLook,
+  { still = false }: { still?: boolean } = {},
+): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
@@ -281,12 +332,16 @@ export async function renderSubtitleOverlays(cues: StyledCue[], look: SubtitleLo
     const { image, height } = await renderCueImage(drawn)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
-  const placement = look.hook.sticker ?? DEFAULT_STICKER_PLACEMENT
-  const sticker = look.firstShotDuration !== null && placement !== 'off' ? stickerOf(cues.filter(c => c.ja !== null)) : null
-  if (sticker && look.firstShotDuration !== null && placement !== 'off') {
-    const at = STICKER_PLACEMENTS[placement]
-    const { image, height } = await renderStickerImage(sticker, at.x, at.rotation)
-    overlays.push({ start: 0, end: look.firstShotDuration, image, y: clampedSubtitleY(at.y, height) })
+  const sticker = placeSticker(cues, look.hook, look.firstShotDuration)
+  if (sticker && look.firstShotDuration !== null) {
+    const window = { start: 0, end: look.firstShotDuration }
+    if (sticker.path && !still) {
+      const { image, shadow } = await renderStickerSprite(sticker.emoji)
+      overlays.push({ ...window, image, y: 0, sprite: { shadow, path: sticker.path, resolution: STICKER_MAX_SCALE } })
+    } else {
+      const { image, height } = await renderStickerImage(sticker.emoji, sticker.home.x, sticker.home.rotation)
+      overlays.push({ ...window, image, y: clampedSubtitleY(sticker.home.y * 100, height) })
+    }
   }
   return overlays
 }
@@ -317,10 +372,10 @@ export async function burnSubtitles(
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }
-  const overlays = await renderSubtitleOverlays(translated, look)
   const plan = punchInPlan(look.hook, look.firstShotDuration)
 
   if (await canUseWebCodecs()) {
+    const overlays = await renderSubtitleOverlays(translated, look)
     try {
       return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan })
     } catch (err) {
@@ -330,6 +385,8 @@ export async function burnSubtitles(
       onProgress?.(0)
     }
   }
+  // ffmpeg can't move the sticker: it stays put at its spot.
+  const overlays = await renderSubtitleOverlays(translated, look, { still: true })
   return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal)
 }
 

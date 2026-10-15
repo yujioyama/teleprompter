@@ -31,6 +31,8 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   punchInAt: 0.4,
   punchInDuration: null,
   stickerPlacement: 'chest',
+  stickerMotion: 'random',
+  stickerRoute: 0,
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -494,7 +496,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest' }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0 }, firstShotDuration: 2 }),
     )
   })
 
@@ -616,6 +618,16 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(group.getByText('胸元')).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(group.getByText('なし'))
     expect(onChange).toHaveBeenCalledWith({ stickerPlacement: 'off' })
+  })
+
+  it('picks how the sticker travels, and re-rolls its route', async () => {
+    const onChange = await renderTranslated()
+    const group = within(screen.getByRole('group', { name: 'ステッカーの動き' }))
+    expect(group.getByText('おまかせ')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByText('ワープ'))
+    expect(onChange).toHaveBeenCalledWith({ stickerMotion: 'warp' })
+    fireEvent.click(screen.getByText('ルートを変える'))
+    expect(onChange).toHaveBeenLastCalledWith({ stickerRoute: 1 })
   })
 
   it('switches the zoom between pulling back and pushing in', async () => {

@@ -20,6 +20,8 @@ const DEFAULTS = {
   punchInAt: 0.4,
   punchInDuration: 1.2,
   stickerPlacement: 'chest',
+  stickerMotion: 'random',
+  stickerRoute: 0,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

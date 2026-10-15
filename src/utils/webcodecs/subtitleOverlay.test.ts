@@ -11,7 +11,7 @@ class FakeCanvas {
   constructor(width: number, height: number) {
     this.width = width
     this.height = height
-    this.ctx = { canvas: this, drawImage: vi.fn() }
+    this.ctx = { canvas: this, drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), translate: vi.fn(), rotate: vi.fn(), scale: vi.fn() }
     canvases.push(this)
   }
   getContext() {
@@ -74,5 +74,28 @@ describe('createOverlayProcess zoom in', () => {
     process(frameAt(1.2).sample)
     const drawImage = canvases[0].ctx.drawImage as ReturnType<typeof vi.fn>
     expect(drawImage.mock.calls[drawImage.mock.calls.length - 1]).toEqual([expect.objectContaining({ width: 900 }), 90, 300])
+  })
+})
+
+describe('createOverlayProcess travelling sticker', () => {
+  it('draws the shadow then the sprite centered on the pose, turned and scaled, the shadow kept below', async () => {
+    const path = vi.fn(() => ({ x: 0.5, y: 0.25, rotation: 90, scale: 1.4 }))
+    const sprite = { shadow: new Blob(['shadow']), path, resolution: 1.4 }
+    const { process } = await createOverlayProcess([{ start: 0, end: 2, image: new Blob(['png']), y: 0, sprite }])
+    process(frameAt(1).sample)
+    expect(path).toHaveBeenCalledWith(1)
+    const ctx = canvases[0].ctx as Record<string, ReturnType<typeof vi.fn>>
+    expect(ctx.translate.mock.calls).toEqual([[540, 480 + 8 * 1.4], [540, 480]])
+    expect(ctx.rotate.mock.calls).toEqual([[Math.PI / 2], [Math.PI / 2]])
+    expect(ctx.scale.mock.calls).toEqual([[1, 1], [1, 1]])
+    // Each bitmap centered on the origin it was moved to.
+    expect(ctx.drawImage.mock.calls.slice(-2).map(c => c.slice(1))).toEqual([[-450, -50], [-450, -50]])
+  })
+
+  it('skips the sprite while it is shrunk away', async () => {
+    const sprite = { shadow: new Blob(['shadow']), path: () => ({ x: 0.5, y: 0.5, rotation: 0, scale: 0 }), resolution: 1.4 }
+    const { process } = await createOverlayProcess([{ start: 0, end: 2, image: new Blob(['png']), y: 0, sprite }])
+    process(frameAt(1).sample)
+    expect(canvases[0].ctx.translate).not.toHaveBeenCalled()
   })
 })

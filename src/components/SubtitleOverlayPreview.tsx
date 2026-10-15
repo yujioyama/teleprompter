@@ -15,15 +15,8 @@ import {
   layoutCue,
   outlineWidth,
 } from '../utils/subtitleLayout'
-import {
-  EMOJI_FONT_FAMILY,
-  DEFAULT_STICKER_PLACEMENT,
-  STICKER_EMOJI_PX,
-  STICKER_OUTLINE_PX,
-  STICKER_PLACEMENTS,
-  stickerOf,
-  stripStickers,
-} from '../utils/subtitleSticker'
+import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers } from '../utils/subtitleSticker'
+import { placeSticker } from '../utils/stickerMotion'
 import styles from './SubtitleOverlayPreview.module.css'
 
 interface SubtitleOverlayPreviewProps {
@@ -94,10 +87,15 @@ export default function SubtitleOverlayPreview({
     [cue, measure],
   )
   // As burned: only translated cues count, and it stays up for the whole first shot.
-  const sticker = useMemo(() => stickerOf(styled.filter(c => c.ja !== null)), [styled])
-  const placement = hook?.sticker ?? DEFAULT_STICKER_PLACEMENT
-  const at = placement === 'off' ? null : STICKER_PLACEMENTS[placement]
-  const showSticker = sticker !== null && at !== null && firstShotDuration !== null && currentTime < firstShotDuration
+  const stickerMotion = hook?.stickerMotion
+  const stickerRoute = hook?.stickerRoute
+  const stickerPlacement = hook?.sticker
+  const sticker = useMemo(
+    () => placeSticker(styled, { sticker: stickerPlacement, stickerMotion, stickerRoute }, firstShotDuration),
+    [styled, stickerPlacement, stickerMotion, stickerRoute, firstShotDuration],
+  )
+  const showSticker = sticker !== null && firstShotDuration !== null && currentTime < firstShotDuration
+  const pose = sticker && (sticker.path ? sticker.path(currentTime) : { ...sticker.home, scale: 1 })
 
   const hookPosition = hook?.position ?? position
 
@@ -125,16 +123,16 @@ export default function SubtitleOverlayPreview({
 
   // The die-cut white border, approximated with hard white shadows on every side.
   const o = cqw(STICKER_OUTLINE_PX)
-  const stickerBox = showSticker && at && (
+  const stickerBox = showSticker && sticker && pose && (
     <span
       className={styles.sticker}
       data-testid="subtitle-sticker"
       style={{
-        left: `${at.x * 100}%`,
-        top: `${at.y}%`,
+        left: `${pose.x * 100}%`,
+        top: `${pose.y * 100}%`,
         fontFamily: EMOJI_FONT_FAMILY,
         fontSize: cqw(STICKER_EMOJI_PX),
-        transform: `translate(-50%, -50%) rotate(${at.rotation}deg)`,
+        transform: `translate(-50%, -50%) rotate(${pose.rotation}deg) scale(${pose.scale})`,
         filter: [
           `drop-shadow(${o} 0 0 #fff)`,
           `drop-shadow(-${o} 0 0 #fff)`,
@@ -144,7 +142,7 @@ export default function SubtitleOverlayPreview({
         ].join(' '),
       }}
     >
-      {sticker}
+      {sticker.emoji}
     </span>
   )
 

@@ -4,6 +4,9 @@ import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
 import { clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { createCanvasMeasure, layoutCue } from '../utils/subtitleLayout'
+import { placeSticker } from '../utils/stickerMotion'
+import { styleCues } from '../utils/subtitleHook'
+import { STICKER_PLACEMENTS } from '../utils/subtitleSticker'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
@@ -77,6 +80,21 @@ describe('SubtitleOverlayPreview', () => {
 
     rerender(<SubtitleOverlayPreview cues={cues} position={72} currentTime={2.5} hook={HOOK} firstShotDuration={2} />)
     expect(screen.queryByTestId('subtitle-sticker')).not.toBeInTheDocument()
+  })
+
+  it('moves the sticker along the same path as the burn, and leaves it put with no motion', () => {
+    const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン' }]
+    const hook = { ...HOOK, sticker: 'right' as const, stickerMotion: 'orbit' as const, stickerRoute: 0 }
+    const path = placeSticker(styleCues(cues, 3, true), hook, 3)!.path!
+    const { rerender } = render(<SubtitleOverlayPreview cues={cues} position={72} currentTime={1} hook={hook} firstShotDuration={3} />)
+    const at = path(1)
+    const style = screen.getByTestId('subtitle-sticker').style
+    expect(style.left).toBe(`${at.x * 100}%`)
+    expect(style.top).toBe(`${at.y * 100}%`)
+    expect(style.transform).toBe(`translate(-50%, -50%) rotate(${at.rotation}deg) scale(${at.scale})`)
+
+    rerender(<SubtitleOverlayPreview cues={cues} position={72} currentTime={1} hook={{ ...hook, stickerMotion: 'none' }} firstShotDuration={3} />)
+    expect(screen.getByTestId('subtitle-sticker').style.left).toBe(`${STICKER_PLACEMENTS.right.x * 100}%`)
   })
 
   it('keeps a tall hook box on screen, as the burn does', () => {
