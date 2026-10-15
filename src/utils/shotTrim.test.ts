@@ -35,6 +35,7 @@ describe('resolveShotTrimSettings', () => {
     trimPaddingStart: 0.3,
     trimPaddingEnd: 0.4,
     normalizeAudio: true,
+    voicePreset: 'natural',
     defaultBgmId: null,
     bgmVolume: 0.3,
     subtitlePosition: 72,

@@ -1,14 +1,14 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
-import { applyGainWithLimiter, planLoudnessGain } from '../loudness'
+import { applyAudioFinish, LOUDNESS_ONLY, type AudioFinish } from '../audioFinish'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 
 /**
- * WebCodecs counterpart of the ffmpeg loudness pass: the audio is decoded,
- * brought to the target loudness (see loudness.ts) and re-encoded, with the
- * video packets copied as-is. A video already at the target (or with no
- * audible audio) comes back unchanged, as the same blob.
+ * WebCodecs counterpart of the ffmpeg export pass: the audio is decoded,
+ * finished (voice preset, target loudness; see audioFinish.ts) and
+ * re-encoded, with the video packets copied as-is. A video nothing changes
+ * (already at the target, no audible audio) comes back as the same blob.
  */
-export async function normalizeLoudnessWebCodecs(videoBlob: Blob): Promise<Blob> {
+export async function finishAudioWebCodecs(videoBlob: Blob, finish: AudioFinish): Promise<Blob> {
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
     const videoTrack = await input.getPrimaryVideoTrack()
@@ -17,11 +17,16 @@ export async function normalizeLoudnessWebCodecs(videoBlob: Blob): Promise<Blob>
     if (!audioTrack) return videoBlob
 
     const audio = await decodeAudioTrack(audioTrack)
-    if (!applyTargetLoudness(audio)) return videoBlob
+    if (!applyAudioFinish(channelsOf(audio), audio.sampleRate, finish)) return videoBlob
     return await muxWithAudio(videoTrack, audio)
   } finally {
     input.dispose()
   }
+}
+
+/** Just the loudness correction, as each take gets on import (processRecordedVideo). */
+export function normalizeLoudnessWebCodecs(videoBlob: Blob): Promise<Blob> {
+  return finishAudioWebCodecs(videoBlob, LOUDNESS_ONLY)
 }
 
 /**
@@ -29,10 +34,13 @@ export async function normalizeLoudnessWebCodecs(videoBlob: Blob): Promise<Blob>
  * untouched, when it already is there (or has no audible audio).
  */
 export function applyTargetLoudness(audio: AudioBuffer): boolean {
-  // getChannelData returns live views, so the gain lands in `audio` itself.
-  const channels = Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c))
-  const gainDb = planLoudnessGain(channels, audio.sampleRate)
-  if (gainDb === null) return false
-  applyGainWithLimiter(channels, audio.sampleRate, gainDb)
-  return true
+  return applyAudioFinish(channelsOf(audio), audio.sampleRate, LOUDNESS_ONLY)
+}
+
+/**
+ * `audio`'s channels as live views (getChannelData), so processing them
+ * lands in `audio` itself.
+ */
+export function channelsOf(audio: AudioBuffer): Float32Array[] {
+  return Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c))
 }

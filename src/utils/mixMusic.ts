@@ -2,6 +2,8 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
+import { finishAudio } from './normalizeLoudness'
+import type { VoicePreset } from './voicePreset'
 import { canUseWebCodecs } from './webcodecs/support'
 import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 
@@ -62,9 +64,12 @@ let mixQueue: Promise<unknown> = Promise.resolve()
  * back to ffmpeg.wasm for this call if that fails. Unlike the encode paths,
  * a failure here doesn't disable WebCodecs for the session: it may just as
  * well be the BGM file or Web Audio at fault.
+ *
+ * `voice` (声の加工) is applied to the video's own audio before the BGM goes
+ * under it.
  */
-export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
-  const run = mixQueue.then(() => mixMusicAuto(videoBlob, trackBlob, volume))
+export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number, voice: VoicePreset = 'none'): Promise<Blob> {
+  const run = mixQueue.then(() => mixMusicAuto(videoBlob, trackBlob, volume, voice))
   // Swallow rejection in the queue chain itself so one failed mix doesn't
   // permanently wedge the queue for later calls; this call's own returned
   // promise still rejects normally for its caller.
@@ -72,15 +77,17 @@ export function mixMusic(videoBlob: Blob, trackBlob: Blob, volume: number): Prom
   return run
 }
 
-async function mixMusicAuto(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+async function mixMusicAuto(videoBlob: Blob, trackBlob: Blob, volume: number, voice: VoicePreset): Promise<Blob> {
   if (await canUseWebCodecs()) {
     try {
-      return await mixMusicWebCodecs(videoBlob, trackBlob, volume)
+      return await mixMusicWebCodecs(videoBlob, trackBlob, volume, voice)
     } catch (err) {
       console.warn('[mixMusic] WebCodecs mix failed, falling back to ffmpeg:', err)
     }
   }
-  return mixMusicFFmpeg(videoBlob, trackBlob, volume)
+  // The filtergraph has no voice preset: apply it in a pass of its own first.
+  const voiced = await finishAudio(videoBlob, { voice, normalize: false })
+  return mixMusicFFmpeg(voiced, trackBlob, volume)
 }
 
 async function mixMusicFFmpeg(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {

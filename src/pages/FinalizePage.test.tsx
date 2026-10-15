@@ -11,7 +11,7 @@ import { MUSIC_TRACKS } from '../data/musicTracks'
 import { trimAndNormalizeShot, unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
 import { concatVideos } from '../utils/concatVideos'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
-import { normalizeLoudness, markLoudnessNormalized } from '../utils/normalizeLoudness'
+import { finishAudio, markLoudnessNormalized } from '../utils/normalizeLoudness'
 import { prepareFinalAudio, joinVideoAndAudio } from '../utils/webcodecs/finalAudio'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
@@ -41,7 +41,7 @@ vi.mock('../utils/shareOrDownload', () => ({
   shareOrDownload: vi.fn(async () => true),
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
-  normalizeLoudness: vi.fn(),
+  finishAudio: vi.fn(),
   markLoudnessNormalized: vi.fn(),
 }))
 vi.mock('../utils/webcodecs/finalAudio', () => ({
@@ -106,7 +106,7 @@ beforeEach(async () => {
 
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['burned'], { type: 'video/mp4' }))
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
-  vi.mocked(normalizeLoudness).mockResolvedValue(LOUDNESS_NORMALIZED)
+  vi.mocked(finishAudio).mockResolvedValue(LOUDNESS_NORMALIZED)
   vi.mocked(canUseWebCodecs).mockResolvedValue(false)
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -928,27 +928,28 @@ describe('FinalizePage export step: loudness normalization', () => {
     await walkToExport()
     fireEvent.click(await screen.findByText('保存する'))
 
-    expect(normalizeLoudness).toHaveBeenCalledWith(BURNED)
+    // No BGM mix applied the voice preset (ナチュラル by default), so this pass does.
+    expect(finishAudio).toHaveBeenCalledWith(BURNED, { voice: 'natural', normalize: true })
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
   })
 
   it('shows progress while normalizing, and no save button until it is done', async () => {
     let finish: (blob: Blob) => void = () => {}
-    vi.mocked(normalizeLoudness).mockReturnValue(new Promise(resolve => (finish = resolve)))
+    vi.mocked(finishAudio).mockReturnValue(new Promise(resolve => (finish = resolve)))
     await walkToExport()
 
-    expect(await screen.findByText('音量を調整中...')).toBeInTheDocument()
+    expect(await screen.findByText('音声を仕上げ中...')).toBeInTheDocument()
     expect(screen.queryByText('保存する')).not.toBeInTheDocument()
     finish(LOUDNESS_NORMALIZED)
     expect(await screen.findByText('保存する')).toBeInTheDocument()
   })
 
   it('saves the original video, with a note, when normalizing fails', async () => {
-    vi.mocked(normalizeLoudness).mockRejectedValue(new Error('decode failed'))
+    vi.mocked(finishAudio).mockRejectedValue(new Error('decode failed'))
     await walkToExport()
 
     fireEvent.click(await screen.findByText('保存する'))
-    expect(screen.getByText(/音量の自動調整に失敗したため/)).toBeInTheDocument()
+    expect(screen.getByText(/音声の自動調整に失敗したため/)).toBeInTheDocument()
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
   })
 
@@ -959,13 +960,22 @@ describe('FinalizePage export step: loudness normalization', () => {
     expect(screen.queryByText('BGMを外す')).not.toBeInTheDocument()
   })
 
-  it('skips it when 音量の自動調整 is turned off in settings', async () => {
-    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, normalizeAudio: false }))
+  it('skips it when 音量の自動調整 and 声の加工 are both off in settings', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, normalizeAudio: false, voicePreset: 'none' }))
     await walkToExport()
 
     fireEvent.click(await screen.findByText('保存する'))
-    expect(normalizeLoudness).not.toHaveBeenCalled()
+    expect(finishAudio).not.toHaveBeenCalled()
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
+  })
+
+  it('still applies 声の加工 when only 音量の自動調整 is off', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, normalizeAudio: false, voicePreset: 'radio' }))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('保存する'))
+    expect(finishAudio).toHaveBeenCalledWith(BURNED, { voice: 'radio', normalize: false })
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
   })
 
   it('copies the caption from the export step', async () => {
@@ -1065,16 +1075,19 @@ describe('FinalizePage with a usual BGM', () => {
 
     expect(await screen.findByText('保存する')).toBeInTheDocument()
     expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
-    const [video, , volume] = vi.mocked(mixModule.mixMusic).mock.calls[0]
+    const [video, , volume, voice] = vi.mocked(mixModule.mixMusic).mock.calls[0]
     expect(video).toBe(BURNED)
     expect(volume).toBe(0.45)
+    expect(voice).toBe('natural')
+    // The mix applied the voice preset; the export pass only corrects the loudness.
+    await waitFor(() => expect(finishAudio).toHaveBeenLastCalledWith(expect.any(Blob), { voice: 'none', normalize: true }))
     expect(screen.getByText('BGM').closest('button')).not.toBeDisabled()
   })
 
   it('lets BGMを外す drop the BGM on the export step and save the video without it', async () => {
     const mixed = new Blob(['mixed-usual'], { type: 'video/mp4' })
     vi.mocked(mixModule.mixMusic).mockResolvedValue(mixed)
-    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
     useSettingsOf({ defaultBgmId: 'lofi-tokyo' })
     await walkThroughSubtitles()
     await screen.findByText('保存する')
@@ -1082,7 +1095,7 @@ describe('FinalizePage with a usual BGM', () => {
     expect(screen.getByText('BGM: Tokyo Lofi')).toBeInTheDocument()
     fireEvent.click(screen.getByText('BGMを外す'))
 
-    await waitFor(() => expect(normalizeLoudness).toHaveBeenLastCalledWith(BURNED))
+    await waitFor(() => expect(finishAudio).toHaveBeenLastCalledWith(BURNED, { voice: 'natural', normalize: true }))
     expect(screen.queryByText('BGM: Tokyo Lofi')).not.toBeInTheDocument()
     expect(screen.queryByText('BGMを外す')).not.toBeInTheDocument()
     expect(screen.getByText('BGM').closest('button')).not.toBeDisabled()
@@ -1123,7 +1136,7 @@ describe('FinalizePage with a usual BGM', () => {
     const joined = new Blob(['joined'], { type: 'video/mp4' })
     vi.mocked(prepareFinalAudio).mockResolvedValue(prepared)
     vi.mocked(joinVideoAndAudio).mockResolvedValue(joined)
-    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
 
     await walkThroughSubtitles()
     expect(await screen.findByText('保存する')).toBeInTheDocument()
@@ -1132,7 +1145,7 @@ describe('FinalizePage with a usual BGM', () => {
     const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
     expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
-    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true])
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural'])
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
@@ -1143,7 +1156,7 @@ describe('FinalizePage with a usual BGM', () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
     vi.mocked(prepareFinalAudio).mockReturnValueOnce(new Promise<Blob>(() => {}))
-    vi.mocked(normalizeLoudness).mockImplementation(async blob => blob)
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
 
     await walkThroughSubtitles()
     expect(await screen.findByText(/いつものBGM（Tokyo Lofi）を合成中/)).toBeInTheDocument()

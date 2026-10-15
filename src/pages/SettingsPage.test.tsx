@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import SettingsPage from './SettingsPage'
 import { shareOrDownload } from '../utils/shareOrDownload'
@@ -21,6 +21,19 @@ function renderSettings() {
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+})
+
+describe('SettingsPage voice preset', () => {
+  it('starts on ナチュラル and saves the pick', () => {
+    renderSettings()
+    const group = within(screen.getByRole('group', { name: '声の加工' }))
+    expect(group.getByRole('button', { name: 'ナチュラル' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByRole('button', { name: 'ラジオ風' }))
+    expect(stored().voicePreset).toBe('radio')
+    expect(group.getByRole('button', { name: 'ラジオ風' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByRole('button', { name: 'なし' }))
+    expect(stored().voicePreset).toBe('none')
+  })
 })
 
 describe('SettingsPage BGM', () => {

@@ -1,5 +1,7 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
+import { applyVoicePreset, type VoicePreset } from '../voicePreset'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
+import { channelsOf } from './normalizeLoudnessWebCodecs'
 
 /**
  * ffmpeg's `amix` (normalize=1, the default) scales every input by
@@ -19,9 +21,15 @@ const FADE_SECONDS = 1
  * first second and out over the last, scaled by `volume`, then summed with
  * the original audio (both scaled as `amix` does). The BGM mp3 is decoded
  * with decodeAudioData, which every browser supports for mp3, rather than
- * through WebCodecs.
+ * through WebCodecs. `voice` (声の加工) is applied to the original audio
+ * before the BGM goes under it.
  */
-export async function mixMusicWebCodecs(videoBlob: Blob, trackBlob: Blob, volume: number): Promise<Blob> {
+export async function mixMusicWebCodecs(
+  videoBlob: Blob,
+  trackBlob: Blob,
+  volume: number,
+  voice: VoicePreset = 'none',
+): Promise<Blob> {
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
     const videoTrack = await input.getPrimaryVideoTrack()
@@ -30,6 +38,7 @@ export async function mixMusicWebCodecs(videoBlob: Blob, trackBlob: Blob, volume
 
     const duration = await input.computeDuration()
     const original = await decodeAudioTrack(audioTrack)
+    applyVoicePreset(channelsOf(original), original.sampleRate, voice)
     const mixed = await renderMix(original, trackBlob, volume, duration)
     return await muxWithAudio(videoTrack, mixed)
   } finally {

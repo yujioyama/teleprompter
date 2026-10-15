@@ -8,6 +8,7 @@ const DEFAULTS = {
   trimPaddingStart: 0.3,
   trimPaddingEnd: 0.4,
   normalizeAudio: true,
+  voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,

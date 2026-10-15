@@ -6,8 +6,9 @@ import {
   decodeAudioTrack,
   runOutput,
 } from './audioTrack'
+import { applyVoicePreset, type VoicePreset } from '../voicePreset'
 import { renderMix } from './mixMusicWebCodecs'
-import { applyTargetLoudness } from './normalizeLoudnessWebCodecs'
+import { applyTargetLoudness, channelsOf } from './normalizeLoudnessWebCodecs'
 
 /**
  * How far prepared audio may run from the video it's joined to. Two encodes
@@ -37,8 +38,9 @@ export function durationsMatch(audio: number, video: number, sampleRate: number)
 
 /**
  * The finished video's audio, built from `source` (the combined video,
- * before subtitles): the BGM mixed in as mixMusicWebCodecs does, then, if
- * `normalize`, brought to the export loudness as normalizeLoudnessWebCodecs
+ * before subtitles): the voice preset applied, the BGM mixed in as
+ * mixMusicWebCodecs does, then, if
+ * `normalize`, brought to the export loudness as finishAudioWebCodecs
  * does. Returned encoded, as an audio-only M4A: the float buffer is ~23 MB a
  * minute, which iOS can't spare while burning subtitles (issue #12).
  *
@@ -52,6 +54,7 @@ export async function prepareFinalAudio(
   track: Blob,
   volume: number,
   normalize: boolean,
+  voice: VoicePreset,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(source), formats: ALL_FORMATS })
   let audio: AudioBuffer
@@ -62,6 +65,7 @@ export async function prepareFinalAudio(
     if (!videoTrack) throw new Error('prepared audio: source has no video track')
     const duration = await videoTrack.computeDuration()
     const decoded = await decodeAudioTrack(audioTrack)
+    applyVoicePreset(channelsOf(decoded), decoded.sampleRate, voice)
     // The offline context cuts or pads the decoded audio to this length, so
     // no second full-length copy is held next to it (~23 MB a minute).
     audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate))

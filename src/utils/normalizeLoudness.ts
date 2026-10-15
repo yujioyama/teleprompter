@@ -2,11 +2,11 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
 import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg } from './ffmpegClient'
-import { applyGainWithLimiter, planLoudnessGain } from './loudness'
+import { applyAudioFinish, finishKey, isNoFinish, LOUDNESS_ONLY, type AudioFinish } from './audioFinish'
 import { canUseWebCodecs } from './webcodecs/support'
-import { normalizeLoudnessWebCodecs } from './webcodecs/normalizeLoudnessWebCodecs'
+import { finishAudioWebCodecs } from './webcodecs/normalizeLoudnessWebCodecs'
 
-// Raw PCM handed between ffmpeg and loudness.ts. Every exported video's
+// Raw PCM handed between ffmpeg and audioFinish.ts. Every exported video's
 // audio is already 48 kHz stereo (trimAndNormalizeShot pins it), so this
 // is no resampling in practice.
 const PCM_RATE = 48000
@@ -35,50 +35,64 @@ export function buildReplaceAudioArgs(video: string, pcm: string, output: string
 // Serializes this module's ffmpeg work: the shared FFmpeg instance has no
 // locking, so two runs would trample each other's files (see mixMusic.ts).
 let queue: Promise<unknown> = Promise.resolve()
-const results = new WeakMap<Blob, Promise<Blob>>()
+// Per blob, per finishKey.
+const results = new WeakMap<Blob, Map<string, Promise<Blob>>>()
+
+function resultsFor(blob: Blob): Map<string, Promise<Blob>> {
+  let byFinish = results.get(blob)
+  if (!byFinish) {
+    byFinish = new Map()
+    results.set(blob, byFinish)
+  }
+  return byFinish
+}
 
 /**
- * Bring the video's audio to the loudness Instagram and TikTok play back at
- * (-14 LUFS, peaks limited below -1 dBTP), so the final video is neither
- * quieter nor louder than the rest of the feed — whatever the per-shot
- * levels and the BGM mix did to it. The video stream is copied.
+ * The export's pass over the finished video's audio: the voice preset (声の
+ * 加工, when no BGM mix applied it already), then the loudness Instagram and
+ * TikTok play back at (-14 LUFS, peaks limited below -1 dBTP), so the final
+ * video is neither quieter nor louder than the rest of the feed — whatever
+ * the per-shot levels and the BGM mix did to it. The video stream is copied.
  *
- * Returns the same blob when the audio is already on target. Results are
- * cached per blob, so returning to the export step doesn't redo the work.
+ * Returns the same blob when nothing changed. Results are cached per blob
+ * and finish, so returning to the export step doesn't redo the work.
  *
  * Uses WebCodecs when available (no ffmpeg.wasm load), falling back to
  * ffmpeg.wasm if that fails.
  */
-export function normalizeLoudness(videoBlob: Blob): Promise<Blob> {
-  const cached = results.get(videoBlob)
+export function finishAudio(videoBlob: Blob, finish: AudioFinish): Promise<Blob> {
+  if (isNoFinish(finish)) return Promise.resolve(videoBlob)
+  const byFinish = resultsFor(videoBlob)
+  const key = finishKey(finish)
+  const cached = byFinish.get(key)
   if (cached) return cached
-  const run = queue.then(() => normalizeLoudnessAuto(videoBlob))
+  const run = queue.then(() => finishAudioAuto(videoBlob, finish))
   queue = run.catch(() => {})
-  results.set(videoBlob, run)
-  run.catch(() => results.delete(videoBlob))
+  byFinish.set(key, run)
+  run.catch(() => byFinish.delete(key))
   return run
 }
 
 /**
  * Record that `blob`'s audio was built at the target loudness already (see
- * preparedAudio.ts), so normalizeLoudness hands it back as is.
+ * preparedAudio.ts), so finishAudio hands it back as is.
  */
 export function markLoudnessNormalized(blob: Blob): void {
-  results.set(blob, Promise.resolve(blob))
+  resultsFor(blob).set(finishKey(LOUDNESS_ONLY), Promise.resolve(blob))
 }
 
-async function normalizeLoudnessAuto(videoBlob: Blob): Promise<Blob> {
+async function finishAudioAuto(videoBlob: Blob, finish: AudioFinish): Promise<Blob> {
   if (await canUseWebCodecs()) {
     try {
-      return await normalizeLoudnessWebCodecs(videoBlob)
+      return await finishAudioWebCodecs(videoBlob, finish)
     } catch (err) {
-      console.warn('[normalizeLoudness] WebCodecs pass failed, falling back to ffmpeg:', err)
+      console.warn('[finishAudio] WebCodecs pass failed, falling back to ffmpeg:', err)
     }
   }
-  return normalizeLoudnessFFmpeg(videoBlob)
+  return finishAudioFFmpeg(videoBlob, finish)
 }
 
-async function normalizeLoudnessFFmpeg(videoBlob: Blob): Promise<Blob> {
+async function finishAudioFFmpeg(videoBlob: Blob, finish: AudioFinish): Promise<Blob> {
   const ff = await getFFmpeg()
   const files = { video: 'loudness-in.mp4', pcmIn: 'loudness-in.pcm', pcmOut: 'loudness-out.pcm', out: 'loudness-out.mp4' }
   try {
@@ -94,9 +108,7 @@ async function normalizeLoudnessFFmpeg(videoBlob: Blob): Promise<Blob> {
     for (let i = 0; i < frames; i++) {
       for (let c = 0; c < PCM_CHANNELS; c++) channels[c][i] = interleaved[i * PCM_CHANNELS + c]
     }
-    const gainDb = planLoudnessGain(channels, PCM_RATE)
-    if (gainDb === null) return videoBlob
-    applyGainWithLimiter(channels, PCM_RATE, gainDb)
+    if (!applyAudioFinish(channels, PCM_RATE, finish)) return videoBlob
     for (let i = 0; i < frames; i++) {
       for (let c = 0; c < PCM_CHANNELS; c++) interleaved[i * PCM_CHANNELS + c] = channels[c][i]
     }

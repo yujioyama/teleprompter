@@ -8,12 +8,15 @@ import {
 } from '../utils/subtitlePosition'
 import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
 import type { StickerPlacement } from '../utils/subtitleSticker'
+import type { VoicePreset } from '../utils/voicePreset'
 
 export interface AppSettings {
   trimEnabled: boolean
   trimPaddingStart: number
   trimPaddingEnd: number
   normalizeAudio: boolean
+  /** 声の加工 applied to the voice on every video. */
+  voicePreset: VoicePreset
   /** BGM added to every video without stopping on the BGM step; null = none. */
   defaultBgmId: string | null
   /** 0-1, the BGM step's volume slider. */
@@ -48,6 +51,7 @@ const DEFAULTS: AppSettings = {
   trimPaddingStart: 0.3,
   trimPaddingEnd: 0.4,
   normalizeAudio: true,
+  voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
