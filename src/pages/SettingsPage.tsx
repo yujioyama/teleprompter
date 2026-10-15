@@ -3,6 +3,7 @@ import { useSettings } from '../hooks/useSettings'
 import BgmSettings from '../components/BgmSettings'
 import SubtitlePositionSettings from '../components/SubtitlePositionSettings'
 import ScriptBackup from '../components/ScriptBackup'
+import { VOICE_PRESET_OPTIONS } from '../utils/voicePreset'
 import styles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
@@ -32,6 +33,26 @@ export default function SettingsPage() {
             />
             <span className={styles.toggleTrack} />
           </label>
+        </div>
+
+        <div className={`${styles.row} ${styles.sliderRow}`}>
+          <div>
+            <div className={styles.rowLabel}>声の加工</div>
+            <div className={styles.rowSub}>マイクで録ったような声に整えます（BGMにはかかりません）</div>
+          </div>
+          <div className={styles.presets} role="group" aria-label="声の加工">
+            {VOICE_PRESET_OPTIONS.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                className={`${styles.presetBtn} ${settings.voicePreset === o.value ? styles.presetBtnActive : ''}`}
+                aria-pressed={settings.voicePreset === o.value}
+                onClick={() => updateSettings({ voicePreset: o.value })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -1,30 +1,32 @@
 import { mixMusic } from './mixMusic'
 import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
+import type { VoicePreset } from './voicePreset'
 
 /** Everything the finished audio depends on besides the video's own sound. */
 export interface FinalAudioKey {
   trackId: string
   volume: number
   normalize: boolean
+  voice: VoicePreset
 }
 
 function sameKey(a: FinalAudioKey, b: FinalAudioKey): boolean {
-  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize
+  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice
 }
 
 /**
- * The finished video's audio (BGM mixed in, loudness corrected), built from
- * the combined video while the subtitles are still being worked on:
- * subtitles only change the picture, so the audio needn't wait for the
- * burn. Holds one result at a time.
+ * The finished video's audio (voice preset applied, BGM mixed in, loudness
+ * corrected), built from the combined video while the subtitles are still
+ * being worked on: subtitles only change the picture, so the audio needn't
+ * wait for the burn. Holds one result at a time.
  */
 export class PreparedAudio {
   private entry: { source: Blob; key: FinalAudioKey; audio: Promise<Blob> } | null = null
 
   prepare(source: Blob, key: FinalAudioKey, track: () => Promise<Blob>): void {
     if (this.entry && this.entry.source === source && sameKey(this.entry.key, key)) return
-    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize))
+    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice))
     // Only means mixing the slow way later; never shown to the user.
     audio.catch(err => console.warn('[PreparedAudio] could not prepare the final audio:', err))
     this.entry = { source, key, audio }
@@ -78,5 +80,5 @@ export async function mixForExport(
   } else {
     console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
-  return mixMusic(video, trackBlob, key.volume)
+  return mixMusic(video, trackBlob, key.volume, key.voice)
 }

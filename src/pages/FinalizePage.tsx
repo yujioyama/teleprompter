@@ -27,7 +27,8 @@ import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, speechBoundsFor, type SpeechBounds } from '../utils/detectSpeechBounds'
 import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
-import { normalizeLoudness } from '../utils/normalizeLoudness'
+import { finishAudio } from '../utils/normalizeLoudness'
+import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
 import { raceAbort } from '../utils/cancellation'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
@@ -140,7 +141,7 @@ export default function FinalizePage() {
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
   const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute } = settings
-  const { normalizeAudio } = settings
+  const { normalizeAudio, voicePreset } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
   // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
@@ -525,25 +526,29 @@ export default function FinalizePage() {
       if (cancelled || !ok) return
       preparedAudio.prepare(
         combinedBlob,
-        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio },
+        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset },
         () => fetchTrack(defaultTrack),
       )
     })
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, preparedAudio])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, preparedAudio])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
   // final audio can be brought to the level Instagram/TikTok play back at.
+  // The voice preset goes on the voice before any BGM under it, so this pass
+  // applies it only when no mix did.
+  const hasMix = mixed !== null
   useEffect(() => {
     if (step !== 'export' || !finalBlob) {
       setExportBlob(null)
       setLoudnessState('idle')
       return
     }
-    if (!normalizeAudio) {
+    const finish: AudioFinish = { voice: hasMix ? 'none' : voicePreset, normalize: normalizeAudio }
+    if (isNoFinish(finish)) {
       setExportBlob(finalBlob)
       setLoudnessState('idle')
       return
@@ -551,7 +556,7 @@ export default function FinalizePage() {
     let cancelled = false
     setExportBlob(null)
     setLoudnessState('normalizing')
-    normalizeLoudness(finalBlob).then(
+    finishAudio(finalBlob, finish).then(
       normalized => {
         if (cancelled) return
         setExportBlob(normalized)
@@ -559,8 +564,8 @@ export default function FinalizePage() {
       },
       err => {
         if (cancelled) return
-        // Still let the video be saved, just at its original level.
-        console.warn('[FinalizePage] loudness normalization failed:', err)
+        // Still let the video be saved, just with its audio as it was.
+        console.warn('[FinalizePage] finishing the audio failed:', err)
         setExportBlob(finalBlob)
         setLoudnessState('failed')
       },
@@ -568,7 +573,7 @@ export default function FinalizePage() {
     return () => {
       cancelled = true
     }
-  }, [step, finalBlob, normalizeAudio])
+  }, [step, finalBlob, hasMix, normalizeAudio, voicePreset])
 
   useEffect(() => {
     if (!exportBlob) {
@@ -869,6 +874,7 @@ export default function FinalizePage() {
                     trackId: track.id,
                     volume,
                     normalize: normalizeAudio,
+                    voice: voicePreset,
                   })
                 }
                 onLeaveAuto={() => {
@@ -888,7 +894,7 @@ export default function FinalizePage() {
 
           {step === 'export' && loudnessState === 'normalizing' && (
             <div className={styles.stepBody}>
-              <p className={styles.shotEntryText}>音量を調整中...</p>
+              <p className={styles.shotEntryText}>音声を仕上げ中...</p>
             </div>
           )}
 
@@ -897,7 +903,7 @@ export default function FinalizePage() {
               <p className={styles.shotEntryText}>完成した動画</p>
               <video className={styles.preview} src={finalUrl} controls playsInline />
               {loudnessState === 'failed' && (
-                <p className={styles.missing}>音量の自動調整に失敗したため、元の音量のまま保存されます</p>
+                <p className={styles.missing}>音声の自動調整に失敗したため、元の音声のまま保存されます</p>
               )}
               {mixed && (
                 <div className={styles.bgmRow}>

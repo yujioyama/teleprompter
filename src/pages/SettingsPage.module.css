@@ -125,6 +125,25 @@
   accent-color: var(--accent);
 }
 
+.presets {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.presetBtn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.presetBtnActive {
+  outline: 2px solid var(--accent);
+}
+
 .disabled {
   opacity: 0.4;
   pointer-events: none;
