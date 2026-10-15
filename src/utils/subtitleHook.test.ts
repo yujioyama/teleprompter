@@ -55,6 +55,8 @@ describe('hookOptionsOf', () => {
     punchInAt: 0.6,
     punchInDuration: null,
     stickerPlacement: 'chest' as const,
+    stickerMotion: 'orbit' as const,
+    stickerRoute: 2,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -63,6 +65,8 @@ describe('hookOptionsOf', () => {
       position: 40,
       punchIn: { zoom: 1.35, direction: 'in', at: 0.6, duration: null },
       sticker: 'chest',
+      stickerMotion: 'orbit',
+      stickerRoute: 2,
     })
   })
 
@@ -167,16 +171,23 @@ describe('first-shot extras', () => {
 
 describe('followsFrames', () => {
   const punchIn = { zoom: 1.25 as const, direction: 'in' as const, at: 0.4, duration: null }
+  const still = { style: true, position: 15, punchIn: null, sticker: 'right' as const, stickerMotion: 'none' as const }
 
   it('follows frames through the first shot and a short tail after it', () => {
-    expect(followsFrames(0, punchIn, 2)).toBe(true)
-    expect(followsFrames(2.05, punchIn, 2)).toBe(true)
-    expect(followsFrames(2.1, punchIn, 2)).toBe(false)
-    expect(followsFrames(30, punchIn, 2)).toBe(false)
+    const hook = { ...still, punchIn }
+    expect(followsFrames(0, hook, 2)).toBe(true)
+    expect(followsFrames(2.05, hook, 2)).toBe(true)
+    expect(followsFrames(2.1, hook, 2)).toBe(false)
+    expect(followsFrames(30, hook, 2)).toBe(false)
   })
 
-  it('does not follow without the zoom or a first shot', () => {
-    expect(followsFrames(0.5, null, 2)).toBe(false)
-    expect(followsFrames(0.5, punchIn, null)).toBe(false)
+  it('follows a travelling sticker without the zoom', () => {
+    expect(followsFrames(0.5, { ...still, stickerMotion: 'orbit' }, 2)).toBe(true)
+    expect(followsFrames(0.5, { ...still, stickerMotion: 'orbit', sticker: 'off' }, 2)).toBe(false)
+  })
+
+  it('does not follow when nothing moves, or without a first shot', () => {
+    expect(followsFrames(0.5, still, 2)).toBe(false)
+    expect(followsFrames(0.5, { ...still, punchIn }, null)).toBe(false)
   })
 })

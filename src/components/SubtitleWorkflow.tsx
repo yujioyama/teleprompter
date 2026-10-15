@@ -19,6 +19,7 @@ import {
   type ZoomDirection,
 } from '../utils/subtitleHook'
 import { reapplySticker, type StickerPlacement } from '../utils/subtitleSticker'
+import type { StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
@@ -111,6 +112,16 @@ const STICKER_PLACEMENT_OPTIONS: { label: string; value: StickerPlacement }[] = 
   { label: 'なし', value: 'off' },
 ]
 
+const STICKER_MOTION_OPTIONS: { label: string; value: StickerMotion }[] = [
+  { label: 'おまかせ', value: 'random' },
+  { label: '気まぐれ旅', value: 'wander' },
+  { label: 'DVD反射', value: 'bounce' },
+  { label: '顔のまわりを周回', value: 'orbit' },
+  { label: 'ワープ', value: 'warp' },
+  { label: 'ちょこまか', value: 'dash' },
+  { label: '動かさない', value: 'none' },
+]
+
 const SOURCES: { label: string; value: SubtitleSource }[] = [
   { label: '台本から', value: 'script' },
   { label: '話した音声から', value: 'speech' },
@@ -152,7 +163,7 @@ export default function SubtitleWorkflow({
   // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
   // is enough, and per-frame state would re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {
-    if (followsFrames(t, hook.punchIn, firstShotDuration)) setPreviewTime(t)
+    if (followsFrames(t, hook, firstShotDuration)) setPreviewTime(t)
   })
   // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
   const attachPreview = useCallback((el: HTMLVideoElement | null) => {
@@ -569,6 +580,34 @@ export default function SubtitleWorkflow({
                 ))}
               </div>
               <p className={styles.hint}>1つ目の字幕に入れた絵文字を、最初のショットの間ステッカーとして表示します</p>
+              {hookSettings.stickerPlacement !== 'off' && (
+                <>
+                  <p className={styles.sectionTitle}>ステッカーの動き</p>
+                  <div className={styles.positionRow} role="group" aria-label="ステッカーの動き">
+                    {STICKER_MOTION_OPTIONS.map(o => (
+                      <button
+                        key={o.value}
+                        className={`${styles.positionBtn} ${hookSettings.stickerMotion === o.value ? styles.positionBtnActive : ''}`}
+                        aria-pressed={hookSettings.stickerMotion === o.value}
+                        onClick={() => onHookSettingsChange({ stickerMotion: o.value })}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  {hookSettings.stickerMotion !== 'none' && (
+                    <>
+                      <p className={styles.hint}>画面を旅して、最初のショットが終わるまでに元の位置に戻ってきます。ルートは動画ごとに決まります（最初のショットが短いと動きません）</p>
+                      <button
+                        className={styles.copyBtn}
+                        onClick={() => onHookSettingsChange({ stickerRoute: hookSettings.stickerRoute + 1 })}
+                      >
+                        ルートを変える
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>
                 細かく調整

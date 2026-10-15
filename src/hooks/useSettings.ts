@@ -8,6 +8,7 @@ import {
 } from '../utils/subtitlePosition'
 import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subtitleHook'
 import type { StickerPlacement } from '../utils/subtitleSticker'
+import type { StickerMotion } from '../utils/stickerMotion'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -36,6 +37,10 @@ export interface AppSettings {
   punchInDuration: PunchInDuration
   /** Where the first line's emoji shows as a sticker. */
   stickerPlacement: StickerPlacement
+  /** How the sticker travels around during the first shot (ステッカーの動き). */
+  stickerMotion: StickerMotion
+  /** Bumped by ルートを変える to give the sticker another route. */
+  stickerRoute: number
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
@@ -59,6 +64,8 @@ const DEFAULTS: AppSettings = {
   punchInAt: 0.4,
   punchInDuration: 1.2,
   stickerPlacement: 'chest',
+  stickerMotion: 'random',
+  stickerRoute: 0,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

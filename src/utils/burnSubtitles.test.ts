@@ -1,4 +1,5 @@
 import { STICKER_IMAGE_HEIGHT, STICKER_PLACEMENTS } from './subtitleSticker'
+import { STICKER_MAX_SCALE } from './stickerMotion'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   buildOverlayFilterGraph,
@@ -82,7 +83,7 @@ function stubCanvas() {
   return { drawn, stroked, boxes }
 }
 
-const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null }, firstShotDuration: 2 }
+const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null, stickerMotion: 'none' }, firstShotDuration: 2 }
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -191,6 +192,21 @@ describe('renderSubtitleOverlays', () => {
     const off = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'off' } })
     expect(off).toHaveLength(1)
     expect(drawn.some(d => d.text.includes('🧴'))).toBe(false)
+  })
+
+  it('sends a travelling sticker as an upright sprite with its path, for the whole first shot', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const look = { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' as const, stickerMotion: 'orbit' as const } }
+    const [, sticker] = await renderSubtitleOverlays([hook], look)
+    expect([sticker.start, sticker.end]).toEqual([0, 2])
+    expect(sticker.sprite).toMatchObject({ shadow: expect.any(Blob), resolution: STICKER_MAX_SCALE })
+    expect(sticker.sprite!.path(0)).toMatchObject({ x: STICKER_PLACEMENTS.right.x, y: STICKER_PLACEMENTS.right.y / 100 })
+    expect(sticker.sprite!.path(1).x).not.toBeCloseTo(STICKER_PLACEMENTS.right.x)
+    // ffmpeg can't move it: it is placed as before.
+    const [, still] = await renderSubtitleOverlays([hook], look, { still: true })
+    expect(still.sprite).toBeUndefined()
+    expect(still.y).toBe(subtitleY(STICKER_PLACEMENTS.right.y, 1920, STICKER_IMAGE_HEIGHT))
   })
 
   it('makes no sticker from a normal cue or an untranslated hook cue', async () => {

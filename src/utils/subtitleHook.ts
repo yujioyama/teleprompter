@@ -3,6 +3,7 @@ import type { SubtitleCue } from './subtitleCues'
 import type { CueVariant } from './subtitleLayout'
 import type { SubtitlePosition } from './subtitlePosition'
 import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleSticker'
+import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -41,6 +42,10 @@ export interface HookOptions {
   punchIn: PunchIn | null
   /** Where the first shot's emoji sticker goes (default: chest). */
   sticker?: StickerPlacement
+  /** How the sticker travels during the first shot (default: おまかせ). */
+  stickerMotion?: StickerMotion
+  /** Re-rolls the sticker's route (ルートを変える); 0 by default. */
+  stickerRoute?: number
 }
 
 export type HookSettings = Pick<
@@ -53,6 +58,8 @@ export type HookSettings = Pick<
   | 'punchInAt'
   | 'punchInDuration'
   | 'stickerPlacement'
+  | 'stickerMotion'
+  | 'stickerRoute'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -68,6 +75,8 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
         }
       : null,
     sticker: settings.stickerPlacement ?? DEFAULT_STICKER_PLACEMENT,
+    stickerMotion: settings.stickerMotion ?? DEFAULT_STICKER_MOTION,
+    stickerRoute: settings.stickerRoute ?? 0,
   }
 }
 
@@ -141,11 +150,13 @@ const FRAME_FOLLOW_TAIL = 0.1
 
 /**
  * Whether the preview needs frame-accurate time at `t`: only while the
- * zoom in is on and the playhead is in (or just past) the first shot. Elsewhere
- * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
+ * first shot moves (the zoom, or a travelling sticker) and the playhead is
+ * in (or just past) it. Elsewhere the normal timeupdate rate is enough, so
+ * per-frame re-renders are skipped.
  */
-export function followsFrames(t: number, punchIn: PunchIn | null, firstShotDuration: number | null): boolean {
-  return punchIn !== null && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+export function followsFrames(t: number, hook: HookOptions, firstShotDuration: number | null): boolean {
+  const stickerMoves = (hook.stickerMotion ?? DEFAULT_STICKER_MOTION) !== 'none' && hook.sticker !== 'off'
+  return (hook.punchIn !== null || stickerMoves) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
 }
 
 /** The punch-in a video gets and until when (the first shot's end). */
