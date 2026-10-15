@@ -15,8 +15,8 @@ import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 export type StyledCue = SubtitleCue & { variant: CueVariant }
 
 /** How far the first shot has zoomed in by its end. */
-export type PunchInZoom = 1.15 | 1.25 | 1.35
-export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35]
+export type PunchInZoom = 1.15 | 1.25 | 1.35 | 1.5
+export const PUNCH_IN_ZOOMS: PunchInZoom[] = [1.15, 1.25, 1.35, 1.5]
 /**
  * 'in': starts at 1x and pushes in. 'out': the first frame is already
  * zoomed in, so the feed's first frame is a close-up, and it pulls back.
@@ -129,11 +129,20 @@ export function punchInEnd(punchIn: PunchInMotion, until: number): number {
 }
 
 /**
+ * Smoothstep: eases the zoom out of the hold and into its stop. A linear
+ * move starts and stops at full speed, which reads as a jerk on the short
+ * (速い, 普通) moves. punchInFilter writes the same curve for ffmpeg.
+ */
+export function easeZoom(progress: number): number {
+  return progress * progress * (3 - 2 * progress)
+}
+
+/**
  * How far the picture is zoomed at `t` seconds during the first shot (which
  * ends at `until`; from there on it is 1x).
- * - 'in': 1x until `at`, then a steady push in that reaches `zoom` at
+ * - 'in': 1x until `at`, then an eased push in that reaches `zoom` at
  *   punchInEnd and holds it until the cut drops it back to 1x.
- * - 'out': `zoom` from the first frame until `at`, then a steady pull back
+ * - 'out': `zoom` from the first frame until `at`, then an eased pull back
  *   that reaches 1x at punchInEnd, so the cut changes nothing.
  */
 export function punchInScale(t: number, punchIn: PunchInMotion, until: number): number {
@@ -141,7 +150,7 @@ export function punchInScale(t: number, punchIn: PunchInMotion, until: number): 
   const out = punchIn.direction === 'out'
   if (t < punchIn.at) return out ? punchIn.zoom : 1
   const end = punchInEnd(punchIn, until)
-  const progress = Math.min(1, (t - punchIn.at) / (end - punchIn.at))
+  const progress = easeZoom(Math.min(1, (t - punchIn.at) / (end - punchIn.at)))
   return out ? punchIn.zoom - (punchIn.zoom - 1) * progress : 1 + (punchIn.zoom - 1) * progress
 }
 
