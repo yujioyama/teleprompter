@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { webCodecsDisabledReason } from './webcodecs/support'
 
 let ffmpeg: FFmpeg | null = null
 let loaded: Promise<void> | null = null
@@ -18,10 +19,22 @@ export async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpeg) ffmpeg = new FFmpeg()
   if (!loaded) {
     const origin = window.location.origin
-    loaded = ffmpeg.load({
+    const instance = ffmpeg
+    loaded = instance.load({
       coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
       wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-    }).then(() => undefined)
+    }).then(
+      () => undefined,
+      err => {
+        // Kept, a failed load would fail every later call the same way
+        // until the app restarts. Seen on iOS after WebCodecs gave up
+        // mid-burn: the 32 MB core's fetch came back empty.
+        if (ffmpeg === instance) releaseFFmpeg()
+        const reason = webCodecsDisabledReason()
+        if (!reason) throw err
+        throw new Error(`${err instanceof Error ? err.message : String(err)}\n(WebCodecs: ${reason})`)
+      },
+    )
   }
   await loaded
   return ffmpeg
