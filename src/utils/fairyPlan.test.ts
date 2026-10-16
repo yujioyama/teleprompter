@@ -25,6 +25,11 @@ describe('planFairies', () => {
     expect(tight.end - tight.start).toBeCloseTo(0.9) // 1.3 − 0.3 − 0.1
     expect(planFairies(shots(['A🧴', 2], ['B 💡', 1.19], ['C', 2]), HOOK).map(f => f.kind)).toEqual(['finale'])
   })
+  it('does not lose a cameo to floating point on a middle shot of exactly 1.2 s', () => {
+    const [cameo] = planFairies(shots(['A🧴', 2], ['B 💡', 1.2], ['C', 2]), HOOK)
+    expect(cameo.kind).toBe('cameo')
+    expect(cameo.end - cameo.start).toBeCloseTo(0.8)
+  })
   it('keeps every appearance and every sparkle inside its shot, 0.1 s before the cut', () => {
     for (const f of planFairies(V, HOOK)) {
       const shotEnd = f.kind === 'finale' ? 9.5 : 5

@@ -110,7 +110,7 @@ export interface FinaleTiming {
 
 const FINALE_FLY = 0.6
 const FINALE_BURST = 0.3
-const END_MARGIN = 0.1
+export const END_MARGIN = 0.1
 /** The shortest hover, when the shot is too short for the full fly-in. */
 const SHORT_HOVER = 0.2
 

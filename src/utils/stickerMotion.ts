@@ -8,7 +8,8 @@
 
 import type { HookOptions } from './subtitleHook'
 import { hash, random } from './seededRandom'
-import { DEFAULT_STICKER_PLACEMENT, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
+import { emitSparkles, type Sparkle } from './sparkles'
+import { DEFAULT_STICKER_PLACEMENT, STICKER_EMOJI_PX, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
 
 export type StickerMotion = 'none' | 'random' | 'wander' | 'bounce' | 'orbit' | 'warp' | 'dash'
 /** The motions おまかせ ('random') picks from. */
@@ -207,18 +208,21 @@ export function stickerPath(motion: StickerMotion, seed: number, home: Home, dur
   }
 }
 
-/** The first shot's sticker as placed: its emoji, its spot, and its trip (null = it stays put). */
+/** The first shot's sticker as placed: its emoji, its spot, its trip (null = it stays put) and its sparkles. */
 export interface PlacedSticker {
   emoji: string
   home: Home
   path: StickerPath | null
+  /** Over [0, firstShotDuration], all gone by its end; they follow the sticker. */
+  sparkles: Sparkle[]
 }
 
 /**
  * The sticker the burn and the preview both show: the first hook cue's
  * emoji (translated cues only, as burned) at `placement`, moving as
  * `motion` says over the first shot. Null without one, with placement
- * 'off', or for a video that doesn't start with the first shot.
+ * 'off', or for a video that doesn't start with the first shot. Its
+ * sparkles trail the trip and burst at the landing, or twinkle when still.
  */
 export function placeSticker(
   cues: { en: string; ja: string | null; variant: string }[],
@@ -232,5 +236,17 @@ export function placeSticker(
   const at = STICKER_PLACEMENTS[placement]
   const home = { x: at.x, y: at.y / 100, rotation: at.rotation }
   const seed = stickerSeed(cue.en, hook.stickerRoute ?? 0)
-  return { emoji: findSticker(cue.en)!, home, path: stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, firstShotDuration) }
+  const path = stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, firstShotDuration)
+  const landing = firstShotDuration - LANDING
+  // Without a path the sticker never moves, so it only twinkles; a burst would have nothing to land.
+  const sparkles = emitSparkles({
+    path: path ?? (() => ({ x: home.x, y: home.y, rotation: home.rotation, scale: 1 })),
+    start: 0,
+    end: firstShotDuration,
+    seed: hash(`sparkles|${seed}`),
+    spread: (0.5 * STICKER_EMOJI_PX) / 1080,
+    bursts: path ? [landing] : [],
+    moving: t => path !== null && t < landing,
+  })
+  return { emoji: findSticker(cue.en)!, home, path, sparkles }
 }

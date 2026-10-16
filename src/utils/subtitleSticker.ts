@@ -60,9 +60,9 @@ export const STICKER_PLACEMENTS: Record<Exclude<StickerPlacement, 'off'>, { x: n
 }
 export const DEFAULT_STICKER_PLACEMENT: StickerPlacement = 'chest'
 
-export const STICKER_EMOJI_PX = 220
+export const STICKER_EMOJI_PX = 200
 /** The white border around it, like a die-cut sticker. */
-export const STICKER_OUTLINE_PX = 14
+export const STICKER_OUTLINE_PX = 13
 export const STICKER_SHADOW = { color: 'rgba(0,0,0,0.35)', blur: 24, offsetY: 8 }
 /** Height of the full-width overlay image that carries the sticker. */
 export const STICKER_IMAGE_HEIGHT = 420

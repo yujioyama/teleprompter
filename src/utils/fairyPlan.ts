@@ -6,18 +6,17 @@
  */
 
 import { random } from './seededRandom'
-import { cameoBursts, cameoHover, cameoPath, CAMEO_LENGTHS, FAIRY_MOTIONS, finalePath, finaleTiming } from './fairyMotion'
+import { cameoBursts, cameoHover, cameoPath, CAMEO_LENGTHS, END_MARGIN, FAIRY_MOTIONS, finalePath, finaleTiming } from './fairyMotion'
 import { emitSparkles, type Sparkle } from './sparkles'
 import { stickerSeed, type StickerPath } from './stickerMotion'
 import type { HookOptions } from './subtitleHook'
-import { DEFAULT_STICKER_PLACEMENT, findSticker, STICKER_PLACEMENTS } from './subtitleSticker'
+import { DEFAULT_STICKER_PLACEMENT, findSticker, STICKER_EMOJI_PX, STICKER_PLACEMENTS } from './subtitleSticker'
 
 /** A cameo is drawn this much smaller than the sticker. */
 export const FAIRY_SCALE = 0.62
 
-/** A cameo starts this long into its shot, and nothing outlasts its shot minus END_MARGIN. */
+/** A cameo starts this long into its shot, and nothing outlasts its shot minus END_MARGIN (fairyMotion). */
 const CAMEO_DELAY = 0.3
-const END_MARGIN = 0.1
 /** A cameo squeezed below this is not worth showing. */
 const MIN_CAMEO = 0.8
 
@@ -35,8 +34,8 @@ export interface FairyAppearance {
   key: string
 }
 
-/** The sprite is about 200 px wide at scale 1 on a 1080 frame; the sparkles spread around its radius. */
-const spreadOf = (scale: number) => (0.5 * 200 * scale) / 1080
+/** The sprite is about STICKER_EMOJI_PX wide at scale 1 on a 1080 frame; the sparkles spread around its radius. */
+const spreadOf = (scale: number) => (0.5 * STICKER_EMOJI_PX * scale) / 1080
 
 const keyOf = (kind: string, emoji: string, motion: string, mirror: boolean, start: number, end: number, seed: number) =>
   JSON.stringify([kind, emoji, motion, mirror, start.toFixed(3), end.toFixed(3), seed])
@@ -65,7 +64,8 @@ export function planFairies(
 
     const available = shot.duration - CAMEO_DELAY - END_MARGIN
     const nominal = CAMEO_LENGTHS[motion]
-    if (available < MIN_CAMEO) return
+    // The epsilon: 1.2 - 0.3 - 0.1 is 0.7999999999999999 in floating point.
+    if (available < MIN_CAMEO - 1e-9) return
     const length = Math.min(nominal, available)
 
     const start = start0 + CAMEO_DELAY
