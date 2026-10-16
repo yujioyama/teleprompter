@@ -18,8 +18,8 @@ import {
   type PunchInDuration,
   type ZoomDirection,
 } from '../utils/subtitleHook'
-import { planFairies } from '../utils/fairyPlan'
-import { reapplySticker, type StickerPlacement } from '../utils/subtitleSticker'
+import { fairiesFromSubtitles } from '../utils/fairyPlan'
+import { reapplyStickers, type StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
@@ -162,7 +162,11 @@ export default function SubtitleWorkflow({
   const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
-  const fairies = useMemo(() => planFairies(shotCueInputs, hook, position), [shotCueInputs, hook, position])
+  // Read from the subtitles' emoji, so editing them is what the preview shows.
+  const fairies = useMemo(
+    () => fairiesFromSubtitles(cues, shotCueInputs.map(s => s.duration), hook, position),
+    [cues, shotCueInputs, hook, position],
+  )
   // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
   // is enough, and per-frame state would re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {
@@ -242,9 +246,9 @@ export default function SubtitleWorkflow({
         return
       }
       // The script's *emphasis* (Claude marks it) carries over to what was said.
-      // So does the first line's emoji, the first shot's sticker.
+      // So do each line's emoji: the first shot's sticker and the fairies.
       const scriptTexts = shotCueInputs.map(s => s.text)
-      const cues = reapplySticker(reapplyEmphasis(transcribed, scriptTexts), scriptTexts)
+      const cues = reapplyStickers(reapplyEmphasis(transcribed, scriptTexts), shotCueInputs)
       patch({ cues, stage: 'reviewing', source: 'speech', pasteText: '' })
     } catch (err) {
       if (signal.aborted) setNotice('中断しました')
@@ -615,7 +619,7 @@ export default function SubtitleWorkflow({
                       </button>
                     ))}
                   </div>
-                  <p className={styles.hint}>途中の行に入れた絵文字が妖精になって横切り、最後のショットで1行目の絵文字が戻ってきます</p>
+                  <p className={styles.hint}>途中のショットの英語字幕に入れた絵文字が妖精になって横切り、最後のショットで最初の字幕の絵文字が戻ってきます</p>
                   {(hookSettings.stickerMotion !== 'none' || hookSettings.fairyEnabled) && (
                     <button
                       className={styles.copyBtn}

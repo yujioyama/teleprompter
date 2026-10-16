@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fairiesForShot, planFairies } from './fairyPlan'
+import { fairiesForShot, planFairies, fairiesFromSubtitles } from './fairyPlan'
 
 const HOOK = { style: true, sticker: 'right' as const, stickerRoute: 0, fairies: true }
 /** The normal subtitles' center, as in the default bottom position; clear of the right finale. */
@@ -94,5 +94,22 @@ describe('fairiesForShot', () => {
     expect(cameo.path(cameo.start)).toEqual(planFairies(V, HOOK, POS)[0].path(2.3))
     expect(cameo.sparkles[0].born).toBeCloseTo(planFairies(V, HOOK, POS)[0].sparkles[0].born - 2)
     expect(fairiesForShot(planFairies(V, HOOK, POS), 5, 2)).toEqual([])
+  })
+})
+
+describe('fairiesFromSubtitles', () => {
+  const HOOK2 = { style: true, sticker: 'right' as const, stickerRoute: 0, fairies: true }
+  const cue = (en: string, start: number) => ({ en, start })
+
+  it('reads each shot\'s emoji from the subtitles starting in it', () => {
+    const cues = [cue('I put Vaseline on🧴', 0.2), cue('every night', 1.1), cue('It keeps them', 2.2), cue('neat 💡', 3.4), cue('Try it', 5.2)]
+    const plan = fairiesFromSubtitles(cues, [2, 3, 2.5], HOOK2, 72.29)
+    expect(plan.map(f => [f.kind, f.emoji])).toEqual([['cameo', '💡'], ['finale', '🧴']])
+    expect(plan[0].start).toBeCloseTo(2.3)
+  })
+
+  it('has no fairy for a shot whose subtitles have no emoji, whatever the script said', () => {
+    const cues = [cue('I put Vaseline on', 0.2), cue('It keeps them neat', 2.2), cue('Try it', 5.2)]
+    expect(fairiesFromSubtitles(cues, [2, 3, 2.5], HOOK2, 72.29)).toEqual([])
   })
 })

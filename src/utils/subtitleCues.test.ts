@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -198,5 +198,29 @@ describe('cuesForShot extra fields', () => {
   it('keeps fields beyond the cue itself, such as its style', () => {
     const cues = [{ id: 'a', start: 0, end: 3, en: 'a', ja: 'あ', variant: 'hook' as const }]
     expect(cuesForShot(cues, 2, 2)).toEqual([{ ...cues[0], start: 0, end: 1 }])
+  })
+})
+
+describe('cuesByShot', () => {
+  const cue = (en: string, start: number) => ({ en, start, end: start + 0.5 })
+
+  it('puts each cue in the shot it starts in, in time order', () => {
+    const groups = cuesByShot([cue('c', 2.4), cue('a', 0.2), cue('b', 1.9), cue('d', 3)], [2, 1])
+    expect(groups.map(g => g.map(c => c.en))).toEqual([['a', 'b'], ['c']])
+  })
+
+  it('counts a cue starting exactly at a cut in the next shot, and drops ones past the end', () => {
+    expect(cuesByShot([cue('a', 2), cue('b', 5)], [2, 1]).map(g => g.map(c => c.en))).toEqual([[], ['a']])
+  })
+})
+
+describe('shotTextsOf', () => {
+  it('joins each shot\'s English cues, so a shot\'s emoji can be read from its subtitles', () => {
+    const cues = [
+      { start: 0, end: 1, en: 'I put Vaseline on🧴' },
+      { start: 1, end: 2, en: 'my eyebrows' },
+      { start: 2.5, end: 4, en: 'It keeps them 💡 neat' },
+    ]
+    expect(shotTextsOf(cues, [2, 3, 1])).toEqual(['I put Vaseline on🧴 my eyebrows', 'It keeps them 💡 neat', ''])
   })
 })
