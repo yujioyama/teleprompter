@@ -78,6 +78,21 @@
   margin-bottom: 8px;
 }
 
+.pauseToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.pauseToggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
 .missing {
   color: var(--text-muted);
   font-size: 0.85rem;

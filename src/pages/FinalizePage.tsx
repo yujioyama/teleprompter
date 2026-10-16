@@ -24,8 +24,8 @@ import {
 } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
-import { detectSpeech, speechBoundsFor, type SpeechBounds } from '../utils/detectSpeechBounds'
-import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
+import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
+import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { finishAudio } from '../utils/normalizeLoudness'
 import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
@@ -52,6 +52,8 @@ interface ShotEntry {
   duration: number
   trimStart: number
   trimEnd: number
+  // Where the speech is; undefined until detected, null when there's none.
+  speech: SpeechRegion | null | undefined
   // The cut found around the speech (issue #21); null when there's none.
   autoTrim: SpeechBounds | null
   autoTrimPending: boolean
@@ -136,7 +138,7 @@ function findLastIndexBefore(entries: ShotEntry[], index: number): number {
 export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const { getScript } = useScripts()
+  const { getScript, updateScript } = useScripts()
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
@@ -235,10 +237,15 @@ export default function FinalizePage() {
       if (cancelled) return
       takesRef.current = takes
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
-      // The first shot with a take opens the video, and gets its own lead-in.
+      // The first and last shots with a take open and close the video, and
+      // get their own lead-in and ending.
       const firstShotId = script.shots.find(shot => byShotId.has(shot.id))?.id
+      const lastShotId = script.shots.filter(shot => byShotId.has(shot.id)).at(-1)?.id
       const trimSettings = new Map(
-        script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings, shot.id === firstShotId)]),
+        script.shots.map(shot => [
+          shot.id,
+          resolveShotTrimSettings(shot, settings, shot.id === firstShotId, shot.id === lastShotId),
+        ]),
       )
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
@@ -254,7 +261,8 @@ export default function FinalizePage() {
         const entry: ShotEntry = {
           shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0,
           trimStart: handSet?.start ?? 0, trimEnd: handSet?.end ?? 0,
-          autoTrim: speech ? speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd) : null,
+          speech,
+          autoTrim: speech ? autoTrimOf(speech, trim) : null,
           autoTrimPending: blob !== null && speech === undefined,
           trimEdited: handSet !== undefined,
         }
@@ -324,7 +332,7 @@ export default function FinalizePage() {
           )
           if (cancelled) return
           const trim = trimSettings.get(entry.shotId)!
-          setAutoTrim(entry.shotId, speech && speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd))
+          setAutoTrim(entry.shotId, speech, speech && autoTrimOf(speech, trim))
         }
       })()
     }).catch(err => {
@@ -365,11 +373,11 @@ export default function FinalizePage() {
     )
   }
 
-  function setAutoTrim(shotId: string, autoTrim: SpeechBounds | null) {
+  function setAutoTrim(shotId: string, speech: SpeechRegion | null, autoTrim: SpeechBounds | null) {
     setEntries(prev =>
       prev.map(e => {
         if (e.shotId !== shotId) return e
-        const next = { ...e, autoTrim, autoTrimPending: false }
+        const next = { ...e, speech, autoTrim, autoTrimPending: false }
         return next.duration > 0 && !next.trimEdited ? { ...next, ...autoTrimRange(next) } : next
       }),
     )
@@ -384,6 +392,23 @@ export default function FinalizePage() {
     setCombinedClips(clips)
     setShotCueInputs(cueInputs)
     setCombineState('done')
+  }
+
+  // 間を残す: the shot keeps a longer silence after its speech. A cut set by
+  // hand stays as it is (see setAutoTrim).
+  function setKeepPause(entry: ShotEntry, keepPause: boolean) {
+    if (!script) return
+    const shots = script.shots.map(shot => (shot.id === entry.shotId ? { ...shot, keepPause } : shot))
+    updateScript(script.id, { shots })
+    if (!entry.speech) return
+    const withVideo = entries.filter(e => e.blob)
+    const trim = resolveShotTrimSettings(
+      shots.find(shot => shot.id === entry.shotId),
+      settings,
+      withVideo[0]?.shotId === entry.shotId,
+      withVideo.at(-1)?.shotId === entry.shotId,
+    )
+    if (trim.trimEnabled) setAutoTrim(entry.shotId, entry.speech, autoTrimOf(entry.speech, trim))
   }
 
   function updateEntry(shotId: string, changes: Partial<ShotEntry>) {
@@ -774,6 +799,14 @@ export default function FinalizePage() {
                         : undefined
                     }
                   />
+                  <label className={styles.pauseToggle}>
+                    <input
+                      type="checkbox"
+                      checked={script.shots.find(shot => shot.id === selected.shotId)?.keepPause ?? false}
+                      onChange={e => setKeepPause(selected, e.target.checked)}
+                    />
+                    このショットの後に間を残す
+                  </label>
                 </div>
               ) : (
                 <p className={styles.missing}>保存された動画がありません</p>
