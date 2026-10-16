@@ -152,6 +152,9 @@ export default function FinalizePage() {
   // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
   const initialSubtitleState = (): SubtitleState => ({ ...INITIAL_SUBTITLE_STATE, position: settings.subtitlePosition })
   const script = id ? getScript(id) : undefined
+  // The script as of now, for work that finishes after a 間を残す switch.
+  const scriptRef = useRef(script)
+  scriptRef.current = script
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null)
@@ -342,7 +345,9 @@ export default function FinalizePage() {
             },
           )
           if (cancelled) return
-          const trim = trimSettings.get(entry.shotId)!
+          // 間を残す may have been switched while this shot was being checked.
+          const shot = scriptRef.current?.shots.find(s => s.id === entry.shotId)
+          const trim = resolveShotTrimSettings(shot, settings, entry.shotId === firstShotId, entry.shotId === lastShotId)
           setAutoTrim(entry.shotId, speech, speech && autoTrimOf(speech, trim))
         }
       })()
@@ -718,21 +723,29 @@ export default function FinalizePage() {
     // Tapping 保存する is "this is the version": record how it was made,
     // without holding up or failing the save.
     if (settings.inboxKey) {
-      const record = buildVideoRecord({
-        script,
-        savedAt: new Date().toISOString(),
-        durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
-        shotCount: combinedClips.length,
-        burn: burnedBlob ? burnInputs : null,
-        mix: mixed ? mixInputs : null,
-        voicePreset,
-        trim: combinedTrim,
-      })
-      postVideoRecord(settings.inboxKey, record).catch(err =>
-        console.warn('[FinalizePage] could not send the video record:', err),
-      )
+      try {
+        sendVideoRecord(settings.inboxKey)
+      } catch (err) {
+        console.warn('[FinalizePage] could not build the video record:', err)
+      }
     }
     await shareOrDownload(exportBlob, `${script.title}-final`)
+  }
+
+  // Built from what the burn and the mix actually used (see buildVideoRecord).
+  function sendVideoRecord(key: string) {
+    if (!script) return
+    const record = buildVideoRecord({
+      script,
+      savedAt: new Date().toISOString(),
+      durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
+      shotCount: combinedClips.length,
+      burn: burnedBlob ? burnInputs : null,
+      mix: mixed ? mixInputs : null,
+      voicePreset,
+      trim: combinedTrim,
+    })
+    postVideoRecord(key, record).catch(err => console.warn('[FinalizePage] could not send the video record:', err))
   }
 
   // The caption Claude wrote with the script, ready to paste into TikTok.

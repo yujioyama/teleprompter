@@ -20,7 +20,12 @@ import { loadFinalizeProgress } from '../utils/finalizeProgressStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
+import { buildVideoRecord } from '../utils/videoRecord'
 
+vi.mock('../utils/videoRecord', async importOriginal => {
+  const actual = await importOriginal<typeof import('../utils/videoRecord')>()
+  return { ...actual, buildVideoRecord: vi.fn(actual.buildVideoRecord) }
+})
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
 vi.mock('../utils/concatVideos', () => ({
@@ -412,6 +417,28 @@ describe('FinalizePage trim step: tight cuts and 間を残す', () => {
     fireEvent.click(screen.getByLabelText('次のショット'))
     // 3.0s + 0.1s.
     expect(await screen.findByText('終了 3.1秒')).toBeInTheDocument()
+  })
+
+  it('keeps a pause switched on while the shot is still being checked for speech', async () => {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1' },
+      { id: SHOT_2, text: 'ショット2' },
+    ]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, trimPaddingEnd: 0.2 }))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(probeVideoDuration).mockResolvedValue(5)
+    let finish!: (region: SpeechRegion) => void
+    vi.mocked(detectSpeech).mockReturnValueOnce(new Promise(r => (finish = r)))
+    renderFinalizePage('script-1')
+    await screen.findByText(/前後の無音を検出中/)
+
+    fireEvent.click(screen.getByLabelText('このショットの後に間を残す'))
+    finish(SPEECH_1_TO_3)
+
+    // 3.0s + 0.4s, not the 0.2s the page opened with.
+    expect(await screen.findByText('終了 3.4秒')).toBeInTheDocument()
   })
 
   it('keeps a cut set by hand when 間を残す is switched', async () => {
@@ -1054,6 +1081,17 @@ describe('FinalizePage export step: loudness normalization', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await walkToExport()
     vi.mocked(global.fetch).mockRejectedValue(new Error('offline'))
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('still saves when the record cannot be built', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(buildVideoRecord).mockImplementationOnce(() => {
+      throw new Error('broken')
+    })
+    await walkToExport()
     fireEvent.click(await screen.findByText('保存する'))
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
   })
