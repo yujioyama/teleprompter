@@ -30,8 +30,9 @@ vi.mock('./webcodecs/concatClips', () => ({
 }))
 
 const JOINED = new Blob(['joined'])
-const NO_HOOK: HookOptions = { style: false, position: 50, punchIn: null }
-const HOOK: HookOptions = { style: true, position: 50, punchIn: null }
+// The mid-video zoom has its own tests below; elsewhere it would only add the last shot's punch.
+const NO_HOOK: HookOptions = { style: false, position: 50, punchIn: null, midZoom: false }
+const HOOK: HookOptions = { style: true, position: 50, punchIn: null, midZoom: false }
 
 function look(position: number, extra: Partial<SubtitleLook> = {}): SubtitleLook {
   return { position, hook: NO_HOOK, firstShotDuration: null, ...extra }
@@ -124,9 +125,9 @@ describe('shotBurnRequests', () => {
     const calls = vi.mocked(burnModule.burnShotSubtitles).mock.calls
     expect(calls.map(([blob, start, end, shotCues, shotLook]) => [blob, start, end, shotCues, shotLook])).toEqual([
       [clips[0].blob, 1, 3, [expect.objectContaining({ en: 'first', start: 0, end: 2, variant: 'normal' })],
-        { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [] }],
+        { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [], midZoom: [] }],
       [clips[1].blob, 0, 1.5, [expect.objectContaining({ en: 'second', start: 0, end: 1.5, variant: 'normal' })],
-        { position: 50, hook: NO_HOOK, firstShotDuration: null, fairies: [] }],
+        { position: 50, hook: NO_HOOK, firstShotDuration: null, fairies: [], midZoom: [] }],
     ])
   })
 
@@ -158,7 +159,7 @@ describe('burnSubtitlesByShot', () => {
     { text: 'first', duration: 2 },
     { text: 'second', duration: 1 },
   ]))
-  const fallbackLook = { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [] }
+  const fallbackLook = { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [], midZoom: [] }
 
   it('joins the per-shot burns by packet copy', async () => {
     const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK)
@@ -303,7 +304,7 @@ describe('cancelling (issue #34)', () => {
 })
 
 describe('first-shot punch-in', () => {
-  const EXTRAS: HookOptions = { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null } }
+  const EXTRAS: HookOptions = { ...HOOK, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null } }
   const clips = [clip('a', 0, 2), clip('b', 0, 1)]
   const cues = translate(cuesFromShotEntries([
     { text: 'first', duration: 2 },
@@ -379,5 +380,51 @@ describe('fairies', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), CLIPS, JOINED, CUES, 50, FAIRY_HOOK)
     const look = vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]
     expect(look.fairies!.map(f => f.kind)).toEqual(['cameo', 'finale'])
+  })
+})
+
+describe('mid-video zoom', () => {
+  // No fairies, so the zoom is all there is to burn.
+  const ZOOM_HOOK: HookOptions = { ...HOOK, sticker: 'off', fairies: false, midZoom: true }
+  // Untranslated: the shots have nothing to burn but their zoom.
+  const CUES: SubtitleCue[] = [
+    { id: 'a', start: 0.2, end: 1.8, en: 'A 🧴', ja: null },
+    { id: 'b', start: 2.3, end: 4.8, en: 'B 💡', ja: null },
+    { id: 'c', start: 5.1, end: 6.8, en: 'C', ja: null },
+    { id: 'd', start: 7.2, end: 9.3, en: 'D', ja: null },
+  ]
+  const CLIPS = [clip('s1', 0, 2), clip('s2', 0, 3), clip('s3', 0, 2), clip('s4', 0, 2.5)]
+
+  it('burns the peak and the punchline in their own timeline, and leaves the other shots normalized', async () => {
+    const requests = shotBurnRequests(CLIPS, CUES, 50, ZOOM_HOOK)
+    expect(requests[0].key).toBe(normalizeRequest(CLIPS[0]).key)
+    expect(requests[2].key).toBe(normalizeRequest(CLIPS[2]).key)
+    await encodeAll(new ShotEncodeCache(), requests)
+    const looks = new Map(vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => [c[0], c[4]]))
+    expect(looks.get(CLIPS[1].blob)?.midZoom).toEqual([{ start: 0, end: 3, kind: 'drift' }])
+    expect(looks.get(CLIPS[3].blob)?.midZoom).toEqual([{ start: 0, end: 2.5, kind: 'punch' }])
+  })
+
+  it('re-keys only the shot whose peak emoji changes', () => {
+    const before = shotBurnRequests(CLIPS, CUES, 50, ZOOM_HOOK).map(r => r.key)
+    const edited = CUES.map(c => (c.id === 'c' ? { ...c, en: 'C ✨' } : c))
+    const after = shotBurnRequests(CLIPS, edited, 50, ZOOM_HOOK).map(r => r.key)
+    expect(after.map((k, i) => k === before[i])).toEqual([true, true, false, true])
+  })
+
+  it('does nothing with the setting off', () => {
+    const requests = shotBurnRequests(CLIPS, CUES, 50, { ...ZOOM_HOOK, midZoom: false })
+    expect(requests.map(r => r.key)).toEqual(CLIPS.map(c => normalizeRequest(c).key))
+  })
+
+  it('burns even with nothing translated, and gives the whole-video fallback the full plan', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(false)
+    const burned = await burnSubtitlesByShot(new ShotEncodeCache(), CLIPS, JOINED, CUES, 50, ZOOM_HOOK)
+    expect(burned).not.toBe(JOINED)
+    const look = vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]
+    expect(look.midZoom).toEqual([
+      { start: 2, end: 5, kind: 'drift' },
+      { start: 7, end: 9.5, kind: 'punch' },
+    ])
   })
 })

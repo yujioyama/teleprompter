@@ -3,6 +3,7 @@ import { trimAndNormalizeShot } from './trimAndNormalizeShot'
 import { burnShotSubtitles, burnSubtitles, type SubtitleLook } from './burnSubtitles'
 import { cuesForShot, type SubtitleCue } from './subtitleCues'
 import { fairiesForShot, fairiesFromSubtitles, type FairyAppearance } from './fairyPlan'
+import { midZoomForShot, planMidZoom, type MidZoomSegment } from './midZoom'
 import { hasFirstShotExtras, styleCues, type HookOptions, type StyledCue } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
@@ -35,6 +36,11 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
   return clips.length > 0 ? clips[0].end - clips[0].start : null
 }
 
+/** The peaks' and the punchline's zoom over the joined timeline, read from the subtitles. */
+function midZoomPlanOf(clips: ShotClip[], cues: SubtitleCue[], hook: HookOptions): MidZoomSegment[] {
+  return planMidZoom(cues, clips.map(c => c.end - c.start), hook)
+}
+
 /** The fairies over the joined timeline, read from the subtitles. */
 function fairyPlanOf(clips: ShotClip[], cues: SubtitleCue[], hook: HookOptions, position: SubtitlePosition): FairyAppearance[] {
   return fairiesFromSubtitles(cues, clips.map(c => c.end - c.start), hook, position)
@@ -53,7 +59,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   const translated = cues.filter(c => c.ja !== null)
   const extras = hasFirstShotExtras(look.hook, look.firstShotDuration)
   const fairies = look.fairies ?? []
-  if (translated.length === 0 && !extras && fairies.length === 0) return normalizeRequest(clip)
+  const midZoom = look.midZoom ?? []
+  if (translated.length === 0 && !extras && fairies.length === 0 && midZoom.length === 0) return normalizeRequest(clip)
   const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const placement = JSON.stringify([
@@ -65,6 +72,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     // The sticker's size and sparkles changed the pixels; old cached burns are stale.
     'sparkles-v1',
     fairies.map(f => f.key),
+    midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
   ])
   const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
@@ -92,6 +100,7 @@ export function shotBurnRequests(
 ): EncodeRequest[] {
   const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
   const plan = fairyPlanOf(clips, cues, hook, position)
+  const zoomPlan = midZoomPlanOf(clips, cues, hook)
   let offset = 0
   return clips.map((clip, i) => {
     const duration = clip.end - clip.start
@@ -100,6 +109,7 @@ export function shotBurnRequests(
       hook,
       firstShotDuration: i === 0 ? duration : null,
       fairies: fairiesForShot(plan, offset, duration),
+      midZoom: midZoomForShot(zoomPlan, offset, duration),
     }
     const request = burnRequest(clip, cuesForShot(styled, offset, duration), look)
     offset += duration
@@ -173,7 +183,8 @@ export async function burnSubtitlesByShot(
   signal?: AbortSignal,
 ): Promise<Blob> {
   const plan = fairyPlanOf(clips, cues, hook, position)
-  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0) {
+  const zoomPlan = midZoomPlanOf(clips, cues, hook)
+  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0 && zoomPlan.length === 0) {
     return combinedBlob
   }
   if (clips.length > 0 && (await canUseWebCodecs())) {
@@ -195,5 +206,11 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  return burnSubtitles(combinedBlob, cues, { position, hook, firstShotDuration: firstShotDurationOf(clips), fairies: plan }, onProgress, signal)
+  return burnSubtitles(
+    combinedBlob,
+    cues,
+    { position, hook, firstShotDuration: firstShotDurationOf(clips), fairies: plan, midZoom: zoomPlan },
+    onProgress,
+    signal,
+  )
 }
