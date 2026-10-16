@@ -59,6 +59,7 @@ describe('hookOptionsOf', () => {
     stickerPlacement: 'chest' as const,
     stickerMotion: 'orbit' as const,
     stickerRoute: 2,
+    fairyEnabled: true,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -69,7 +70,14 @@ describe('hookOptionsOf', () => {
       sticker: 'chest',
       stickerMotion: 'orbit',
       stickerRoute: 2,
+      fairies: true,
     })
+  })
+
+  it('turns the fairies off, and keeps them on for settings saved before they existed', () => {
+    expect(hookOptionsOf({ ...settings, fairyEnabled: false }).fairies).toBe(false)
+    const { fairyEnabled: _omitted, ...older } = settings
+    expect(hookOptionsOf(older as typeof settings).fairies).toBe(true)
   })
 
   it('has no punch-in with the zoom off', () => {

@@ -22,6 +22,7 @@ const DEFAULTS = {
   stickerPlacement: 'chest',
   stickerMotion: 'random',
   stickerRoute: 0,
+  fairyEnabled: true,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

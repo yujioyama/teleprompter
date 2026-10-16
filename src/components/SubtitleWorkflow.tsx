@@ -596,15 +596,29 @@ export default function SubtitleWorkflow({
                     ))}
                   </div>
                   {hookSettings.stickerMotion !== 'none' && (
-                    <>
-                      <p className={styles.hint}>画面を旅して、最初のショットが終わるまでに元の位置に戻ってきます。ルートは動画ごとに決まります（最初のショットが短いと動きません）</p>
+                    <p className={styles.hint}>画面を旅して、最初のショットが終わるまでに元の位置に戻ってきます。ルートは動画ごとに決まります（最初のショットが短いと動きません）</p>
+                  )}
+                  <p className={styles.sectionTitle}>妖精（途中と締め）</p>
+                  <div className={styles.positionRow} role="group" aria-label="妖精（途中と締め）">
+                    {[{ label: 'オン', value: true }, { label: 'オフ', value: false }].map(o => (
                       <button
-                        className={styles.copyBtn}
-                        onClick={() => onHookSettingsChange({ stickerRoute: hookSettings.stickerRoute + 1 })}
+                        key={o.label}
+                        className={`${styles.positionBtn} ${hookSettings.fairyEnabled === o.value ? styles.positionBtnActive : ''}`}
+                        aria-pressed={hookSettings.fairyEnabled === o.value}
+                        onClick={() => onHookSettingsChange({ fairyEnabled: o.value })}
                       >
-                        ルートを変える
+                        {o.label}
                       </button>
-                    </>
+                    ))}
+                  </div>
+                  <p className={styles.hint}>途中の行に入れた絵文字が妖精になって横切り、最後のショットで1行目の絵文字が戻ってきます</p>
+                  {(hookSettings.stickerMotion !== 'none' || hookSettings.fairyEnabled) && (
+                    <button
+                      className={styles.copyBtn}
+                      onClick={() => onHookSettingsChange({ stickerRoute: hookSettings.stickerRoute + 1 })}
+                    >
+                      ルートを変える
+                    </button>
                   )}
                 </>
               )}

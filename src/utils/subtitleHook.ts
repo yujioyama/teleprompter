@@ -63,6 +63,7 @@ export type HookSettings = Pick<
   | 'stickerPlacement'
   | 'stickerMotion'
   | 'stickerRoute'
+  | 'fairyEnabled'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -80,6 +81,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     sticker: settings.stickerPlacement ?? DEFAULT_STICKER_PLACEMENT,
     stickerMotion: settings.stickerMotion ?? DEFAULT_STICKER_MOTION,
     stickerRoute: settings.stickerRoute ?? 0,
+    fairies: settings.fairyEnabled ?? true,
   }
 }
 
