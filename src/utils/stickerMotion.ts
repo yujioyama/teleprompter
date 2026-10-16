@@ -7,6 +7,7 @@
  */
 
 import type { HookOptions } from './subtitleHook'
+import { hash, random } from './seededRandom'
 import { DEFAULT_STICKER_PLACEMENT, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
 
 export type StickerMotion = 'none' | 'random' | 'wander' | 'bounce' | 'orbit' | 'warp' | 'dash'
@@ -40,45 +41,23 @@ const ORBIT_RADIUS = { x: 0.32, y: 0.22 }
  * Where the trip may go: clear of the hook subtitle at the top, the
  * bottom edge, and the TikTok/Reels button column at the lower right.
  */
-const AREA = { left: 0.18, right: 0.82, top: 0.27, bottom: 0.75 }
-const inButtonColumn = (p: { x: number; y: number }) => p.x > 0.7 && p.y > 0.5
+export const AREA = { left: 0.18, right: 0.82, top: 0.27, bottom: 0.75 }
+export const inButtonColumn = (p: { x: number; y: number }) => p.x > 0.7 && p.y > 0.5
 /** Around the face (the zoom anchor): fine to pass over, not to stop on. */
-const onFace = (p: { x: number; y: number }) => ((p.x - 0.5) / 0.22) ** 2 + ((p.y - 0.4) / 0.15) ** 2 < 1
+export const onFace = (p: { x: number; y: number }) => ((p.x - 0.5) / 0.22) ** 2 + ((p.y - 0.4) / 0.15) ** 2 < 1
 /** The bouncing box, a bit wider so a home on the edge is inside it. */
 const BOUNCE_BOX = { left: 0.16, right: 0.84, top: 0.27, bottom: 0.72 }
 /** Fractions of the width per second; y is scaled by the frame's aspect so both look as fast. */
 const BOUNCE_SPEED = 1.3
-const ASPECT = 1080 / 1920
+export const ASPECT = 1080 / 1920
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const lerp = (a: number, b: number, s: number) => a + (b - a) * s
-const easeInOut = (s: number) => (s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2)
-
-/** 32-bit FNV-1a, for turning the cue text into a seed. */
-function hash(text: string): number {
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return h >>> 0
-}
+export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+export const lerp = (a: number, b: number, s: number) => a + (b - a) * s
+export const easeInOut = (s: number) => (s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2)
 
 /** The route's seed: the sticker's cue text, re-rolled by ルートを変える (`route`). */
 export function stickerSeed(cueText: string, route: number): number {
   return hash(`${route}|${cueText}`)
-}
-
-/** mulberry32: a small, fast, seedable generator of [0, 1). */
-function random(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 interface Point {
