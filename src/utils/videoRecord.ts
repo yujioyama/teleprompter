@@ -1,6 +1,7 @@
 import type { TrimRecord, VideoRecord } from '../../shared/videoRecord'
 import type { Script } from '../types'
 import { fairiesFromSubtitles } from './fairyPlan'
+import { planMidZoom } from './midZoom'
 import type { SubtitleCue } from './subtitleCues'
 import { stripEmphasis } from './subtitleEmphasis'
 import { styleCues, type HookOptions } from './subtitleHook'
@@ -66,6 +67,7 @@ export function buildVideoRecord(input: {
       bgm: mix ? { trackId: mix.trackId, title: mix.title, volume: mix.volume } : null,
       voicePreset: input.voicePreset,
       trim: input.trim,
+      midZoom: burn ? planMidZoom(burn.cues, burn.durations, burn.hook).length > 0 : false,
     },
   }
 }

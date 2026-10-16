@@ -19,6 +19,7 @@ import {
   type ZoomDirection,
 } from '../utils/subtitleHook'
 import { fairiesFromSubtitles } from '../utils/fairyPlan'
+import { midZoomScale, planMidZoom } from '../utils/midZoom'
 import { reapplyStickers, type StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
@@ -167,10 +168,16 @@ export default function SubtitleWorkflow({
     () => fairiesFromSubtitles(cues, shotCueInputs.map(s => s.duration), hook, position),
     [cues, shotCueInputs, hook, position],
   )
-  // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
-  // is enough, and per-frame state would re-render the whole workflow.
+  // Likewise the peaks and the punchline the picture zooms in on.
+  const midZoom = useMemo(
+    () => planMidZoom(cues, shotCueInputs.map(s => s.duration), hook),
+    [cues, shotCueInputs, hook],
+  )
+  // Frame accuracy only matters around the first shot, the fairies and the
+  // zooms; elsewhere onTimeUpdate is enough, and per-frame state would
+  // re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {
-    if (followsFrames(t, hook, firstShotDuration, fairies)) setPreviewTime(t)
+    if (followsFrames(t, hook, firstShotDuration, fairies, midZoom)) setPreviewTime(t)
   })
   // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
   const attachPreview = useCallback((el: HTMLVideoElement | null) => {
@@ -369,9 +376,11 @@ export default function SubtitleWorkflow({
   const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
   // The zoom in is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
-  const previewZoom = previewPlaying && hook.punchIn && firstShotDuration !== null
-    ? punchInScale(previewTime, hook.punchIn, firstShotDuration)
-    : 1
+  const previewZoom = !previewPlaying
+    ? 1
+    : hook.punchIn && firstShotDuration !== null && previewTime < firstShotDuration
+      ? punchInScale(previewTime, hook.punchIn, firstShotDuration)
+      : midZoomScale(previewTime, midZoom)
 
   return (
     <div className={styles.wrapper}>
@@ -574,6 +583,15 @@ export default function SubtitleWorkflow({
                   </div>
                 </>
               )}
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={hookSettings.midZoomEnabled}
+                  onChange={e => onHookSettingsChange({ midZoomEnabled: e.target.checked })}
+                />
+                中盤のズーム
+              </label>
+              <p className={styles.hint}>途中の山場（英語字幕に絵文字がある行）でじわっと寄り、最後のオチはカットの瞬間に寄ります（字幕は拡大しません）</p>
               <p className={styles.sectionTitle}>ステッカーの位置</p>
               <div className={styles.positionRow} role="group" aria-label="ステッカーの位置">
                 {STICKER_PLACEMENT_OPTIONS.map(o => (

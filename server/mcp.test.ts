@@ -107,8 +107,10 @@ describe('handleMcpRequest', () => {
     const { result } = await res.json()
     const description: string = result.tools[0].description
     expect(description).toContain(
-      '途中の行（1行目と最終行以外）のうち、具体的なモノや話の山場が出てくる行に、合計で最大2行まで絵文字を1つずつ入れます',
+      '途中の行（1行目と最終行以外）のうち、話の山場（話が転がる行や、オチの直前の盛り上がり）の行に、合計で最大2行まで絵文字を1つずつ入れます',
     )
+    expect(description).not.toContain('具体的なモノや')
+    expect(description).toContain('じわっと寄ります')
     expect(description).toContain('最終行には絵文字を入れません')
     expect(description).not.toContain('2行目以降には絵文字を入れません')
   })

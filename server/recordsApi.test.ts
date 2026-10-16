@@ -46,6 +46,13 @@ describe('handleRecordsRequest', () => {
     expect(await store.list()).toEqual([sampleRecord()])
   })
 
+  it('stores a record with the mid-video zoom, and one from before it existed', async () => {
+    const withZoom = sampleRecord({ effects: { ...sampleRecord().effects, midZoom: true } })
+    expect((await handleRecordsRequest(post(withZoom), () => store)).status).toBe(204)
+    expect(await store.list()).toEqual([withZoom])
+    expect((await handleRecordsRequest(post(sampleRecord()), () => store)).status).toBe(204)
+  })
+
   it('stores a record of a 結合 from before the cuts were remembered', async () => {
     const old = sampleRecord({ effects: { ...sampleRecord().effects, trim: null, bgm: null, zoom: null, sticker: null } })
     expect((await handleRecordsRequest(post(old), () => store)).status).toBe(204)

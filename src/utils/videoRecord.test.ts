@@ -71,8 +71,14 @@ describe('buildVideoRecord', () => {
         bgm: { trackId: 'lofi-tokyo', title: 'Tokyo Lo-fi', volume: 0.3 },
         voicePreset: 'natural',
         trim: TRIM,
+        midZoom: true,
       },
     })
+  })
+
+  it('records no mid-video zoom with the setting off or without a burn', () => {
+    expect(build({ burn: { ...BURN, hook: { ...HOOK, midZoom: false } } }).effects.midZoom).toBe(false)
+    expect(build({ burn: null }).effects.midZoom).toBe(false)
   })
 
   it('takes the look from the burn that was used, whatever the settings are now', () => {
