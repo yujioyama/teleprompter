@@ -2,7 +2,7 @@ import { blobId, type EncodeRequest, type ShotEncodeCache } from './shotEncodeCa
 import { trimAndNormalizeShot } from './trimAndNormalizeShot'
 import { burnShotSubtitles, burnSubtitles, type SubtitleLook } from './burnSubtitles'
 import { cuesForShot, type SubtitleCue } from './subtitleCues'
-import { fairiesForShot, planFairies, type FairyAppearance } from './fairyPlan'
+import { fairiesForShot, fairiesFromSubtitles, type FairyAppearance } from './fairyPlan'
 import { hasFirstShotExtras, styleCues, type HookOptions, type StyledCue } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
@@ -35,13 +35,9 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
   return clips.length > 0 ? clips[0].end - clips[0].start : null
 }
 
-/** The fairies over the joined timeline; a shot without a text (shotTexts runs short) gets none. */
-function fairyPlanOf(clips: ShotClip[], shotTexts: string[], hook: HookOptions, position: SubtitlePosition): FairyAppearance[] {
-  return planFairies(
-    clips.map((c, i) => ({ text: shotTexts[i] ?? '', duration: c.end - c.start })),
-    hook,
-    position,
-  )
+/** The fairies over the joined timeline, read from the subtitles. */
+function fairyPlanOf(clips: ShotClip[], cues: SubtitleCue[], hook: HookOptions, position: SubtitlePosition): FairyAppearance[] {
+  return fairiesFromSubtitles(cues, clips.map(c => c.end - c.start), hook, position)
 }
 
 /**
@@ -85,19 +81,17 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
  * Shots start where the previous one ended — the same running offset
  * cuesFromShotEntries times the cues by. Cues are styled on the joined
  * timeline first, so one running on past the first shot stays a hook cue.
- * The fairies are planned once over the joined timeline from `shotTexts`
- * (one per clip; a missing one is no text, so no fairy) and each shot gets
- * the ones inside it.
+ * The fairies are planned once over the joined timeline from the cues'
+ * emoji and each shot gets the ones inside it.
  */
 export function shotBurnRequests(
   clips: ShotClip[],
   cues: SubtitleCue[],
   position: SubtitlePosition,
   hook: HookOptions,
-  shotTexts: string[],
 ): EncodeRequest[] {
   const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
-  const plan = fairyPlanOf(clips, shotTexts, hook, position)
+  const plan = fairyPlanOf(clips, cues, hook, position)
   let offset = 0
   return clips.map((clip, i) => {
     const duration = clip.end - clip.start
@@ -164,9 +158,6 @@ export async function encodeAll(
  * shot, reusing any already done in the background), then the clips are
  * joined by packet copy.
  *
- * `shotTexts` are the shots' texts, one per clip, that the fairies are
- * planned from.
- *
  * Falls back to re-encoding the whole joined video (burnSubtitles) when
  * that can't work: WebCodecs unavailable or failing (then ffmpeg.wasm
  * does it), or clips whose encoder headers don't match for packet copy.
@@ -178,18 +169,17 @@ export async function burnSubtitlesByShot(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   hook: HookOptions,
-  shotTexts: string[],
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  const plan = fairyPlanOf(clips, shotTexts, hook, position)
+  const plan = fairyPlanOf(clips, cues, hook, position)
   if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0) {
     return combinedBlob
   }
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, shotTexts), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook), onProgress, signal)
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)

@@ -1,3 +1,5 @@
+import { cuesByShot } from './subtitleCues'
+
 /**
  * An emoji in the first shot's subtitle (e.g. `I put *Vaseline*🧴 on…`) is
  * not drawn in the text: it becomes a big sticker beside the face, shown
@@ -34,13 +36,19 @@ export function stickerOf(cues: { en: string; variant: string }[]): string | nul
 }
 
 /**
- * Cues transcribed from speech have no emoji, so put the first script
- * line's one back at the end of the first cue (if it doesn't have one).
+ * Cues transcribed from speech have no emoji, so put each script line's
+ * one back at the end of the first cue of its shot (unless a cue of that
+ * shot already has one). The first line's is the first shot's sticker; the
+ * others become the fairies, which are read from the subtitles.
  */
-export function reapplySticker<T extends { en: string }>(cues: T[], scriptTexts: string[]): T[] {
-  const sticker = scriptTexts.length > 0 ? findSticker(scriptTexts[0]) : null
-  if (!sticker || cues.length === 0 || findSticker(cues[0].en)) return cues
-  return [{ ...cues[0], en: `${cues[0].en}${sticker}` }, ...cues.slice(1)]
+export function reapplyStickers<T extends { en: string; start: number }>(cues: T[], shots: { text: string; duration: number }[]): T[] {
+  const firsts = new Map<T, string>()
+  cuesByShot(cues, shots.map(s => s.duration)).forEach((group, i) => {
+    const sticker = findSticker(shots[i].text)
+    if (sticker && group.length > 0 && !group.some(c => findSticker(c.en))) firsts.set(group[0], sticker)
+  })
+  if (firsts.size === 0) return cues
+  return cues.map(c => (firsts.has(c) ? { ...c, en: `${c.en}${firsts.get(c)}` } : c))
 }
 
 /**

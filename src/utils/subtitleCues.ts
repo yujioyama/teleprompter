@@ -155,3 +155,26 @@ export function cuesForShot<T extends SubtitleCue>(cues: T[], shotStart: number,
   }
   return out
 }
+
+// A cue starting where a shot ends belongs to the next shot.
+const CUT_EPSILON = 1e-6
+
+/**
+ * The cues of each shot of the joined video (`durations` in order), a cue
+ * counted in the shot it starts in, in time order. Cues starting past the
+ * last shot are left out.
+ */
+export function cuesByShot<T extends { start: number }>(cues: T[], durations: number[]): T[][] {
+  const sorted = [...cues].sort((a, b) => a.start - b.start)
+  let shotStart = 0
+  return durations.map(duration => {
+    const from = shotStart
+    shotStart += duration
+    return sorted.filter(c => c.start >= from - CUT_EPSILON && c.start < shotStart - CUT_EPSILON)
+  })
+}
+
+/** Each shot's English subtitles joined, which is where its fairy's emoji is read from. */
+export function shotTextsOf(cues: { start: number; en: string }[], durations: number[]): string[] {
+  return cuesByShot(cues, durations).map(group => group.map(c => c.en).join(' '))
+}

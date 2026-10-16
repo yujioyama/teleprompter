@@ -51,9 +51,14 @@ Let the script lines be shots `0 … n-1`. Each shot is one script line.
   emoji. The finale's emoji is line 0's emoji. An emoji on the last line
   is ignored, because the finale takes that shot.
 
-Fairies are decided from the **script lines** (`ShotCueInput.text`), not
-from the subtitle cues. So they appear the same way whether the subtitles
-came from the script or from speech.
+**Changed 2026-10-16 (after release):** fairies are decided from the
+**English subtitles**, like the first-shot sticker. A shot's emoji is the
+first one in the cues that start within it, so adding, changing or deleting
+an emoji in the subtitle editor is what the preview and the burns show.
+Subtitles built from the script carry its emoji. Subtitles rebuilt from
+speech get each script line's emoji put back on the first cue of its shot
+(`reapplyStickers`). (Originally fairies read the script lines; editing the
+subtitles then did nothing, which users didn't expect.)
 
 No fairies (no cameos and no finale) when any of these holds:
 

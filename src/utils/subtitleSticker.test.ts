@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findSticker, reapplySticker, stickerOf, stripStickers } from './subtitleSticker'
+import { findSticker, reapplyStickers, stickerOf, stripStickers } from './subtitleSticker'
 
 describe('findSticker', () => {
   it('finds the first emoji, keeping joiners, variation selectors and skin tones', () => {
@@ -34,20 +34,31 @@ describe('stickerOf', () => {
   })
 })
 
-describe('reapplySticker', () => {
-  it('puts the first script line\'s emoji on the first transcribed cue', () => {
-    const cues = [{ en: 'I put Vaseline on', id: 'a' }, { en: 'every night', id: 'b' }]
-    expect(reapplySticker(cues, ['I put *Vaseline*🧴 on', 'Every night'])).toEqual([
-      { en: 'I put Vaseline on🧴', id: 'a' },
-      { en: 'every night', id: 'b' },
+describe('reapplyStickers', () => {
+  const shots = [
+    { text: 'I put *Vaseline*🧴 on', duration: 2 },
+    { text: 'It keeps them 💡 neat', duration: 3 },
+    { text: 'Try it', duration: 2 },
+  ]
+
+  it('puts each script line\'s emoji back on the first transcribed cue of its shot', () => {
+    const cues = [
+      { en: 'I put Vaseline on', start: 0.3, id: 'a' },
+      { en: 'every night', start: 1.2, id: 'b' },
+      { en: 'It keeps them neat', start: 2.4, id: 'c' },
+      { en: 'Try it', start: 5.2, id: 'd' },
+    ]
+    expect(reapplyStickers(cues, shots)).toEqual([
+      { en: 'I put Vaseline on🧴', start: 0.3, id: 'a' },
+      { en: 'every night', start: 1.2, id: 'b' },
+      { en: 'It keeps them neat💡', start: 2.4, id: 'c' },
+      { en: 'Try it', start: 5.2, id: 'd' },
     ])
   })
 
-  it('leaves the cues alone without an emoji, or when the first cue has one', () => {
-    const cues = [{ en: 'Hi' }]
-    expect(reapplySticker(cues, ['Hi'])).toBe(cues)
-    const withOne = [{ en: 'Hi 🐈' }]
-    expect(reapplySticker(withOne, ['Hi 🧴'])).toBe(withOne)
-    expect(reapplySticker([], ['Hi 🧴'])).toEqual([])
+  it('leaves a shot alone when its line has no emoji, its cues already have one, or it has no cue', () => {
+    const cues = [{ en: 'Hi 🐈', start: 0 }, { en: 'Try it', start: 5.5 }]
+    expect(reapplyStickers(cues, shots)).toBe(cues)
+    expect(reapplyStickers([], shots)).toEqual([])
   })
 })

@@ -9,6 +9,7 @@ import { random } from './seededRandom'
 import { cameoBursts, cameoHover, cameoPath, CAMEO_LENGTHS, END_MARGIN, FAIRY_MOTIONS, finalePath, finaleTiming } from './fairyMotion'
 import { emitSparkles, type Sparkle } from './sparkles'
 import { stickerSeed, type StickerPath } from './stickerMotion'
+import { shotTextsOf } from './subtitleCues'
 import type { HookOptions } from './subtitleHook'
 import { DEFAULT_STICKER_PLACEMENT, findSticker, STICKER_EMOJI_PX, STICKER_PLACEMENTS } from './subtitleSticker'
 
@@ -111,6 +112,22 @@ export function planFairies(
   const finale = hook.style ? planFinale(shots, placement, route, shotStart, position / 100) : null
   if (finale) plan.push(finale)
   return plan
+}
+
+/**
+ * The fairies of a joined video whose shots last `durations`, read from its
+ * English subtitles (`cues`, joined timeline): a shot's emoji is the first
+ * one in the cues starting within it, so adding, changing or deleting one in
+ * the subtitles is what the preview and the burns show.
+ */
+export function fairiesFromSubtitles(
+  cues: { start: number; en: string }[],
+  durations: number[],
+  hook: Pick<HookOptions, 'style' | 'sticker' | 'stickerRoute' | 'fairies'>,
+  position: number,
+): FairyAppearance[] {
+  const texts = shotTextsOf(cues, durations)
+  return planFairies(durations.map((duration, i) => ({ text: texts[i], duration })), hook, position)
 }
 
 function planFinale(
