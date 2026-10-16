@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampTrimRange, resolveShotTrimSettings } from './shotTrim'
+import { autoTrimOf, clampTrimRange, LAST_SHOT_MIN_LENGTH, PAUSE_PADDING_END, resolveShotTrimSettings } from './shotTrim'
 import type { AppSettings } from '../hooks/useSettings'
 
 describe('clampTrimRange', () => {
@@ -51,6 +51,7 @@ describe('resolveShotTrimSettings', () => {
     stickerRoute: 0,
     fairyEnabled: true,
     firstShotPaddingStart: 0.05,
+    lastShotPaddingEnd: 0.1,
     inboxKey: '',
   }
 
@@ -59,6 +60,7 @@ describe('resolveShotTrimSettings', () => {
       trimEnabled: true,
       trimPaddingStart: 0.05,
       trimPaddingEnd: 0.4,
+      minLength: 0,
     })
   })
 
@@ -68,5 +70,54 @@ describe('resolveShotTrimSettings', () => {
 
   it('lets a shot\'s own lead-in win, first shot or not', () => {
     expect(resolveShotTrimSettings({ id: 'a', text: '', trimPaddingStart: 0.6 }, GLOBAL, true).trimPaddingStart).toBe(0.6)
+  })
+
+  it('ends the last shot right after the speech, and keeps it long enough for the finale', () => {
+    expect(resolveShotTrimSettings({ id: 'z', text: '' }, GLOBAL, false, true)).toEqual({
+      trimEnabled: true,
+      trimPaddingStart: 0.3,
+      trimPaddingEnd: 0.1,
+      minLength: LAST_SHOT_MIN_LENGTH,
+    })
+  })
+
+  it('gives a one-shot video both the first lead-in and the last ending', () => {
+    expect(resolveShotTrimSettings({ id: 'a', text: '' }, GLOBAL, true, true)).toMatchObject({
+      trimPaddingStart: 0.05,
+      trimPaddingEnd: 0.1,
+    })
+  })
+
+  it('keeps a pause after a shot marked 間を残す, over every other end padding', () => {
+    const pause = { id: 'p', text: '', keepPause: true }
+    expect(resolveShotTrimSettings(pause, GLOBAL).trimPaddingEnd).toBe(PAUSE_PADDING_END)
+    expect(resolveShotTrimSettings(pause, GLOBAL, false, true).trimPaddingEnd).toBe(PAUSE_PADDING_END)
+    expect(resolveShotTrimSettings({ ...pause, trimPaddingEnd: 0.9 }, GLOBAL).trimPaddingEnd).toBe(PAUSE_PADDING_END)
+  })
+})
+
+describe('autoTrimOf', () => {
+  const region = { speechStart: 1, speechEnd: 1.4, floor: 0, ceiling: 5, duration: 6 }
+  const trim = { trimEnabled: true, trimPaddingStart: 0.1, trimPaddingEnd: 0.1, minLength: 0 }
+
+  it('cuts around the speech with the padding', () => {
+    const bounds = autoTrimOf(region, trim)!
+    expect(bounds.start).toBeCloseTo(0.9)
+    expect(bounds.end).toBeCloseTo(1.5)
+  })
+
+  it('lengthens a short last shot to its minimum', () => {
+    const bounds = autoTrimOf(region, { ...trim, minLength: 1.2 })!
+    expect(bounds.start).toBeCloseTo(0.9)
+    expect(bounds.end).toBeCloseTo(2.1)
+  })
+
+  it('never lengthens into the sound after the speech (the stop tap)', () => {
+    const bounds = autoTrimOf({ ...region, ceiling: 1.8 }, { ...trim, minLength: 1.2 })!
+    expect(bounds.end).toBeCloseTo(1.8)
+  })
+
+  it('leaves a shot with nothing worth trimming whole', () => {
+    expect(autoTrimOf({ speechStart: 0.05, speechEnd: 5.95, floor: 0, ceiling: 6, duration: 6 }, trim)).toBeNull()
   })
 })

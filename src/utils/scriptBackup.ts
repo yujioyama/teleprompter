@@ -32,7 +32,8 @@ function isShot(value: unknown): value is Shot {
     typeof shot.text === 'string' &&
     isOptional(shot.trimEnabled, 'boolean') &&
     isOptional(shot.trimPaddingStart, 'number') &&
-    isOptional(shot.trimPaddingEnd, 'number')
+    isOptional(shot.trimPaddingEnd, 'number') &&
+    isOptional(shot.keepPause, 'boolean')
   )
 }
 
