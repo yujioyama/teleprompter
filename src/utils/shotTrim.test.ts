@@ -50,6 +50,7 @@ describe('resolveShotTrimSettings', () => {
     stickerMotion: 'random',
     stickerRoute: 0,
     fairyEnabled: true,
+    midZoomEnabled: true,
     firstShotPaddingStart: 0.05,
     lastShotPaddingEnd: 0.1,
     inboxKey: '',

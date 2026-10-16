@@ -34,6 +34,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   stickerMotion: 'random',
   stickerRoute: 0,
   fairyEnabled: true,
+  midZoomEnabled: true,
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up

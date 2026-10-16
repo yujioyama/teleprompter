@@ -60,6 +60,7 @@ describe('hookOptionsOf', () => {
     stickerMotion: 'orbit' as const,
     stickerRoute: 2,
     fairyEnabled: true,
+    midZoomEnabled: true,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -71,7 +72,15 @@ describe('hookOptionsOf', () => {
       stickerMotion: 'orbit',
       stickerRoute: 2,
       fairies: true,
+      midZoom: true,
     })
+  })
+
+  it('turns the mid-video zoom off, and keeps it on for settings saved before it existed', () => {
+    expect(hookOptionsOf({ ...settings, midZoomEnabled: false }).midZoom).toBe(false)
+    const older: Partial<typeof settings> = { ...settings }
+    delete older.midZoomEnabled
+    expect(hookOptionsOf(older as typeof settings).midZoom).toBe(true)
   })
 
   it('turns the fairies off, and keeps them on for settings saved before they existed', () => {
@@ -217,5 +226,17 @@ describe('followsFrames', () => {
     const fairy = { start: 5, end: 6 } as FairyAppearance
     expect(followsFrames(4.95, { ...still, punchIn: null }, 2, [fairy])).toBe(true)
     expect(followsFrames(6.2, { ...still, punchIn: null }, 2, [fairy])).toBe(false)
+  })
+
+  it('follows frames while a peak drifts in, and around the punchline cut', () => {
+    const hook = { ...still, sticker: 'off' as const }
+    const midZoom = [
+      { start: 4, end: 6, kind: 'drift' as const },
+      { start: 8, end: 10, kind: 'punch' as const },
+    ]
+    expect(followsFrames(5, hook, 2, [], midZoom)).toBe(true)
+    expect(followsFrames(7, hook, 2, [], midZoom)).toBe(false)
+    expect(followsFrames(7.95, hook, 2, [], midZoom)).toBe(true)
+    expect(followsFrames(9, hook, 2, [], midZoom)).toBe(false)
   })
 })
