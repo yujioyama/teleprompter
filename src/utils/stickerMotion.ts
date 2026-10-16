@@ -7,19 +7,22 @@
  */
 
 import type { HookOptions } from './subtitleHook'
-import { DEFAULT_STICKER_PLACEMENT, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
+import { hash, random } from './seededRandom'
+import { emitSparkles, type Sparkle } from './sparkles'
+import { DEFAULT_STICKER_PLACEMENT, STICKER_EMOJI_PX, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
 
 export type StickerMotion = 'none' | 'random' | 'wander' | 'bounce' | 'orbit' | 'warp' | 'dash'
 /** The motions おまかせ ('random') picks from. */
 export const STICKER_TRIPS: Exclude<StickerMotion, 'none' | 'random'>[] = ['wander', 'bounce', 'orbit', 'warp', 'dash']
 export const DEFAULT_STICKER_MOTION: StickerMotion = 'random'
 
-/** Where the sticker is: x and y as fractions of the frame, rotation in degrees, scale 1 = its normal size. */
+/** Where the sticker is: x and y as fractions of the frame, rotation in degrees, scale 1 = its normal size, opacity 1 (the default) = fully visible. */
 export interface StickerPose {
   x: number
   y: number
   rotation: number
   scale: number
+  opacity?: number
 }
 
 export type StickerPath = (t: number) => StickerPose
@@ -40,45 +43,23 @@ const ORBIT_RADIUS = { x: 0.32, y: 0.22 }
  * Where the trip may go: clear of the hook subtitle at the top, the
  * bottom edge, and the TikTok/Reels button column at the lower right.
  */
-const AREA = { left: 0.18, right: 0.82, top: 0.27, bottom: 0.75 }
-const inButtonColumn = (p: { x: number; y: number }) => p.x > 0.7 && p.y > 0.5
+export const AREA = { left: 0.18, right: 0.82, top: 0.27, bottom: 0.75 }
+export const inButtonColumn = (p: { x: number; y: number }) => p.x > 0.7 && p.y > 0.5
 /** Around the face (the zoom anchor): fine to pass over, not to stop on. */
-const onFace = (p: { x: number; y: number }) => ((p.x - 0.5) / 0.22) ** 2 + ((p.y - 0.4) / 0.15) ** 2 < 1
+export const onFace = (p: { x: number; y: number }) => ((p.x - 0.5) / 0.22) ** 2 + ((p.y - 0.4) / 0.15) ** 2 < 1
 /** The bouncing box, a bit wider so a home on the edge is inside it. */
 const BOUNCE_BOX = { left: 0.16, right: 0.84, top: 0.27, bottom: 0.72 }
 /** Fractions of the width per second; y is scaled by the frame's aspect so both look as fast. */
 const BOUNCE_SPEED = 1.3
-const ASPECT = 1080 / 1920
+export const ASPECT = 1080 / 1920
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const lerp = (a: number, b: number, s: number) => a + (b - a) * s
-const easeInOut = (s: number) => (s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2)
-
-/** 32-bit FNV-1a, for turning the cue text into a seed. */
-function hash(text: string): number {
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return h >>> 0
-}
+export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+export const lerp = (a: number, b: number, s: number) => a + (b - a) * s
+export const easeInOut = (s: number) => (s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2)
 
 /** The route's seed: the sticker's cue text, re-rolled by ルートを変える (`route`). */
 export function stickerSeed(cueText: string, route: number): number {
   return hash(`${route}|${cueText}`)
-}
-
-/** mulberry32: a small, fast, seedable generator of [0, 1). */
-function random(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 interface Point {
@@ -122,7 +103,7 @@ function fold(v: number, lo: number, hi: number): number {
   return lo + (m <= span ? m : 2 * span - m)
 }
 
-type Home = Point & { rotation: number }
+export type Home = Point & { rotation: number }
 /** One trip over the travel time: `s` 0→1, starting and ending exactly at home. */
 type Trip = (s: number) => StickerPose
 type TripMaker = (rand: () => number, home: Home, travel: number) => Trip
@@ -227,18 +208,21 @@ export function stickerPath(motion: StickerMotion, seed: number, home: Home, dur
   }
 }
 
-/** The first shot's sticker as placed: its emoji, its spot, and its trip (null = it stays put). */
+/** The first shot's sticker as placed: its emoji, its spot, its trip (null = it stays put) and its sparkles. */
 export interface PlacedSticker {
   emoji: string
   home: Home
   path: StickerPath | null
+  /** Over [0, firstShotDuration], all gone by its end; they follow the sticker. */
+  sparkles: Sparkle[]
 }
 
 /**
  * The sticker the burn and the preview both show: the first hook cue's
  * emoji (translated cues only, as burned) at `placement`, moving as
  * `motion` says over the first shot. Null without one, with placement
- * 'off', or for a video that doesn't start with the first shot.
+ * 'off', or for a video that doesn't start with the first shot. Its
+ * sparkles trail the trip and burst at the landing, or twinkle when still.
  */
 export function placeSticker(
   cues: { en: string; ja: string | null; variant: string }[],
@@ -252,5 +236,17 @@ export function placeSticker(
   const at = STICKER_PLACEMENTS[placement]
   const home = { x: at.x, y: at.y / 100, rotation: at.rotation }
   const seed = stickerSeed(cue.en, hook.stickerRoute ?? 0)
-  return { emoji: findSticker(cue.en)!, home, path: stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, firstShotDuration) }
+  const path = stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, firstShotDuration)
+  const landing = firstShotDuration - LANDING
+  // Without a path the sticker never moves, so it only twinkles; a burst would have nothing to land.
+  const sparkles = emitSparkles({
+    path: path ?? (() => ({ x: home.x, y: home.y, rotation: home.rotation, scale: 1 })),
+    start: 0,
+    end: firstShotDuration,
+    seed: hash(`sparkles|${seed}`),
+    spread: (0.5 * STICKER_EMOJI_PX) / 1080,
+    bursts: path ? [landing] : [],
+    moving: t => path !== null && t < landing,
+  })
+  return { emoji: findSticker(cue.en)!, home, path, sparkles }
 }

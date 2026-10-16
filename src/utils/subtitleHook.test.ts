@@ -12,6 +12,7 @@ import {
   type HookOptions,
 } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
+import type { FairyAppearance } from './fairyPlan'
 
 const cue = (id: string, start: number, end: number): SubtitleCue => ({ id, start, end, en: id, ja: `${id}-ja` })
 
@@ -58,6 +59,7 @@ describe('hookOptionsOf', () => {
     stickerPlacement: 'chest' as const,
     stickerMotion: 'orbit' as const,
     stickerRoute: 2,
+    fairyEnabled: true,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -68,7 +70,15 @@ describe('hookOptionsOf', () => {
       sticker: 'chest',
       stickerMotion: 'orbit',
       stickerRoute: 2,
+      fairies: true,
     })
+  })
+
+  it('turns the fairies off, and keeps them on for settings saved before they existed', () => {
+    expect(hookOptionsOf({ ...settings, fairyEnabled: false }).fairies).toBe(false)
+    const older: Partial<typeof settings> = { ...settings }
+    delete older.fairyEnabled
+    expect(hookOptionsOf(older as typeof settings).fairies).toBe(true)
   })
 
   it('has no punch-in with the zoom off', () => {
@@ -197,8 +207,15 @@ describe('followsFrames', () => {
     expect(followsFrames(0.5, { ...still, stickerMotion: 'orbit', sticker: 'off' }, 2)).toBe(false)
   })
 
-  it('does not follow when nothing moves, or without a first shot', () => {
-    expect(followsFrames(0.5, still, 2)).toBe(false)
+  it('does not follow when nothing animates, or without a first shot', () => {
+    expect(followsFrames(0.5, { ...still, sticker: 'off' }, 2)).toBe(false)
     expect(followsFrames(0.5, { ...still, punchIn }, null)).toBe(false)
+  })
+
+  it('follows frames for a still sticker (its twinkles) and around each fairy', () => {
+    expect(followsFrames(1, still, 2)).toBe(true)
+    const fairy = { start: 5, end: 6 } as FairyAppearance
+    expect(followsFrames(4.95, { ...still, punchIn: null }, 2, [fairy])).toBe(true)
+    expect(followsFrames(6.2, { ...still, punchIn: null }, 2, [fairy])).toBe(false)
   })
 })

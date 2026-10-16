@@ -1,4 +1,4 @@
-import { CSSProperties, Fragment, useMemo } from 'react'
+import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, type HookOptions } from '../utils/subtitleHook'
@@ -16,7 +16,9 @@ import {
   outlineWidth,
 } from '../utils/subtitleLayout'
 import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers } from '../utils/subtitleSticker'
-import { placeSticker } from '../utils/stickerMotion'
+import { placeSticker, type StickerPose } from '../utils/stickerMotion'
+import type { FairyAppearance } from '../utils/fairyPlan'
+import { drawSparkles } from '../utils/sparkles'
 import styles from './SubtitleOverlayPreview.module.css'
 
 interface SubtitleOverlayPreviewProps {
@@ -27,6 +29,8 @@ interface SubtitleOverlayPreviewProps {
   hook?: HookOptions
   /** The first shot's length in seconds, which decides the hook cues. */
   firstShotDuration?: number | null
+  /** The mid-video cameos and the finale, in the joined video's time. */
+  fairies?: FairyAppearance[]
 }
 
 /** Reference-video px → a length relative to the preview container's width. */
@@ -61,6 +65,36 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
   )
 }
 
+/** An emoji sprite with the die-cut white border, posed as the burn draws it. */
+function StickerSprite({ emoji, pose, scale, testId }: { emoji: string; pose: StickerPose; scale: number; testId: string }) {
+  // The die-cut white border, approximated with hard white shadows on every side.
+  // The shadows sit inside the scaled element, so they shrink with the sprite as the burn's do.
+  const o = cqw(STICKER_OUTLINE_PX)
+  return (
+    <span
+      className={styles.sticker}
+      data-testid={testId}
+      style={{
+        left: `${pose.x * 100}%`,
+        top: `${pose.y * 100}%`,
+        fontFamily: EMOJI_FONT_FAMILY,
+        fontSize: cqw(STICKER_EMOJI_PX),
+        transform: `translate(-50%, -50%) rotate(${pose.rotation}deg) scale(${pose.scale * scale})`,
+        opacity: pose.opacity ?? 1,
+        filter: [
+          `drop-shadow(${o} 0 0 #fff)`,
+          `drop-shadow(-${o} 0 0 #fff)`,
+          `drop-shadow(0 ${o} 0 #fff)`,
+          `drop-shadow(0 -${o} 0 #fff)`,
+          `drop-shadow(0 ${cqw(8)} ${cqw(12)} rgba(0,0,0,0.35))`,
+        ].join(' '),
+      }}
+    >
+      {emoji}
+    </span>
+  )
+}
+
 /**
  * Cheap DOM/CSS mirror of the burned-in subtitle: the same outlined text,
  * line breaks and sizes (scaled to the preview's width), at the same
@@ -74,6 +108,7 @@ export default function SubtitleOverlayPreview({
   currentTime,
   hook,
   firstShotDuration = null,
+  fairies,
 }: SubtitleOverlayPreviewProps) {
   const measure = useMemo(() => createCanvasMeasure(), [])
   const hookStyle = hook?.style ?? false
@@ -83,7 +118,8 @@ export default function SubtitleOverlayPreview({
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
   const layout = useMemo(
-    () => (cue ? layoutCue(cue.variant === 'hook' ? { ...cue, en: stripStickers(cue.en) } : cue, measure) : null),
+    // No emoji in any cue's text: they are drawn as stickers and fairies instead.
+    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure) : null),
     [cue, measure],
   )
   // As burned: only translated cues count, and it stays up for the whole first shot.
@@ -121,36 +157,55 @@ export default function SubtitleOverlayPreview({
     </div>
   )
 
-  // The die-cut white border, approximated with hard white shadows on every side.
-  const o = cqw(STICKER_OUTLINE_PX)
   const stickerBox = showSticker && sticker && pose && (
-    <span
-      className={styles.sticker}
-      data-testid="subtitle-sticker"
-      style={{
-        left: `${pose.x * 100}%`,
-        top: `${pose.y * 100}%`,
-        fontFamily: EMOJI_FONT_FAMILY,
-        fontSize: cqw(STICKER_EMOJI_PX),
-        transform: `translate(-50%, -50%) rotate(${pose.rotation}deg) scale(${pose.scale})`,
-        filter: [
-          `drop-shadow(${o} 0 0 #fff)`,
-          `drop-shadow(-${o} 0 0 #fff)`,
-          `drop-shadow(0 ${o} 0 #fff)`,
-          `drop-shadow(0 -${o} 0 #fff)`,
-          `drop-shadow(0 ${cqw(8)} ${cqw(12)} rgba(0,0,0,0.35))`,
-        ].join(' '),
-      }}
-    >
-      {sticker.emoji}
-    </span>
+    <StickerSprite emoji={sticker.emoji} pose={pose} scale={1} testId="subtitle-sticker" />
   )
 
-  if (!cueBox && !stickerBox) return null
+  const activeFairies = (fairies ?? []).filter(f => currentTime >= f.start && currentTime < f.end)
+  const fairyBoxes = activeFairies.map(f => (
+    <StickerSprite key={f.key} emoji={f.emoji} pose={f.path(currentTime)} scale={f.scale} testId="subtitle-fairy" />
+  ))
+
+  // The canvas is sized in device px from the preview's own size, and redrawn when the playhead or the plan moves.
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const showCanvas = showSticker || activeFairies.length > 0
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      const dpr = window.devicePixelRatio || 1
+      const { width, height } = entry.contentRect
+      setSize(prev => {
+        const next = { width: Math.round(width * dpr), height: Math.round(height * dpr) }
+        return prev.width === next.width && prev.height === next.height ? prev : next
+      })
+    })
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [showCanvas])
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || size.width === 0) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    // Assigning a size also clears and resets the canvas, so only do it when it changed.
+    if (canvas.width !== size.width) canvas.width = size.width
+    if (canvas.height !== size.height) canvas.height = size.height
+    ctx.clearRect(0, 0, size.width, size.height)
+    if (showSticker && sticker) drawSparkles(ctx, sticker.sparkles, currentTime, size.width, size.height)
+    for (const f of activeFairies) drawSparkles(ctx, f.sparkles, currentTime, size.width, size.height)
+    // activeFairies is derived from [fairies, currentTime]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, sticker, showSticker, fairies, size])
+
+  if (!cueBox && !showCanvas) return null
   return (
     <>
       {cueBox}
+      {showCanvas && <canvas ref={canvasRef} className={styles.sparkles} />}
       {stickerBox}
+      {fairyBoxes}
     </>
   )
 }

@@ -2,6 +2,7 @@ import { blobId, type EncodeRequest, type ShotEncodeCache } from './shotEncodeCa
 import { trimAndNormalizeShot } from './trimAndNormalizeShot'
 import { burnShotSubtitles, burnSubtitles, type SubtitleLook } from './burnSubtitles'
 import { cuesForShot, type SubtitleCue } from './subtitleCues'
+import { fairiesForShot, planFairies, type FairyAppearance } from './fairyPlan'
 import { hasFirstShotExtras, styleCues, type HookOptions, type StyledCue } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
@@ -34,18 +35,29 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
   return clips.length > 0 ? clips[0].end - clips[0].start : null
 }
 
+/** The fairies over the joined timeline; a shot without a text (shotTexts runs short) gets none. */
+function fairyPlanOf(clips: ShotClip[], shotTexts: string[], hook: HookOptions, position: SubtitlePosition): FairyAppearance[] {
+  return planFairies(
+    clips.map((c, i) => ({ text: shotTexts[i] ?? '', duration: c.end - c.start })),
+    hook,
+    position,
+  )
+}
+
 /**
  * The shot trimmed and normalized with `cues` (styled, in the shot's own
- * timeline) burned in by the same encode, plus the zoom in
- * when it's the first shot. A shot with nothing of that is just its
- * normalized clip, so it's shared with the combine step's cache entry. The
- * key holds everything that changes the pixels, so a hook change re-encodes
- * only the shots it shows up in.
+ * timeline) burned in by the same encode, plus the zoom in when it's the
+ * first shot and the `look`'s fairies (also in the shot's own timeline). A
+ * shot with nothing of that is just its normalized clip, so it's shared with
+ * the combine step's cache entry. The key holds everything that changes the
+ * pixels (the fairies by their keys), so a hook change re-encodes only the
+ * shots it shows up in.
  */
 export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLook): EncodeRequest {
   const translated = cues.filter(c => c.ja !== null)
   const extras = hasFirstShotExtras(look.hook, look.firstShotDuration)
-  if (translated.length === 0 && !extras) return normalizeRequest(clip)
+  const fairies = look.fairies ?? []
+  if (translated.length === 0 && !extras && fairies.length === 0) return normalizeRequest(clip)
   const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const placement = JSON.stringify([
@@ -54,6 +66,9 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     hasHookCue ? (look.hook.sticker ?? null) : null,
     hasHookCue ? (look.hook.stickerMotion ?? null) : null,
     hasHookCue ? (look.hook.stickerRoute ?? 0) : null,
+    // The sticker's size and sparkles changed the pixels; old cached burns are stale.
+    'sparkles-v1',
+    fairies.map(f => f.key),
   ])
   const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
@@ -70,18 +85,28 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
  * Shots start where the previous one ended — the same running offset
  * cuesFromShotEntries times the cues by. Cues are styled on the joined
  * timeline first, so one running on past the first shot stays a hook cue.
+ * The fairies are planned once over the joined timeline from `shotTexts`
+ * (one per clip; a missing one is no text, so no fairy) and each shot gets
+ * the ones inside it.
  */
 export function shotBurnRequests(
   clips: ShotClip[],
   cues: SubtitleCue[],
   position: SubtitlePosition,
   hook: HookOptions,
+  shotTexts: string[],
 ): EncodeRequest[] {
   const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
+  const plan = fairyPlanOf(clips, shotTexts, hook, position)
   let offset = 0
   return clips.map((clip, i) => {
     const duration = clip.end - clip.start
-    const look: SubtitleLook = { position, hook, firstShotDuration: i === 0 ? duration : null }
+    const look: SubtitleLook = {
+      position,
+      hook,
+      firstShotDuration: i === 0 ? duration : null,
+      fairies: fairiesForShot(plan, offset, duration),
+    }
     const request = burnRequest(clip, cuesForShot(styled, offset, duration), look)
     offset += duration
     return request
@@ -139,6 +164,9 @@ export async function encodeAll(
  * shot, reusing any already done in the background), then the clips are
  * joined by packet copy.
  *
+ * `shotTexts` are the shots' texts, one per clip, that the fairies are
+ * planned from.
+ *
  * Falls back to re-encoding the whole joined video (burnSubtitles) when
  * that can't work: WebCodecs unavailable or failing (then ffmpeg.wasm
  * does it), or clips whose encoder headers don't match for packet copy.
@@ -150,14 +178,18 @@ export async function burnSubtitlesByShot(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   hook: HookOptions,
+  shotTexts: string[],
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips))) return combinedBlob
+  const plan = fairyPlanOf(clips, shotTexts, hook, position)
+  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0) {
+    return combinedBlob
+  }
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, shotTexts), onProgress, signal)
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -173,5 +205,5 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  return burnSubtitles(combinedBlob, cues, { position, hook, firstShotDuration: firstShotDurationOf(clips) }, onProgress, signal)
+  return burnSubtitles(combinedBlob, cues, { position, hook, firstShotDuration: firstShotDurationOf(clips), fairies: plan }, onProgress, signal)
 }

@@ -16,6 +16,7 @@ import { CancelledError } from './cancellation'
 import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLayout'
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
+import type { FairyAppearance } from './fairyPlan'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -84,6 +85,8 @@ function stubCanvas() {
 }
 
 const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null, stickerMotion: 'none' }, firstShotDuration: 2 }
+
+const FAIRY = { emoji: '💡', kind: 'cameo', start: 0.3, end: 1.5, path: () => ({ x: 0.3, y: 0.5, rotation: 0, scale: 1 }), scale: 0.62, sparkles: [{ born: 0.4, life: 0.5, x: 0.3, y: 0.5, vx: 0, vy: 0, radius: 6, color: '#fff' }], key: 'k' } as FairyAppearance
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -176,7 +179,7 @@ describe('renderSubtitleOverlays', () => {
   it('turns a hook cue\'s emoji into a sticker for the whole first shot, not drawn in its text', async () => {
     const { drawn } = stubCanvas()
     const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
-    const overlays = await renderSubtitleOverlays([hook], LOOK)
+    const overlays = await renderSubtitleOverlays([hook], LOOK, { still: true })
     expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1], [0, 2]])
     expect(overlays[1].y).toBe(subtitleY(STICKER_PLACEMENTS.chest.y, 1920, STICKER_IMAGE_HEIGHT))
     expect(drawn.map(d => d.text)).toContain('🧴')
@@ -186,7 +189,7 @@ describe('renderSubtitleOverlays', () => {
   it('puts the sticker where the hook says, or nowhere when it is off', async () => {
     const { drawn } = stubCanvas()
     const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
-    const right = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' } })
+    const right = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' } }, { still: true })
     expect(right[1].y).toBe(subtitleY(STICKER_PLACEMENTS.right.y, 1920, STICKER_IMAGE_HEIGHT))
     drawn.length = 0
     const off = await renderSubtitleOverlays([hook], { ...LOOK, hook: { ...LOOK.hook, sticker: 'off' } })
@@ -216,6 +219,51 @@ describe('renderSubtitleOverlays', () => {
     const overlays = await renderSubtitleOverlays([untranslated, normal], LOOK)
     expect(overlays.map(o => [o.start, o.end])).toEqual([[2, 3]])
   })
+
+  it('sends each fairy as a scaled sprite with its sparkles over its window', async () => {
+    stubCanvas()
+    const [fairy] = await renderSubtitleOverlays([], { ...LOOK, fairies: [FAIRY] })
+    expect([fairy.start, fairy.end]).toEqual([0.3, 1.5])
+    expect(fairy.sprite).toMatchObject({ scale: 0.62, resolution: STICKER_MAX_SCALE })
+    expect(fairy.sprite!.sparkles).toBe(FAIRY.sparkles)
+    expect(fairy.sprite!.path).toBe(FAIRY.path)
+  })
+
+  it('gives the travelling sticker its sparkles', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const look = { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' as const, stickerMotion: 'orbit' as const } }
+    const [, sticker] = await renderSubtitleOverlays([hook], look)
+    expect(sticker.sprite!.sparkles!.length).toBeGreaterThan(0)
+  })
+
+  it('twinkles a sticker that stays put, as a sprite sitting at home', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const [, sticker] = await renderSubtitleOverlays([hook], LOOK)
+    expect(sticker.sprite!.sparkles!.length).toBeGreaterThan(0)
+    expect(sticker.sprite!.path(0)).toMatchObject({ x: STICKER_PLACEMENTS.chest.x, y: STICKER_PLACEMENTS.chest.y / 100, scale: 1 })
+    expect(sticker.sprite!.path(1.5)).toEqual(sticker.sprite!.path(0))
+    // ffmpeg can only place it.
+    const [, still] = await renderSubtitleOverlays([hook], LOOK, { still: true })
+    expect(still.sprite).toBeUndefined()
+  })
+
+  it('leaves fairies and sparkles out for ffmpeg', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const look = { ...LOOK, hook: { ...LOOK.hook, stickerMotion: 'orbit' as const }, fairies: [FAIRY] }
+    const overlays = await renderSubtitleOverlays([hook], look, { still: true })
+    expect(overlays).toHaveLength(2)
+    expect(overlays.some(o => o.sprite)).toBe(false)
+  })
+
+  it('never draws an emoji in a normal cue\'s text', async () => {
+    const { drawn } = stubCanvas()
+    await renderSubtitleOverlays([{ id: 'b', start: 2, end: 3, en: 'It keeps them 💡 neat 👍🏽', ja: 'きれい', variant: 'normal' }], LOOK)
+    expect(drawn.some(d => /\p{Extended_Pictographic}/u.test(d.text))).toBe(false)
+    expect(drawn.some(d => d.text.includes('neat'))).toBe(true)
+  })
 })
 
 describe('burnSubtitles', () => {
@@ -237,6 +285,12 @@ describe('burnSubtitles', () => {
     await burnSubtitles(new Blob(['x']), cues, LOOK)
     const overlays = vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][1]
     expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1.5], [2.4, 3]])
+  })
+
+  it('burns a video that only has fairies', async () => {
+    stubCanvas()
+    await burnSubtitles(new Blob(['v']), [], { ...LOOK, fairies: [FAIRY] })
+    expect(burnSubtitlesWebCodecs).toHaveBeenCalled()
   })
 
   it('returns the video unchanged when nothing is translated', async () => {

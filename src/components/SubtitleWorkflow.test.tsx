@@ -33,6 +33,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   stickerPlacement: 'chest',
   stickerMotion: 'random',
   stickerRoute: 0,
+  fairyEnabled: true,
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -46,6 +47,7 @@ function ControlledSubtitleWorkflow({
   transcribe,
   onHookSettingsChange,
   inboxKey,
+  initialHookSettings,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -53,9 +55,10 @@ function ControlledSubtitleWorkflow({
   transcribe?: (blob: Blob, onProgress: (p: WhisperProgress) => void, signal: AbortSignal) => Promise<SubtitleCue[]>
   onHookSettingsChange?: (patch: Partial<HookSettings>) => void
   inboxKey?: string
+  initialHookSettings?: Partial<HookSettings>
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
-  const [hookSettings, setHookSettings] = useState<HookSettings>(DEFAULT_HOOK_SETTINGS)
+  const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
   return (
     <SubtitleWorkflow
       combinedBlob={combinedBlob}
@@ -496,7 +499,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0 }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true }, firstShotDuration: 2 }),
     )
   })
 
@@ -507,7 +510,7 @@ describe('SubtitleWorkflow hook controls', () => {
 })
 
 describe('SubtitleWorkflow punch-in', () => {
-  async function renderTranslated(onHookSettingsChange = vi.fn()) {
+  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>) {
     seedBurnMock()
     render(
       <ControlledSubtitleWorkflow
@@ -515,6 +518,7 @@ describe('SubtitleWorkflow punch-in', () => {
         shotCueInputs={SHOT_CUE_INPUTS}
         onBurned={vi.fn()}
         onHookSettingsChange={onHookSettingsChange}
+        initialHookSettings={initialHookSettings}
       />,
     )
     await screen.findByDisplayValue('Hello')
@@ -628,6 +632,33 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(onChange).toHaveBeenCalledWith({ stickerMotion: 'warp' })
     fireEvent.click(screen.getByText('ルートを変える'))
     expect(onChange).toHaveBeenLastCalledWith({ stickerRoute: 1 })
+  })
+
+  it('turns the fairies off and on', async () => {
+    const onChange = await renderTranslated(vi.fn(), { stickerPlacement: 'right' })
+    const group = within(screen.getByRole('group', { name: '妖精（途中と締め）' }))
+    expect(group.getByText('オン')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByText('オフ'))
+    expect(onChange).toHaveBeenLastCalledWith({ fairyEnabled: false })
+    expect(group.getByText('オフ')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(group.getByText('オン'))
+    expect(onChange).toHaveBeenLastCalledWith({ fairyEnabled: true })
+  })
+
+  it('hides the fairy switch when the sticker is off', async () => {
+    await renderTranslated(vi.fn(), { stickerPlacement: 'off' })
+    expect(screen.queryByRole('group', { name: '妖精（途中と締め）' })).toBeNull()
+  })
+
+  it('offers ルートを変える with a still sticker when fairies are on', async () => {
+    await renderTranslated(vi.fn(), { stickerMotion: 'none', fairyEnabled: true })
+    expect(screen.getByText('ルートを変える')).toBeInTheDocument()
+    expect(screen.queryByText(/画面を旅して/)).toBeNull()
+  })
+
+  it('has no ルートを変える with a still sticker and no fairies', async () => {
+    await renderTranslated(vi.fn(), { stickerMotion: 'none', fairyEnabled: false })
+    expect(screen.queryByText('ルートを変える')).toBeNull()
   })
 
   it('switches the zoom between pulling back and pushing in', async () => {

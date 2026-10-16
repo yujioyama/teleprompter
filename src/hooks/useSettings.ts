@@ -44,6 +44,8 @@ export interface AppSettings {
   stickerMotion: StickerMotion
   /** Bumped by ルートを変える to give the sticker another route. */
   stickerRoute: number
+  /** Mid-video cameos and the finale (妖精). */
+  fairyEnabled: boolean
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
@@ -70,6 +72,7 @@ const DEFAULTS: AppSettings = {
   stickerPlacement: 'chest',
   stickerMotion: 'random',
   stickerRoute: 0,
+  fairyEnabled: true,
   firstShotPaddingStart: 0.05,
   inboxKey: '',
 }

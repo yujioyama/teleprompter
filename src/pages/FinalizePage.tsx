@@ -140,7 +140,7 @@ export default function FinalizePage() {
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
-  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute } = settings
+  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled } = settings
   const { normalizeAudio, voicePreset } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume } = settings
@@ -499,8 +499,8 @@ export default function FinalizePage() {
   // shots that changed.
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
   const hookSettings: HookSettings = useMemo(
-    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute }),
-    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute],
+    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled }),
+    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled],
   )
   const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
   useEffect(() => {
@@ -508,12 +508,12 @@ export default function FinalizePage() {
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
-      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook)) {
+      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, shotCueInputs.map(s => s.text))) {
         cache.prefetch(request)
       }
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook])
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, shotCueInputs])
 
   // Build the finished audio (usual BGM + loudness) while the subtitles
   // are worked on: they only change the picture, so after the burn the
@@ -838,6 +838,7 @@ export default function FinalizePage() {
                     cues,
                     position,
                     hook,
+                    shotCueInputs.map(s => s.text),
                     onProgress,
                     signal,
                   )

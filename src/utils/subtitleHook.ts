@@ -4,6 +4,7 @@ import type { CueVariant } from './subtitleLayout'
 import type { SubtitlePosition } from './subtitlePosition'
 import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleSticker'
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
+import type { FairyAppearance } from './fairyPlan'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -46,6 +47,8 @@ export interface HookOptions {
   stickerMotion?: StickerMotion
   /** Re-rolls the sticker's route (ルートを変える); 0 by default. */
   stickerRoute?: number
+  /** Mid-video cameos and the finale (default: on). */
+  fairies?: boolean
 }
 
 export type HookSettings = Pick<
@@ -60,6 +63,7 @@ export type HookSettings = Pick<
   | 'stickerPlacement'
   | 'stickerMotion'
   | 'stickerRoute'
+  | 'fairyEnabled'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -77,6 +81,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     sticker: settings.stickerPlacement ?? DEFAULT_STICKER_PLACEMENT,
     stickerMotion: settings.stickerMotion ?? DEFAULT_STICKER_MOTION,
     stickerRoute: settings.stickerRoute ?? 0,
+    fairies: settings.fairyEnabled ?? true,
   }
 }
 
@@ -157,15 +162,19 @@ export function punchInScale(t: number, punchIn: PunchInMotion, until: number): 
 /** Seconds past the first shot's end that frame-accurate time still matters, so the cut back to 1x lands. */
 const FRAME_FOLLOW_TAIL = 0.1
 
+/** Seconds around a fairy that frame-accurate time matters, for its sparkles to fade in and out. */
+const FAIRY_FOLLOW_MARGIN = 0.1
+
 /**
- * Whether the preview needs frame-accurate time at `t`: only while the
- * first shot moves (the zoom, or a travelling sticker) and the playhead is
- * in (or just past) it. Elsewhere the normal timeupdate rate is enough, so
- * per-frame re-renders are skipped.
+ * Whether the preview needs frame-accurate time at `t`: while the first
+ * shot animates (the zoom, or the sticker, which always has sparkles) and
+ * the playhead is in (or just past) it, and around each fairy. Elsewhere
+ * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
  */
-export function followsFrames(t: number, hook: HookOptions, firstShotDuration: number | null): boolean {
-  const stickerMoves = (hook.stickerMotion ?? DEFAULT_STICKER_MOTION) !== 'none' && hook.sticker !== 'off'
-  return (hook.punchIn !== null || stickerMoves) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+export function followsFrames(t: number, hook: HookOptions, firstShotDuration: number | null, fairies: FairyAppearance[] = []): boolean {
+  const stickerAnimates = hook.sticker !== 'off'
+  const inFirstShot = (hook.punchIn !== null || stickerAnimates) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+  return inFirstShot || fairies.some(f => f.start - FAIRY_FOLLOW_MARGIN <= t && t <= f.end + FAIRY_FOLLOW_MARGIN)
 }
 
 /** The punch-in a video gets and until when (the first shot's end). */

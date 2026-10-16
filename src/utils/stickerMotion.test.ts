@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { STICKER_MAX_SCALE, STICKER_TRIPS, stickerPath, stickerSeed, stickerTrip, type StickerPose } from './stickerMotion'
+import { STICKER_MAX_SCALE, STICKER_TRIPS, placeSticker, stickerPath, stickerSeed, stickerTrip, type StickerPose } from './stickerMotion'
 
 const RIGHT = { x: 0.82, y: 0.42, rotation: 8 }
 const CHEST = { x: 0.5, y: 0.66, rotation: -6 }
@@ -93,5 +93,25 @@ describe('stickerSeed', () => {
     expect(stickerSeed('I put *Vaseline*🧴 on', 0)).toBe(stickerSeed('I put *Vaseline*🧴 on', 0))
     expect(stickerSeed('I put *Vaseline*🧴 on', 1)).not.toBe(stickerSeed('I put *Vaseline*🧴 on', 0))
     expect(stickerSeed('Other 🧴', 0)).not.toBe(stickerSeed('I put *Vaseline*🧴 on', 0))
+  })
+})
+
+describe('placeSticker sparkles', () => {
+  const CUES = [{ en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }]
+
+  it("trails sparkles while travelling, bursts on landing, and all die by the first shot's end", () => {
+    const s = placeSticker(CUES, { sticker: 'right', stickerMotion: 'wander', stickerRoute: 0 }, 3)!
+    expect(s.sparkles.filter(p => Math.abs(p.born - (3 - 0.4)) < 1e-9)).toHaveLength(18)
+    for (const p of s.sparkles) expect(p.born + p.life).toBeLessThanOrEqual(3 + 1e-9)
+  })
+  it('twinkles a still sticker', () => {
+    const s = placeSticker(CUES, { sticker: 'right', stickerMotion: 'none', stickerRoute: 0 }, 3)!
+    expect(s.sparkles.length).toBeGreaterThan(10)
+    expect(s.sparkles.length).toBeLessThan(30)
+  })
+  it('twinkles through a first shot too short for a trip', () => {
+    const s = placeSticker(CUES, { sticker: 'right', stickerMotion: 'wander', stickerRoute: 0 }, 1)!
+    expect(s.path).toBeNull()
+    expect(s.sparkles.length).toBeGreaterThan(0)
   })
 })
