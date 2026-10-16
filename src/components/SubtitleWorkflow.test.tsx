@@ -574,6 +574,7 @@ describe('SubtitleWorkflow punch-in', () => {
         shotCueInputs={[
           { text: 'Hello', duration: 2 },
           { text: 'Peak ✨', duration: 2 },
+          { text: 'Build-up', duration: 2 },
           { text: 'End', duration: 2 },
         ]}
         onBurned={vi.fn()}
@@ -583,7 +584,7 @@ describe('SubtitleWorkflow punch-in', () => {
     )
     await screen.findByDisplayValue('Hello')
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
-      target: { value: '1. こんにちは\n2. 山場\n3. オチ' },
+      target: { value: '1. こんにちは\n2. 山場\n3. 前振り\n4. オチ' },
     })
     fireEvent.click(screen.getByText('日本語を反映'))
     const video = document.querySelector('video') as HTMLVideoElement
@@ -594,6 +595,9 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.timeUpdate(video)
     expect(video.style.transform).toBe('scale(1.06)')
     setTime(video, 5)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('')
+    setTime(video, 7)
     fireEvent.timeUpdate(video)
     expect(video.style.transform).toBe('scale(1.18)')
 

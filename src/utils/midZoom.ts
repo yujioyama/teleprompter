@@ -15,6 +15,13 @@ export const PEAK_ZOOM = 1.12
 /** The punchline's zoom, from its cut to the end. */
 export const PUNCHLINE_ZOOM = 1.18
 
+/**
+ * A frame is read at its midpoint, and a 30fps encode puts a shot's last
+ * frame on the grid below its end, so that midpoint can land up to half a
+ * frame past the cut: it still belongs to the shot.
+ */
+const HALF_FRAME = 1 / 60
+
 /** Seconds, on the video's timeline (or a shot's own, after midZoomForShot). */
 export interface MidZoomSegment {
   start: number
@@ -25,7 +32,9 @@ export interface MidZoomSegment {
 /**
  * The segments of a joined video whose shots last `durations`, read from
  * its English subtitles (`cues`, joined timeline): the middle shots whose
- * text has an emoji drift in, and the last shot punches in.
+ * text has an emoji drift in, and the last shot punches in. The shot just
+ * before the punchline never drifts: from 1.12x the punch would only be a
+ * small step, the "wrong distance" look this is meant to avoid.
  */
 export function planMidZoom(
   cues: { start: number; en: string }[],
@@ -39,7 +48,7 @@ export function planMidZoom(
   durations.forEach((duration, i) => {
     const end = start + duration
     if (i === durations.length - 1) plan.push({ start, end, kind: 'punch' })
-    else if (i > 0 && findSticker(texts[i])) plan.push({ start, end, kind: 'drift' })
+    else if (i > 0 && i < durations.length - 2 && findSticker(texts[i])) plan.push({ start, end, kind: 'drift' })
     start = end
   })
   return plan
@@ -54,7 +63,8 @@ export function midZoomForShot(plan: MidZoomSegment[], shotStart: number, shotDu
 
 /** How far the picture is zoomed at `t`: 1x outside every segment. */
 export function midZoomScale(t: number, segments: MidZoomSegment[]): number {
-  const segment = segments.find(s => t >= s.start && t < s.end)
+  const segment =
+    segments.find(s => t >= s.start && t < s.end) ?? segments.find(s => t >= s.end && t < s.end + HALF_FRAME)
   if (!segment) return 1
   if (segment.kind === 'punch') return PUNCHLINE_ZOOM
   const progress = Math.min(1, Math.max(0, (t - segment.start) / (segment.end - segment.start)))

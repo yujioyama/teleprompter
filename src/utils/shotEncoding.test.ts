@@ -407,9 +407,9 @@ describe('mid-video zoom', () => {
 
   it('re-keys only the shot whose peak emoji changes', () => {
     const before = shotBurnRequests(CLIPS, CUES, 50, ZOOM_HOOK).map(r => r.key)
-    const edited = CUES.map(c => (c.id === 'c' ? { ...c, en: 'C ✨' } : c))
+    const edited = CUES.map(c => (c.id === 'b' ? { ...c, en: 'B' } : c))
     const after = shotBurnRequests(CLIPS, edited, 50, ZOOM_HOOK).map(r => r.key)
-    expect(after.map((k, i) => k === before[i])).toEqual([true, true, false, true])
+    expect(after.map((k, i) => k === before[i])).toEqual([true, false, true, true])
   })
 
   it('does nothing with the setting off', () => {
