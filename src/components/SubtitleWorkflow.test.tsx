@@ -500,7 +500,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true, midZoom: true }, firstShotDuration: 2 }),
     )
   })
 
