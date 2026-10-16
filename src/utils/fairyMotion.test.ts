@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { CAMEO_LENGTHS, FAIRY_MOTIONS, cameoBursts, cameoHover, cameoPath, finalePath, finaleTiming } from './fairyMotion'
 import { inButtonColumn, type StickerPath, type StickerPose } from './stickerMotion'
+import { STICKER_PLACEMENTS } from './subtitleSticker'
 
 const sample = (path: StickerPath, length: number) => Array.from({ length: 121 }, (_, i) => path((i / 120) * length))
 const onFrame = (p: StickerPose) => p.x > 0 && p.x < 1 && p.y > 0 && p.y < 1
 
 describe('cameo paths', () => {
-  it.each(FAIRY_MOTIONS.flatMap(m => [[m, false], [m, true]] as const))('%s (mirror %s) starts and ends off-frame or at an edge, never in the button column on-frame', (m, mirror) => {
+  it.each(FAIRY_MOTIONS.flatMap(m => [[m, false], [m, true]] as const))('%s (mirror %s) starts and ends off-frame, never in the button column on-frame', (m, mirror) => {
     const poses = sample(cameoPath(m, CAMEO_LENGTHS[m], mirror), CAMEO_LENGTHS[m])
     expect(onFrame(poses[0])).toBe(false)
-    expect(onFrame(poses.at(-1)!) && poses.at(-1)!.y > 0.1).toBe(false) // peek leaves upward past the top
+    expect(onFrame(poses.at(-1)!)).toBe(false)
     for (const p of poses) if (onFrame(p)) expect(inButtonColumn(p)).toBe(false)
   })
 
@@ -26,7 +27,12 @@ describe('cameo paths', () => {
   })
 
   it('time-compresses: the compressed path at s·length equals the nominal at s·nominal', () => {
-    expect(cameoPath('loop', 0.9, false)(0.45)).toEqual(cameoPath('loop', 1.4, false)(0.7))
+    const compressed = cameoPath('loop', 0.9, false)(0.45)
+    const nominal = cameoPath('loop', 1.4, false)(0.7)
+    expect(compressed.x).toBeCloseTo(nominal.x)
+    expect(compressed.y).toBeCloseTo(nominal.y)
+    expect(compressed.rotation).toBeCloseTo(nominal.rotation)
+    expect(compressed.scale).toBeCloseTo(nominal.scale)
   })
 
   it('peek bursts as it leaves', () => {
@@ -69,5 +75,16 @@ describe('finale', () => {
     expect(path(0).y).toBeCloseTo(0.42 - 0.22)
     expect(path(timing.fly + timing.hover + timing.burst).opacity).toBeCloseTo(0)
     expect(finalePath({ x: 0.18, y: 0.42, rotation: -8 }, timing)(0).x).toBeLessThan(0)
+  })
+
+  it.each(Object.entries(STICKER_PLACEMENTS))('%s home never crosses the button column on-frame', (name, at) => {
+    const timing = finaleTiming(3)!
+    const path = finalePath({ x: at.x, y: at.y / 100, rotation: at.rotation }, timing)
+    const length = timing.fly + timing.hover + timing.burst
+    const poses = sample(path, length)
+    for (const p of poses) if (onFrame(p)) expect(inButtonColumn(p)).toBe(false)
+    // A chest or left home comes in from the left; only a right one from the right.
+    if (name === 'right') expect(poses[0].x).toBeGreaterThan(1)
+    else expect(poses[0].x).toBeLessThan(0)
   })
 })

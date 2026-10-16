@@ -33,9 +33,9 @@ const glide: StickerPath = t => {
 }
 
 /** Where the peek stops to look, and how long it flies in and zips out. */
-const PEEK = { x: 0.22, y: 0.52, fly: 0.45, hoverEnd: 1.15, end: 1.6 }
+const PEEK = { x: 0.22, y: 0.52, fly: 0.45, hoverEnd: 1.15, end: CAMEO_LENGTHS.peek }
 
-// ひょっこり顔を出す: flies in, hovers with a bob, zips up and out past the top.
+// ひょっこり顔を出す: flies in, hovers with a bob, zips up and out, off the top.
 const peek: StickerPath = t => {
   if (t < PEEK.fly) {
     const e = easeOut(phase(t, 0, PEEK.fly))
@@ -47,11 +47,11 @@ const peek: StickerPath = t => {
     return { x: PEEK.x, y: PEEK.y + 0.02 * bob, rotation: 8 * bob, scale: 1 + 0.06 * bob }
   }
   const e = easeIn(phase(t, PEEK.hoverEnd, PEEK.end))
-  return { x: lerp(PEEK.x, 0.1, e), y: lerp(PEEK.y, 0.02, e), rotation: lerp(0, -15, e), scale: lerp(1, 0.7, e) }
+  return { x: lerp(PEEK.x, 0.1, e), y: lerp(PEEK.y, -0.1, e), rotation: lerp(0, -15, e), scale: lerp(1, 0.7, e) }
 }
 
 /** The loop: where it arrives, the ellipse it circles, and when each phase ends. */
-const LOOP = { x: 0.22, y: 0.6, cx: 0.22, cy: 0.52, rx: 0.09, ry: 0.08, enter: 0.4, around: 1.0, end: 1.4 }
+const LOOP = { x: 0.22, y: 0.6, cx: 0.22, cy: 0.52, rx: 0.09, ry: 0.08, enter: 0.4, around: 1.0, end: CAMEO_LENGTHS.loop }
 
 // くるりんと一回転: arrives at the bottom of a small ellipse, goes round it once while spinning, leaves up to the right.
 const loop: StickerPath = t => {
@@ -123,11 +123,12 @@ export function finaleTiming(duration: number): FinaleTiming | null {
 
 /**
  * The finale fairy over `fly + hover + burst` seconds of its own time:
- * flies in from the side edge nearer `home`, hovers there and bursts
+ * flies in from the side edge nearer `home` (the left for a centered one), hovers there and bursts
  * (bigger, fading out).
  */
 export function finalePath(home: Home, timing: FinaleTiming): StickerPath {
-  const fromX = home.x < 0.5 ? -0.1 : 1.1 // a centered home enters from the right
+  // A centered home enters from the left: from the right, a low home like the chest would cross the button column.
+  const fromX = home.x <= 0.5 ? -0.1 : 1.1
   const burstStart = timing.fly + timing.hover
   return (t): StickerPose => {
     if (t < timing.fly) {
