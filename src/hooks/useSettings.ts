@@ -46,6 +46,8 @@ export interface AppSettings {
   stickerRoute: number
   /** Mid-video cameos and the finale (妖精). */
   fairyEnabled: boolean
+  /** Peaks drift in and the punchline punches in (中盤のズーム). */
+  midZoomEnabled: boolean
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Seconds of silence auto-trim keeps after the last shot's speech. */
@@ -75,6 +77,7 @@ const DEFAULTS: AppSettings = {
   stickerMotion: 'random',
   stickerRoute: 0,
   fairyEnabled: true,
+  midZoomEnabled: true,
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   inboxKey: '',

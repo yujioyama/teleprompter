@@ -5,6 +5,7 @@ import type { SubtitlePosition } from './subtitlePosition'
 import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleSticker'
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
+import type { MidZoomSegment } from './midZoom'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -49,6 +50,8 @@ export interface HookOptions {
   stickerRoute?: number
   /** Mid-video cameos and the finale (default: on). */
   fairies?: boolean
+  /** Peaks drift in and the punchline punches in (中盤のズーム, default: on). */
+  midZoom?: boolean
 }
 
 export type HookSettings = Pick<
@@ -64,6 +67,7 @@ export type HookSettings = Pick<
   | 'stickerMotion'
   | 'stickerRoute'
   | 'fairyEnabled'
+  | 'midZoomEnabled'
 >
 
 export function hookOptionsOf(settings: HookSettings): HookOptions {
@@ -82,6 +86,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     stickerMotion: settings.stickerMotion ?? DEFAULT_STICKER_MOTION,
     stickerRoute: settings.stickerRoute ?? 0,
     fairies: settings.fairyEnabled ?? true,
+    midZoom: settings.midZoomEnabled ?? true,
   }
 }
 
@@ -171,10 +176,22 @@ const FAIRY_FOLLOW_MARGIN = 0.1
  * the playhead is in (or just past) it, and around each fairy. Elsewhere
  * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
  */
-export function followsFrames(t: number, hook: HookOptions, firstShotDuration: number | null, fairies: FairyAppearance[] = []): boolean {
+export function followsFrames(
+  t: number,
+  hook: HookOptions,
+  firstShotDuration: number | null,
+  fairies: FairyAppearance[] = [],
+  midZoom: MidZoomSegment[] = [],
+): boolean {
   const stickerAnimates = hook.sticker !== 'off'
   const inFirstShot = (hook.punchIn !== null || stickerAnimates) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
-  return inFirstShot || fairies.some(f => f.start - FAIRY_FOLLOW_MARGIN <= t && t <= f.end + FAIRY_FOLLOW_MARGIN)
+  // A drift moves all through its shot; a punch only changes at its cut.
+  const zooming = midZoom.some(s =>
+    s.kind === 'drift'
+      ? s.start - FRAME_FOLLOW_TAIL <= t && t <= s.end + FRAME_FOLLOW_TAIL
+      : Math.abs(t - s.start) <= FRAME_FOLLOW_TAIL,
+  )
+  return inFirstShot || zooming || fairies.some(f => f.start - FAIRY_FOLLOW_MARGIN <= t && t <= f.end + FAIRY_FOLLOW_MARGIN)
 }
 
 /** The punch-in a video gets and until when (the first shot's end). */

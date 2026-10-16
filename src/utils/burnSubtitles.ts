@@ -30,6 +30,7 @@ import {
 } from './subtitleSticker'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
+import type { MidZoomSegment } from './midZoom'
 import {
   EN_STYLE,
   JA_STYLE,
@@ -111,6 +112,8 @@ export interface SubtitleLook {
   firstShotDuration: number | null
   /** The fairies to burn in, in this video's own timeline; default none. */
   fairies?: FairyAppearance[]
+  /** The peaks' and the punchline's zoom, in this video's own timeline; default none. */
+  midZoom?: MidZoomSegment[]
 }
 
 /** Where a cue is centered: hook cues have a position of their own. */
@@ -395,7 +398,8 @@ export async function burnSubtitles(
   // those starting within its length, as in the per-shot path.
   const translated = styleCues(cues, look.firstShotDuration, look.hook.style).filter(c => c.ja !== null)
   const fairies = look.fairies ?? []
-  if (translated.length === 0 && !hasFirstShotExtras(look.hook, look.firstShotDuration) && fairies.length === 0) {
+  const midZoom = look.midZoom ?? []
+  if (translated.length === 0 && !hasFirstShotExtras(look.hook, look.firstShotDuration) && fairies.length === 0 && midZoom.length === 0) {
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }
@@ -404,7 +408,7 @@ export async function burnSubtitles(
   if (await canUseWebCodecs()) {
     const overlays = await renderSubtitleOverlays(translated, look)
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan })
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan, midZoom })
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -412,7 +416,8 @@ export async function burnSubtitles(
       onProgress?.(0)
     }
   }
-  // ffmpeg can't move the sticker: it stays put at its spot.
+  // ffmpeg can't move the sticker: it stays put at its spot. Nor does it
+  // get the mid-video zoom, as it gets no fairies.
   const overlays = await renderSubtitleOverlays(translated, look, { still: true })
   return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal)
 }
@@ -438,6 +443,7 @@ export async function burnShotSubtitles(
   const overlays = await renderSubtitleOverlays(cues, look)
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
     punchIn: punchInPlan(look.hook, look.firstShotDuration),
+    midZoom: look.midZoom ?? [],
   })
 }
 

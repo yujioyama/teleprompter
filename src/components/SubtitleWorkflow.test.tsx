@@ -34,6 +34,7 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   stickerMotion: 'random',
   stickerRoute: 0,
   fairyEnabled: true,
+  midZoomEnabled: true,
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -499,7 +500,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true, midZoom: true }, firstShotDuration: 2 }),
     )
   })
 
@@ -561,6 +562,47 @@ describe('SubtitleWorkflow punch-in', () => {
 
     fireEvent.play(video)
     fireEvent.ended(video)
+    expect(video.style.transform).toBe('')
+  })
+
+  it('drifts in on a peak and punches in on the punchline while playing, unless 中盤のズーム is off', async () => {
+    seedBurnMock()
+    const onChange = vi.fn()
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={[
+          { text: 'Hello', duration: 2 },
+          { text: 'Peak ✨', duration: 2 },
+          { text: 'Build-up', duration: 2 },
+          { text: 'End', duration: 2 },
+        ]}
+        onBurned={vi.fn()}
+        onHookSettingsChange={onChange}
+        initialHookSettings={{ punchInEnabled: false }}
+      />,
+    )
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは\n2. 山場\n3. 前振り\n4. オチ' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    const video = document.querySelector('video') as HTMLVideoElement
+    fireEvent.play(video)
+
+    // Halfway through the peak (2-4s): 1 + 0.12 * 0.5.
+    setTime(video, 3)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('scale(1.06)')
+    setTime(video, 5)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('')
+    setTime(video, 7)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('scale(1.18)')
+
+    fireEvent.click(screen.getByLabelText('中盤のズーム'))
+    expect(onChange).toHaveBeenCalledWith({ midZoomEnabled: false })
     expect(video.style.transform).toBe('')
   })
 

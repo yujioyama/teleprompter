@@ -357,7 +357,7 @@ describe('burnSubtitles punch-in', () => {
     stubCanvas()
     const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: PUNCH_IN }, firstShotDuration: 2 }
     await burnSubtitles(new Blob(['x']), [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }], look)
-    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][4]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 } })
+    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][4]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 }, midZoom: [] })
   })
 })
 
@@ -367,6 +367,6 @@ describe('burnShotSubtitles', () => {
     const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
     const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: PUNCH_IN }, firstShotDuration: 2 }
     await burnShotSubtitles(new Blob(['shot']), 0, 2, [hookCue], look)
-    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][6]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 } })
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls[0][6]).toEqual({ punchIn: { punchIn: PUNCH_IN, until: 2 }, midZoom: [] })
   })
 })
