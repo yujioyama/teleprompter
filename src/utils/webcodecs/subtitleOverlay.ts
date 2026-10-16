@@ -1,5 +1,6 @@
 import type { VideoSample } from 'mediabunny'
 import { punchInScale, type PunchInPlan } from '../subtitleHook'
+import { midZoomScale, type MidZoomSegment } from '../midZoom'
 import { STICKER_SHADOW } from '../subtitleSticker'
 import type { StickerPath } from '../stickerMotion'
 import { drawSparkles, type Sparkle } from '../sparkles'
@@ -44,6 +45,8 @@ function drawTurned(ctx: Ctx, bitmap: ImageBitmap, x: number, y: number, rotatio
 export interface OverlayOptions {
   /** The first shot's zoom in and when it ends; null = never zoom. */
   punchIn?: PunchInPlan | null
+  /** The peaks' and the punchline's zoom, in this video's own timeline. */
+  midZoom?: MidZoomSegment[]
 }
 
 export interface OverlayProcess {
@@ -65,7 +68,7 @@ export interface OverlayProcess {
  */
 export async function createOverlayProcess(
   overlays: SubtitleOverlay[],
-  { punchIn = null }: OverlayOptions = {},
+  { punchIn = null, midZoom = [] }: OverlayOptions = {},
 ): Promise<OverlayProcess> {
   const bitmaps = await Promise.all(overlays.map(o => createImageBitmap(o.image)))
   const shadows = await Promise.all(overlays.map(o => (o.sprite ? createImageBitmap(o.sprite.shadow) : null)))
@@ -79,7 +82,7 @@ export async function createOverlayProcess(
       // frame edge doesn't flicker on for a single extra frame.
       const t = sample.timestamp + sample.duration / 2
       const active = cues.filter(c => t >= c.start && t < c.end)
-      const scale = punchIn ? punchInScale(t, punchIn.punchIn, punchIn.until) : 1
+      const scale = punchIn && t < punchIn.until ? punchInScale(t, punchIn.punchIn, punchIn.until) : midZoomScale(t, midZoom)
       if (active.length === 0 && scale === 1) return sample
       const width = sample.displayWidth
       const height = sample.displayHeight

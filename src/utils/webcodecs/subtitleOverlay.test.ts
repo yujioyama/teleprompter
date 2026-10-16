@@ -89,6 +89,32 @@ describe('createOverlayProcess zoom in', () => {
     expect(process(sample)).toBe(sample)
   })
 
+  it('zooms a peak and the punchline by the mid-video zoom, and leaves the other shots alone', async () => {
+    const midZoom = [
+      { start: 4, end: 6, kind: 'drift' as const },
+      { start: 8, end: 10, kind: 'punch' as const },
+    ]
+    const { process } = await createOverlayProcess([], { punchIn: PLAN, midZoom })
+
+    const peak = frameAt(5)
+    expect(process(peak.sample)).toBeInstanceOf(FakeCanvas)
+    expect(peak.draw.mock.calls[0][3]).toBeCloseTo(1080 * 1.06)
+
+    const punch = frameAt(9)
+    process(punch.sample)
+    expect(punch.draw.mock.calls[0][3]).toBeCloseTo(1080 * 1.18)
+
+    const plain = frameAt(7)
+    expect(process(plain.sample)).toBe(plain.sample)
+  })
+
+  it('keeps the first shot on its own zoom', async () => {
+    const { process } = await createOverlayProcess([], { punchIn: PLAN, midZoom: [{ start: 0, end: 2, kind: 'punch' }] })
+    const { sample, draw } = frameAt(1.2)
+    process(sample)
+    expect(draw.mock.calls[0][3]).toBeCloseTo(1080 * 1.125)
+  })
+
   it('composites the subtitles after the zoom, untouched', async () => {
     const overlay = { start: 0, end: 2, image: new Blob(['png']), y: 300 }
     const { process } = await createOverlayProcess([overlay], { punchIn: PLAN })

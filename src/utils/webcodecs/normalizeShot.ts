@@ -43,7 +43,8 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  *
  * `signal` cancels the conversion (中断する, issue #34).
  *
- * `options.punchIn` zooms the first shot's picture in during the same encode.
+ * `options.punchIn` zooms the first shot's picture in during the same encode,
+ * and `options.midZoom` a peak's or the punchline's.
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
@@ -57,8 +58,9 @@ export async function normalizeShotWebCodecs(
   throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
   const punchIn = options.punchIn ?? null
-  const overlay = overlays.length > 0 || punchIn !== null
-    ? await createOverlayProcess(overlays, { punchIn })
+  const midZoom = options.midZoom ?? []
+  const overlay = overlays.length > 0 || punchIn !== null || midZoom.length > 0
+    ? await createOverlayProcess(overlays, { punchIn, midZoom })
     : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
