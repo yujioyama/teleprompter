@@ -48,6 +48,8 @@ export interface AppSettings {
   fairyEnabled: boolean
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
+  /** Seconds of silence auto-trim keeps after the last shot's speech. */
+  lastShotPaddingEnd: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
 }
@@ -55,8 +57,8 @@ export interface AppSettings {
 const STORAGE_KEY = 'teleprompter_settings'
 const DEFAULTS: AppSettings = {
   trimEnabled: true,
-  trimPaddingStart: 0.3,
-  trimPaddingEnd: 0.4,
+  trimPaddingStart: 0.1,
+  trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
@@ -74,6 +76,7 @@ const DEFAULTS: AppSettings = {
   stickerRoute: 0,
   fairyEnabled: true,
   firstShotPaddingStart: 0.05,
+  lastShotPaddingEnd: 0.1,
   inboxKey: '',
 }
 
@@ -94,6 +97,12 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // on the old one follows it.
   for (const key of ['hookPosition', 'subtitlePosition'] as const) {
     if (next[key] === LEGACY_SUBTITLE_POSITION_TOP) next[key] = SUBTITLE_POSITION_TOP
+  }
+  // The cuts got tighter (2026-10-16); ones left at the old defaults follow.
+  // Saved since, a settings object has lastShotPaddingEnd.
+  if (!('lastShotPaddingEnd' in next)) {
+    if (next.trimPaddingStart === 0.3) next.trimPaddingStart = DEFAULTS.trimPaddingStart
+    if (next.trimPaddingEnd === 0.4) next.trimPaddingEnd = DEFAULTS.trimPaddingEnd
   }
   return next as Partial<AppSettings>
 }

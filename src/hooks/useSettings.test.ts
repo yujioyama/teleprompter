@@ -5,8 +5,8 @@ import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER, SUBTITLE_POSITION_T
 
 const DEFAULTS = {
   trimEnabled: true,
-  trimPaddingStart: 0.3,
-  trimPaddingEnd: 0.4,
+  trimPaddingStart: 0.1,
+  trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
@@ -24,6 +24,7 @@ const DEFAULTS = {
   stickerRoute: 0,
   fairyEnabled: true,
   firstShotPaddingStart: 0.05,
+  lastShotPaddingEnd: 0.1,
   inboxKey: '',
 }
 
@@ -43,8 +44,8 @@ describe('useSettings', () => {
       result.current[1]({ trimEnabled: false })
     })
     expect(result.current[0].trimEnabled).toBe(false)
-    expect(result.current[0].trimPaddingStart).toBe(0.3) // unchanged
-    expect(result.current[0].trimPaddingEnd).toBe(0.4) // unchanged
+    expect(result.current[0].trimPaddingStart).toBe(0.1) // unchanged
+    expect(result.current[0].trimPaddingEnd).toBe(0.2) // unchanged
   })
 
   it('updates trimPaddingStart', () => {
@@ -88,8 +89,8 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     // trimEnabled is preserved from old data; new fields fall back to DEFAULTS
     expect(result.current[0].trimEnabled).toBe(false)
-    expect(result.current[0].trimPaddingStart).toBe(0.3)
-    expect(result.current[0].trimPaddingEnd).toBe(0.4)
+    expect(result.current[0].trimPaddingStart).toBe(0.1)
+    expect(result.current[0].trimPaddingEnd).toBe(0.2)
   })
 
   it('normalizeAudio defaults to true', () => {
@@ -166,6 +167,18 @@ describe('useSettings', () => {
     expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(40)
     localStorage.setItem('teleprompter_settings', JSON.stringify({ hookPosition: SUBTITLE_POSITION_CENTER, punchInZoom: 1.25 }))
     expect(renderHook(() => useSettings()).result.current[0].hookPosition).toBe(SUBTITLE_POSITION_CENTER)
+  })
+
+  it('moves cuts left at the old defaults to the tighter ones, once', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimPaddingStart: 0.3, trimPaddingEnd: 0.4 }))
+    expect(renderHook(() => useSettings()).result.current[0]).toMatchObject({ trimPaddingStart: 0.1, trimPaddingEnd: 0.2 })
+  })
+
+  it('keeps cuts the user changed, and the old values once saved in the new shape', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimPaddingStart: 0.5, trimPaddingEnd: 0.4 }))
+    expect(renderHook(() => useSettings()).result.current[0]).toMatchObject({ trimPaddingStart: 0.5, trimPaddingEnd: 0.2 })
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ trimPaddingStart: 0.3, trimPaddingEnd: 0.4, lastShotPaddingEnd: 0.1 }))
+    expect(renderHook(() => useSettings()).result.current[0]).toMatchObject({ trimPaddingStart: 0.3, trimPaddingEnd: 0.4 })
   })
 
   it('drops the removed hook headline setting from stored settings', () => {

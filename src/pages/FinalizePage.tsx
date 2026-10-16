@@ -24,8 +24,8 @@ import {
 } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
-import { detectSpeech, speechBoundsFor, type SpeechBounds } from '../utils/detectSpeechBounds'
-import { clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
+import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
+import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { finishAudio } from '../utils/normalizeLoudness'
 import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
@@ -42,6 +42,9 @@ import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../comp
 import { ShotCueInput } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
+import type { TrimRecord } from '../../shared/videoRecord'
+import { buildVideoRecord, type BurnInputs, type MixInputs } from '../utils/videoRecord'
+import { postVideoRecord } from '../utils/records'
 import styles from './FinalizePage.module.css'
 
 interface ShotEntry {
@@ -52,6 +55,8 @@ interface ShotEntry {
   duration: number
   trimStart: number
   trimEnd: number
+  // Where the speech is; undefined until detected, null when there's none.
+  speech: SpeechRegion | null | undefined
   // The cut found around the speech (issue #21); null when there's none.
   autoTrim: SpeechBounds | null
   autoTrimPending: boolean
@@ -136,7 +141,7 @@ function findLastIndexBefore(entries: ShotEntry[], index: number): number {
 export default function FinalizePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const { getScript } = useScripts()
+  const { getScript, updateScript } = useScripts()
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
@@ -147,6 +152,9 @@ export default function FinalizePage() {
   // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
   const initialSubtitleState = (): SubtitleState => ({ ...INITIAL_SUBTITLE_STATE, position: settings.subtitlePosition })
   const script = id ? getScript(id) : undefined
+  // The script as of now, for work that finishes after a 間を残す switch.
+  const scriptRef = useRef(script)
+  scriptRef.current = script
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null)
@@ -162,8 +170,16 @@ export default function FinalizePage() {
   // The shots exactly as they went into `combinedBlob`, for burning
   // subtitles shot by shot (trims may change afterwards without re-combining).
   const [combinedClips, setCombinedClips] = useState<ShotClip[]>([])
+  // The cuts `combinedBlob` was made with; null for a 結合 saved before they were kept.
+  const [combinedTrim, setCombinedTrim] = useState<TrimRecord | null>(null)
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixed, setMixed] = useState<MixedVideo | null>(null)
+  // What `burnedBlob` and `mixed` were made from, for the video record; only
+  // read while those are set. The refs hold the run in flight.
+  const [burnInputs, setBurnInputs] = useState<BurnInputs | null>(null)
+  const [mixInputs, setMixInputs] = useState<MixInputs | null>(null)
+  const burnInputsRef = useRef<BurnInputs | null>(null)
+  const mixInputsRef = useRef<MixInputs | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
@@ -235,10 +251,15 @@ export default function FinalizePage() {
       if (cancelled) return
       takesRef.current = takes
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
-      // The first shot with a take opens the video, and gets its own lead-in.
+      // The first and last shots with a take open and close the video, and
+      // get their own lead-in and ending.
       const firstShotId = script.shots.find(shot => byShotId.has(shot.id))?.id
+      const lastShotId = script.shots.filter(shot => byShotId.has(shot.id)).at(-1)?.id
       const trimSettings = new Map(
-        script.shots.map(shot => [shot.id, resolveShotTrimSettings(shot, settings, shot.id === firstShotId)]),
+        script.shots.map(shot => [
+          shot.id,
+          resolveShotTrimSettings(shot, settings, shot.id === firstShotId, shot.id === lastShotId),
+        ]),
       )
       const next = script.shots.map(shot => {
         const blob = byShotId.get(shot.id) ?? null
@@ -254,7 +275,8 @@ export default function FinalizePage() {
         const entry: ShotEntry = {
           shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0,
           trimStart: handSet?.start ?? 0, trimEnd: handSet?.end ?? 0,
-          autoTrim: speech ? speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd) : null,
+          speech,
+          autoTrim: speech ? autoTrimOf(speech, trim) : null,
           autoTrimPending: blob !== null && speech === undefined,
           trimEdited: handSet !== undefined,
         }
@@ -267,7 +289,7 @@ export default function FinalizePage() {
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
-        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips))
+        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips), combined.trim ?? null)
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
@@ -323,8 +345,10 @@ export default function FinalizePage() {
             },
           )
           if (cancelled) return
-          const trim = trimSettings.get(entry.shotId)!
-          setAutoTrim(entry.shotId, speech && speechBoundsFor(speech, trim.trimPaddingStart, trim.trimPaddingEnd))
+          // 間を残す may have been switched while this shot was being checked.
+          const shot = scriptRef.current?.shots.find(s => s.id === entry.shotId)
+          const trim = resolveShotTrimSettings(shot, settings, entry.shotId === firstShotId, entry.shotId === lastShotId)
+          setAutoTrim(entry.shotId, speech, speech && autoTrimOf(speech, trim))
         }
       })()
     }).catch(err => {
@@ -365,25 +389,43 @@ export default function FinalizePage() {
     )
   }
 
-  function setAutoTrim(shotId: string, autoTrim: SpeechBounds | null) {
+  function setAutoTrim(shotId: string, speech: SpeechRegion | null, autoTrim: SpeechBounds | null) {
     setEntries(prev =>
       prev.map(e => {
         if (e.shotId !== shotId) return e
-        const next = { ...e, autoTrim, autoTrimPending: false }
+        const next = { ...e, speech, autoTrim, autoTrimPending: false }
         return next.duration > 0 && !next.trimEdited ? { ...next, ...autoTrimRange(next) } : next
       }),
     )
   }
 
-  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[]) {
+  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[], trim: TrimRecord | null) {
     if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
     const url = URL.createObjectURL(blob)
     combinedUrlRef.current = url
     setCombinedBlob(blob)
     setCombinedUrl(url)
     setCombinedClips(clips)
+    setCombinedTrim(trim)
     setShotCueInputs(cueInputs)
     setCombineState('done')
+  }
+
+  // 間を残す: the shot keeps a longer silence after its speech. A cut set by
+  // hand stays as it is (see setAutoTrim).
+  function setKeepPause(entry: ShotEntry, keepPause: boolean) {
+    if (!script) return
+    const shots = script.shots.map(shot => (shot.id === entry.shotId ? { ...shot, keepPause } : shot))
+    updateScript(script.id, { shots })
+    if (!entry.speech) return
+    const withVideo = entries.filter(e => e.blob)
+    const trim = resolveShotTrimSettings(
+      shots.find(shot => shot.id === entry.shotId),
+      settings,
+      withVideo[0]?.shotId === entry.shotId,
+      withVideo.at(-1)?.shotId === entry.shotId,
+    )
+    if (trim.trimEnabled) setAutoTrim(entry.shotId, entry.speech, autoTrimOf(entry.speech, trim))
   }
 
   function updateEntry(shotId: string, changes: Partial<ShotEntry>) {
@@ -649,11 +691,18 @@ export default function FinalizePage() {
       // Same clips, same order, same trim values used just above to build
       // `normalized` — keeps subtitle timing aligned with the actual
       // combined output by construction, not by keeping two formulas in sync.
-      showCombined(combined, clips, cueInputsOf(availableEntries, clips))
+      const trim: TrimRecord = {
+        firstStart: settings.firstShotPaddingStart,
+        start: settings.trimPaddingStart,
+        end: settings.trimPaddingEnd,
+        lastEnd: settings.lastShotPaddingEnd,
+        pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
+      }
+      showCombined(combined, clips, cueInputsOf(availableEntries, clips), trim)
       if (script) {
         const saved = savedClipsOf(clips, takesRef.current)
         // Subtitles made on the previous 結合 no longer line up with this one.
-        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved }, subtitles: null }).catch(err =>
+        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved, trim }, subtitles: null }).catch(err =>
           console.warn('[FinalizePage] could not save the 結合:', err),
         )
       }
@@ -671,7 +720,32 @@ export default function FinalizePage() {
 
   async function handleSaveFinal() {
     if (!exportBlob || !script) return
+    // Tapping 保存する is "this is the version": record how it was made,
+    // without holding up or failing the save.
+    if (settings.inboxKey) {
+      try {
+        sendVideoRecord(settings.inboxKey)
+      } catch (err) {
+        console.warn('[FinalizePage] could not build the video record:', err)
+      }
+    }
     await shareOrDownload(exportBlob, `${script.title}-final`)
+  }
+
+  // Built from what the burn and the mix actually used (see buildVideoRecord).
+  function sendVideoRecord(key: string) {
+    if (!script) return
+    const record = buildVideoRecord({
+      script,
+      savedAt: new Date().toISOString(),
+      durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
+      shotCount: combinedClips.length,
+      burn: burnedBlob ? burnInputs : null,
+      mix: mixed ? mixInputs : null,
+      voicePreset,
+      trim: combinedTrim,
+    })
+    postVideoRecord(key, record).catch(err => console.warn('[FinalizePage] could not send the video record:', err))
   }
 
   // The caption Claude wrote with the script, ready to paste into TikTok.
@@ -774,6 +848,14 @@ export default function FinalizePage() {
                         : undefined
                     }
                   />
+                  <label className={styles.pauseToggle}>
+                    <input
+                      type="checkbox"
+                      checked={script.shots.find(shot => shot.id === selected.shotId)?.keepPause ?? false}
+                      onChange={e => setKeepPause(selected, e.target.checked)}
+                    />
+                    このショットの後に間を残す
+                  </label>
                 </div>
               ) : (
                 <p className={styles.missing}>保存された動画がありません</p>
@@ -830,8 +912,9 @@ export default function FinalizePage() {
                 hookSettings={hookSettings}
                 onHookSettingsChange={updateSettings}
                 inboxKey={settings.inboxKey}
-                burn={(cues, position, onProgress, signal) =>
-                  burnSubtitlesByShot(
+                burn={(cues, position, onProgress, signal) => {
+                  burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
+                  return burnSubtitlesByShot(
                     getEncodeCache(),
                     combinedClips,
                     combinedBlob,
@@ -841,9 +924,10 @@ export default function FinalizePage() {
                     onProgress,
                     signal,
                   )
-                }
+                }}
                 onBurned={burned => {
                   setBurnedBlob(burned)
+                  setBurnInputs(burnInputsRef.current)
                   setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
                 }}
@@ -869,21 +953,25 @@ export default function FinalizePage() {
                 initialTrackId={defaultTrack?.id ?? null}
                 initialVolume={bgmVolume}
                 autoMix={bgmAutoPending}
-                mix={(track, trackBlob, volume) =>
-                  mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
+                mix={(track, trackBlob, volume) => {
+                  mixInputsRef.current = { trackId: track.id, title: track.title, volume }
+                  return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
                     trackId: track.id,
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
                   })
-                }
+                }}
                 onLeaveAuto={() => {
                   // The auto mix may be waiting on a prepared-audio job that
                   // never settles; the manual mix must not wait on it too.
                   preparedAudio.clear()
                   setBgmAutoPending(false)
                 }}
-                onMixed={setMixed}
+                onMixed={mix => {
+                  setMixed(mix)
+                  setMixInputs(mix ? mixInputsRef.current : null)
+                }}
                 onNext={() => {
                   setBgmAutoPending(false)
                   markStepDone('bgm', 'export')

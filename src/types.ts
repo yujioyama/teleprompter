@@ -4,6 +4,8 @@ export interface Shot {
   trimEnabled?: boolean  // undefined = use global setting
   trimPaddingStart?: number  // undefined = use global setting
   trimPaddingEnd?: number    // undefined = use global setting
+  /** 間を残す: keep a longer silence after this shot's speech. */
+  keepPause?: boolean
 }
 
 export interface Script {

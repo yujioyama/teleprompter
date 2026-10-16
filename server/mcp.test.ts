@@ -1,12 +1,15 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { handleMcpRequest, SUBTITLES_TOOL_NAME, TOOL_NAME, type McpDeps } from './mcp.js'
+import { handleMcpRequest, RECORDS_TOOL_NAME, SUBTITLES_TOOL_NAME, TOOL_NAME, type McpDeps } from './mcp.js'
 import { createInboxStore, type InboxStore } from './inboxStore.js'
 import { createSubtitleStore, type SubtitleStore } from './subtitleStore.js'
+import { createRecordStore, type RecordStore } from './recordStore.js'
+import { sampleRecord } from './testing/videoRecords.js'
 import { createFakeRedis } from './testing/fakeRedis.js'
 
 let store: InboxStore
 let subtitles: SubtitleStore
+let records: RecordStore
 let deps: McpDeps
 
 beforeEach(() => {
@@ -14,7 +17,8 @@ beforeEach(() => {
   const { redis } = createFakeRedis()
   store = createInboxStore(redis, () => new Date('2026-10-09T00:00:00.000Z'), () => 'id-1')
   subtitles = createSubtitleStore(redis)
-  deps = { inbox: () => store, subtitles: () => subtitles }
+  records = createRecordStore(redis)
+  deps = { inbox: () => store, subtitles: () => subtitles, records: () => records }
 })
 
 afterEach(() => {
@@ -78,7 +82,7 @@ describe('handleMcpRequest', () => {
 
     const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
     const { result } = await res.json()
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual([TOOL_NAME, SUBTITLES_TOOL_NAME])
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual([TOOL_NAME, SUBTITLES_TOOL_NAME, RECORDS_TOOL_NAME])
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
@@ -205,5 +209,30 @@ describe('send_subtitles', () => {
     const { result } = await res.json()
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('字幕を保存できませんでした')
+  })
+
+  describe('list_video_records', () => {
+    async function textOf(res: Response) {
+      const body = await res.json()
+      return body.result.content[0].text as string
+    }
+
+    it('is listed', async () => {
+      const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), deps)
+      const { result } = await res.json()
+      expect(result.tools.map((t: { name: string }) => t.name)).toContain(RECORDS_TOOL_NAME)
+    })
+
+    it('returns the records saved since a date', async () => {
+      await records.put(sampleRecord({ scriptId: 'old', savedAt: '2026-09-01T00:00:00.000Z' }))
+      await records.put(sampleRecord())
+      const res = await handleMcpRequest(callTool({ since: '2026-10-01' }, undefined, RECORDS_TOOL_NAME), deps)
+      expect(JSON.parse(await textOf(res))).toEqual([sampleRecord()])
+    })
+
+    it('says so when there are none', async () => {
+      const res = await handleMcpRequest(callTool({}, undefined, RECORDS_TOOL_NAME), deps)
+      expect(await textOf(res)).toBe('記録はまだありません')
+    })
   })
 })

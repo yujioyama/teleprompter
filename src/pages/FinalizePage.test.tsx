@@ -20,7 +20,12 @@ import { loadFinalizeProgress } from '../utils/finalizeProgressStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
+import { buildVideoRecord } from '../utils/videoRecord'
 
+vi.mock('../utils/videoRecord', async importOriginal => {
+  const actual = await importOriginal<typeof import('../utils/videoRecord')>()
+  return { ...actual, buildVideoRecord: vi.fn(actual.buildVideoRecord) }
+})
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
 vi.mock('../utils/concatVideos', () => ({
@@ -66,6 +71,14 @@ vi.mock('../utils/webcodecs/concatClips', () => ({
   concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs, { type: 'video/mp4' })),
 }))
 
+const OLD_CUTS = {
+  defaultBgmId: null,
+  firstShotPaddingStart: 0.3,
+  trimPaddingStart: 0.3,
+  trimPaddingEnd: 0.4,
+  lastShotPaddingEnd: 0.4,
+}
+
 const LOUDNESS_NORMALIZED = new Blob(['loudness-normalized'], { type: 'video/mp4' })
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
@@ -96,8 +109,9 @@ beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   // The tests below predate the usual BGM; they walk the BGM step by hand.
-  // They also predate the first shot's own lead-in, so it is the usual 0.3s.
-  localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.3 }))
+  // They also predate the first shot's own lead-in and the tighter cuts
+  // (2026-10-16), so every shot has the old 0.3s before and 0.4s after.
+  localStorage.setItem('teleprompter_settings', JSON.stringify(OLD_CUTS))
   vi.clearAllMocks()
   // mixForExport reports which way it added the BGM.
   vi.spyOn(console, 'info').mockImplementation(() => {})
@@ -341,7 +355,7 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
   })
 
   it('opens the first shot with its own, shorter lead-in', async () => {
-    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: null, firstShotPaddingStart: 0.1 }))
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, firstShotPaddingStart: 0.1 }))
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
     renderFinalizePage('script-1')
@@ -349,6 +363,92 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     // 1.0s - 0.1s, rather than the usual 0.3s before.
     await screen.findByText('開始 0.9秒')
     expect(screen.getByText('終了 3.4秒')).toBeInTheDocument()
+  })
+})
+
+describe('FinalizePage trim step: tight cuts and 間を残す', () => {
+  const SHOT_2 = '22222222-2222-2222-2222-222222222222'
+
+  // Two analysed shots, speech 1.0s-3.0s in each, with the tighter cuts.
+  async function seedTwoAnalysedShots() {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1' },
+      { id: SHOT_2, text: 'ショット2' },
+    ]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    localStorage.setItem(
+      'teleprompter_settings',
+      JSON.stringify({ ...OLD_CUTS, trimPaddingEnd: 0.2, lastShotPaddingEnd: 0.1 }),
+    )
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    const takes = new Map((await listShotVideos('script-1')).map(v => [v.shotId, v.updatedAt]))
+    for (const shotId of [SHOT_1, SHOT_2]) {
+      await updateShotAnalysis('script-1', shotId, takes.get(shotId)!, { duration: 5, speech: SPEECH_1_TO_3 })
+    }
+  }
+
+  function storedShots() {
+    return JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0].shots as Script['shots']
+  }
+
+  it('keeps a longer pause after a shot marked 間を残す, and remembers the mark', async () => {
+    await seedTwoAnalysedShots()
+    renderFinalizePage('script-1')
+
+    // 3.0s + 0.2s.
+    await screen.findByText('終了 3.2秒')
+    fireEvent.click(screen.getByLabelText('このショットの後に間を残す'))
+
+    // 3.0s + 0.4s.
+    expect(await screen.findByText('終了 3.4秒')).toBeInTheDocument()
+    expect(storedShots()[0].keepPause).toBe(true)
+
+    fireEvent.click(screen.getByLabelText('このショットの後に間を残す'))
+    expect(await screen.findByText('終了 3.2秒')).toBeInTheDocument()
+    expect(storedShots()[0].keepPause).toBe(false)
+  })
+
+  it('ends the last shot right after its speech', async () => {
+    await seedTwoAnalysedShots()
+    renderFinalizePage('script-1')
+    await screen.findByText('終了 3.2秒')
+
+    fireEvent.click(screen.getByLabelText('次のショット'))
+    // 3.0s + 0.1s.
+    expect(await screen.findByText('終了 3.1秒')).toBeInTheDocument()
+  })
+
+  it('keeps a pause switched on while the shot is still being checked for speech', async () => {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1' },
+      { id: SHOT_2, text: 'ショット2' },
+    ]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, trimPaddingEnd: 0.2 }))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(probeVideoDuration).mockResolvedValue(5)
+    let finish!: (region: SpeechRegion) => void
+    vi.mocked(detectSpeech).mockReturnValueOnce(new Promise(r => (finish = r)))
+    renderFinalizePage('script-1')
+    await screen.findByText(/前後の無音を検出中/)
+
+    fireEvent.click(screen.getByLabelText('このショットの後に間を残す'))
+    finish(SPEECH_1_TO_3)
+
+    // 3.0s + 0.4s, not the 0.2s the page opened with.
+    expect(await screen.findByText('終了 3.4秒')).toBeInTheDocument()
+  })
+
+  it('keeps a cut set by hand when 間を残す is switched', async () => {
+    await seedTwoAnalysedShots()
+    renderFinalizePage('script-1')
+    await screen.findByText('終了 3.2秒')
+
+    dragEndHandleTo(80)
+    fireEvent.click(screen.getByLabelText('このショットの後に間を残す'))
+    expect(screen.getByText('終了 4.0秒')).toBeInTheDocument()
   })
 })
 
@@ -395,6 +495,21 @@ describe('FinalizePage trim step: picks up where it was left', () => {
     fireEvent.click(screen.getByText('次へ'))
     expect(await screen.findByDisplayValue('ショット1')).toBeInTheDocument()
     expect(trimAndNormalizeShot).not.toHaveBeenCalled()
+  })
+
+  it('keeps the cuts each 結合 was made with', async () => {
+    const script = seedScript()
+    script.shots = [{ id: SHOT_1, text: 'ショット1', keepPause: true }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await combineOnce()
+
+    expect((await loadFinalizeProgress('script-1')).combined?.trim).toEqual({
+      firstStart: 0.3,
+      start: 0.3,
+      end: 0.4,
+      lastEnd: 0.4,
+      pauseShots: 1,
+    })
   })
 
   it('drops the saved 結合 once a shot has been retaken', async () => {
@@ -931,6 +1046,61 @@ describe('FinalizePage export step: loudness normalization', () => {
     // No BGM mix applied the voice preset (ナチュラル by default), so this pass does.
     expect(finishAudio).toHaveBeenCalledWith(BURNED, { voice: 'natural', normalize: true })
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  function recordPosts() {
+    return vi.mocked(global.fetch).mock.calls.filter(([url]) => url === '/api/records')
+  }
+
+  it('sends a record of how the saved video was made', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+
+    await waitFor(() => expect(recordPosts()).toHaveLength(1))
+    const [, init] = recordPosts()[0]
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer key-1' })
+    const record = JSON.parse(init?.body as string)
+    expect(record).toMatchObject({
+      scriptId: 'script-1',
+      title: 'テスト動画',
+      hookLine: 'ショット1',
+      shotCount: 1,
+      effects: {
+        subtitles: { burned: true, japanese: true },
+        bgm: null,
+        voicePreset: 'natural',
+        trim: { firstStart: 0.3, start: 0.3, end: 0.4, lastEnd: 0.4, pauseShots: 0 },
+      },
+    })
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalled())
+  })
+
+  it('still saves when the record cannot be sent', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await walkToExport()
+    vi.mocked(global.fetch).mockRejectedValue(new Error('offline'))
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('still saves when the record cannot be built', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(buildVideoRecord).mockImplementationOnce(() => {
+      throw new Error('broken')
+    })
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('sends no record from a device without the inbox key', async () => {
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalled())
+    expect(recordPosts()).toHaveLength(0)
   })
 
   it('shows progress while normalizing, and no save button until it is done', async () => {

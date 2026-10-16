@@ -4,14 +4,17 @@ import { z } from 'zod'
 import { keyMatches } from './auth.js'
 import type { InboxStore } from './inboxStore.js'
 import type { SubtitleStore } from './subtitleStore.js'
+import type { RecordStore } from './recordStore.js'
 
 export const TOOL_NAME = 'send_to_teleprompter'
 export const SUBTITLES_TOOL_NAME = 'send_subtitles'
+export const RECORDS_TOOL_NAME = 'list_video_records'
 
 /** The stores the tools write to, created lazily so a bad key never touches Redis. */
 export interface McpDeps {
   inbox: () => InboxStore
   subtitles: () => SubtitleStore
+  records: () => RecordStore
 }
 
 const DESCRIPTION = [
@@ -28,6 +31,12 @@ const SUBTITLES_DESCRIPTION = [
   'プロンプトの【teleprompterへの送信】に書かれた request_id をそのまま使い、訳を番号なしで1行ずつ、順番どおりに lines に入れてください。',
 ].join('\n')
 
+const RECORDS_DESCRIPTION = [
+  'teleprompterアプリで「保存する」を押した完成動画の制作記録を返します（1台本につき最後の保存の1件、新しい順のJSON）。',
+  'TikTokなどの動画を、hookLine（字幕の1行目。*や絵文字なし）と savedAt（保存日時。投稿はその後）で突き合わせると、その動画の作り方が分かります。',
+  'effects: hookStyle/hookPosition（最初のショットのフック字幕）、zoom（最初のショットのズーム。direction=outは寄った画から始まる）、sticker（顔の横の絵文字ステッカー）、fairies（途中の妖精と最後のフィナーレ）、subtitles、bgm、voicePreset、trim（無音の余白の秒数: firstStart=最初のショットの前、start/end=各ショットの前後、lastEnd=最後のショットの後ろ、pauseShots=「間を残す」にしたショット数。nullは不明）。',
+].join('\n')
+
 // The app's request id ends in its English line count (e.g. "1x9kq2c-6").
 const REQUEST_ID = /^[0-9a-z]{1,13}-([1-9][0-9]{0,2})$/
 // "1. 訳" — the prompt's numbered output, which would end up on screen. The
@@ -42,7 +51,7 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-function buildServer({ inbox, subtitles }: McpDeps): McpServer {
+function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
   const server = new McpServer({ name: 'teleprompter', version: '1.0.0' })
   server.registerTool(
     TOOL_NAME,
@@ -98,6 +107,30 @@ function buildServer({ inbox, subtitles }: McpDeps): McpServer {
       } catch (err) {
         console.error('send_subtitles failed', err)
         return textResult(`字幕を保存できませんでした: ${errorText(err)}`, true)
+      }
+    },
+  )
+  server.registerTool(
+    RECORDS_TOOL_NAME,
+    {
+      title: 'teleprompterの制作記録を読む',
+      description: RECORDS_DESCRIPTION,
+      inputSchema: {
+        since: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}/)
+          .optional()
+          .describe('この日付（YYYY-MM-DD）以降に保存された記録だけを返す'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ since }) => {
+      try {
+        const found = await records().list(since)
+        return textResult(found.length === 0 ? '記録はまだありません' : JSON.stringify(found, null, 2))
+      } catch (err) {
+        console.error('list_video_records failed', err)
+        return textResult(`記録を読めませんでした: ${errorText(err)}`, true)
       }
     },
   )

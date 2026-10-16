@@ -48,6 +48,16 @@ describe('serializeBackup / parseBackup', () => {
     broken.scripts[0].caption = 42
     expect(parseBackup(JSON.stringify(broken))).toMatchObject({ ok: false })
   })
+
+  it('round-trips a shot marked 間を残す, and rejects a mark that is not a flag', () => {
+    const base = script('a', '2026-01-02T00:00:00.000Z')
+    const withPause = { ...base, shots: [{ ...base.shots[0], keepPause: true }] }
+    expect(parseBackup(serializeBackup([withPause]))).toEqual({ ok: true, scripts: [withPause] })
+
+    const broken = JSON.parse(serializeBackup([withPause]))
+    broken.scripts[0].shots[0].keepPause = 'x'
+    expect(parseBackup(JSON.stringify(broken))).toMatchObject({ ok: false })
+  })
 })
 
 describe('mergeScripts', () => {
