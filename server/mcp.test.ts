@@ -87,6 +87,28 @@ describe('handleMcpRequest', () => {
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
   })
 
+  it('asks for at most two middle-line emoji and none on the last line', async () => {
+    const init = await handleMcpRequest(
+      rpc({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+      }),
+      deps,
+    )
+    expect(init.status).toBe(200)
+
+    const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
+    const { result } = await res.json()
+    const description: string = result.tools[0].description
+    expect(description).toContain(
+      '途中の行（1行目と最終行以外）のうち、具体的なモノや話の山場が出てくる行に、合計で最大2行まで絵文字を1つずつ入れます',
+    )
+    expect(description).toContain('最終行には絵文字を入れません')
+    expect(description).not.toContain('2行目以降には絵文字を入れません')
+  })
+
   it('puts the script in the inbox, trimmed, with CRLF turned into LF', async () => {
     const res = await handleMcpRequest(
       callTool({ title: '  朝のルーティン ', script: '一行目\r\n二行目\r\n', caption: ' #朝活 ' }),
