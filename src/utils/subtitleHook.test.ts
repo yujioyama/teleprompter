@@ -76,7 +76,8 @@ describe('hookOptionsOf', () => {
 
   it('turns the fairies off, and keeps them on for settings saved before they existed', () => {
     expect(hookOptionsOf({ ...settings, fairyEnabled: false }).fairies).toBe(false)
-    const { fairyEnabled: _omitted, ...older } = settings
+    const older: Partial<typeof settings> = { ...settings }
+    delete older.fairyEnabled
     expect(hookOptionsOf(older as typeof settings).fairies).toBe(true)
   })
 
