@@ -40,4 +40,38 @@ describe('ffmpegClient', () => {
     expect(() => releaseFFmpeg()).not.toThrow()
     expect(instances).toHaveLength(0)
   })
+
+  it('drops a failed load so the next call tries again instead of failing forever', async () => {
+    const { getFFmpeg } = await import('./ffmpegClient')
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+    vi.mocked(FFmpeg).mockImplementationOnce(function (this: (typeof instances)[number]) {
+      this.load = vi.fn(async () => {
+        throw new Error('Aborted(CompileError)')
+      })
+      this.terminate = vi.fn()
+      instances.push(this)
+    } as never)
+
+    await expect(getFFmpeg()).rejects.toThrow('Aborted(CompileError)')
+    expect(instances[0].terminate).toHaveBeenCalledTimes(1)
+
+    await expect(getFFmpeg()).resolves.toBe(instances[1])
+  })
+
+  it('says why WebCodecs was given up when the fallback cannot load either', async () => {
+    const { getFFmpeg } = await import('./ffmpegClient')
+    const { disableWebCodecs } = await import('./webcodecs/support')
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+    vi.mocked(FFmpeg).mockImplementationOnce(function (this: (typeof instances)[number]) {
+      this.load = vi.fn(async () => {
+        throw new Error('Aborted(CompileError)')
+      })
+      this.terminate = vi.fn()
+      instances.push(this)
+    } as never)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    disableWebCodecs(new Error('EncodingError: encoder reclaimed'))
+
+    await expect(getFFmpeg()).rejects.toThrow(/Aborted\(CompileError\)[\s\S]*EncodingError: encoder reclaimed/)
+  })
 })

@@ -20,6 +20,7 @@ export const OUTPUT_CHANNELS = 2
 
 let support: Promise<boolean> | null = null
 let disabled = false
+let disabledReason: string | null = null
 
 /**
  * Whether the WebCodecs (Mediabunny) pipeline can be used for encoding the
@@ -42,7 +43,17 @@ export function canUseWebCodecs(): Promise<boolean> {
 export function disableWebCodecs(reason: unknown): void {
   if (disabled) return
   disabled = true
+  disabledReason = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason)
   console.warn('[webcodecs] disabled for this session, falling back to ffmpeg.wasm:', reason)
+}
+
+/**
+ * Why disableWebCodecs() turned the pipeline off, or null if it hasn't.
+ * The ffmpeg.wasm fallback's own error otherwise hides it — and it, not the
+ * fallback's, is the failure worth fixing.
+ */
+export function webCodecsDisabledReason(): string | null {
+  return disabledReason
 }
 
 async function detect(): Promise<boolean> {
