@@ -27,6 +27,16 @@ describe('emitSparkles', () => {
     expect(burst).toHaveLength(18)
     for (const s of burst) expect(Math.hypot(s.vx, s.vy / (1080 / 1920))).toBeGreaterThanOrEqual(0.18 - 1e-9)
   })
+  it("is born on the sprite's edge, flying away from it, so a burst clears the sprite", () => {
+    const burst = emitSparkles({ ...base, moving: () => false, bursts: [2] }).filter(s => s.born === 2)
+    expect(burst).toHaveLength(18)
+    for (const s of burst) {
+      const ox = s.x - 0.5
+      const oy = (s.y - 0.5) / (1080 / 1920)
+      expect(Math.hypot(ox, oy)).toBeCloseTo(0.1, 9)
+      expect(ox * s.vx + oy * (s.vy / (1080 / 1920))).toBeGreaterThan(0)
+    }
+  })
   it.each([[NaN, 3], [1, Infinity], [-Infinity, 3]])('emits nothing for a non-finite span (%s, %s) instead of looping forever', (start, end) => {
     expect(emitSparkles({ ...base, start, end })).toEqual([])
   })

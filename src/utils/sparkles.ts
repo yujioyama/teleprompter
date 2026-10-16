@@ -96,7 +96,10 @@ export function emitSparkles({ path, start, end, seed, spread, bursts, moving }:
     for (let i = 0; i < BURST_COUNT; i++) {
       const angle = rand() * Math.PI * 2
       const speed = between(BURST_SPEED.min, BURST_SPEED.max)
-      add(t, p.x, p.y, Math.cos(angle) * speed, Math.sin(angle) * speed * ASPECT)
+      const cos = Math.cos(angle)
+      const sin = Math.sin(angle)
+      // Born on the sprite's edge, not its center: sparkles draw under the sprite, so a burst from the middle never clears it.
+      add(t, p.x + cos * spread, p.y + sin * spread * ASPECT, cos * speed, sin * speed * ASPECT)
     }
   }
 
