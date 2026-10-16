@@ -322,8 +322,8 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
  * hook position for hook cues) but kept fully on screen. Cues without a
  * translation aren't burned in. An emoji in a hook cue isn't drawn in its
  * text: it becomes the sticker, from 0 s to the end of the first shot,
- * travelling around (with its sparkles) as the hook says unless `still`
- * (the ffmpeg path, which can only place it). No cue draws an emoji in its
+ * travelling around or sitting still, with its sparkles, as the hook says,
+ * unless `still` (the ffmpeg path, which can only place it). No cue draws an emoji in its
  * text. Unless `still`, each of the look's fairies is a scaled sprite with
  * its sparkles over its own window.
  */
@@ -342,9 +342,12 @@ export async function renderSubtitleOverlays(
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration)
   if (sticker && look.firstShotDuration !== null) {
     const window = { start: 0, end: look.firstShotDuration }
-    if (sticker.path && !still) {
+    if (!still) {
+      // One that stays put is a sprite too, so it can still twinkle.
+      const { home } = sticker
+      const path = sticker.path ?? (() => ({ x: home.x, y: home.y, rotation: home.rotation, scale: 1 }))
       const { image, shadow } = await renderStickerSprite(sticker.emoji)
-      overlays.push({ ...window, image, y: 0, sprite: { shadow, path: sticker.path, resolution: STICKER_MAX_SCALE, sparkles: sticker.sparkles } })
+      overlays.push({ ...window, image, y: 0, sprite: { shadow, path, resolution: STICKER_MAX_SCALE, sparkles: sticker.sparkles } })
     } else {
       const { image, height } = await renderStickerImage(sticker.emoji, sticker.home.x, sticker.home.rotation)
       overlays.push({ ...window, image, y: clampedSubtitleY(sticker.home.y * 100, height) })
