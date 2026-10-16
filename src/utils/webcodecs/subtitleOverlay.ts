@@ -2,6 +2,7 @@ import type { VideoSample } from 'mediabunny'
 import { punchInScale, type PunchInPlan } from '../subtitleHook'
 import { STICKER_SHADOW } from '../subtitleSticker'
 import type { StickerPath } from '../stickerMotion'
+import { drawSparkles, type Sparkle } from '../sparkles'
 import { drawZoomed } from './pictureEffects'
 
 export interface SubtitleOverlay {
@@ -13,12 +14,17 @@ export interface SubtitleOverlay {
   /**
    * The travelling sticker: `image` is its upright sprite, drawn centered
    * on path(t) with its pose's turn and size, over `shadow` kept below it.
+   * `scale` multiplies the pose's size (a fairy is a small cameo) and the
+   * pose's opacity fades the shadow and sprite; `sparkles` are drawn under both.
    */
   sprite?: {
     shadow: Blob
     path: StickerPath
     /** Sprite px per px at its normal size. */
     resolution: number
+    /** Size multiplier on the pose's, default 1. */
+    scale?: number
+    sparkles?: Sparkle[]
   }
 }
 
@@ -49,7 +55,8 @@ export interface OverlayProcess {
  * Build a Mediabunny `video.process` callback that composites each cue's
  * pre-rendered PNG at (centered, its y) during [start, end), in the frame's
  * own timeline, over the picture with the first shot's zoom in, and the
- * travelling sticker's sprite at each frame's pose. Only the
+ * travelling sticker's sprite at each frame's pose (under its sparkles, at
+ * its own scale and faded by the pose's opacity). Only the
  * picture is zoomed, the subtitles keep their size. Frames with no
  * active cue and no zoom are passed through untouched. Mediabunny calls this
  * after resizing to the output size. Call `dispose` once the conversion ends
@@ -86,12 +93,17 @@ export async function createOverlayProcess(
       for (const cue of active) {
         if (cue.sprite && cue.shadow) {
           const pose = cue.sprite.path(t)
-          const scale = pose.scale / cue.sprite.resolution
+          // Under the sprite, not faded with it, and still there while it is shrunk away.
+          if (cue.sprite.sparkles) drawSparkles(ctx!, cue.sprite.sparkles, t, width, height)
+          const size = pose.scale * (cue.sprite.scale ?? 1)
+          const scale = size / cue.sprite.resolution
           if (scale <= 0) continue
           const x = pose.x * width
           const y = pose.y * height
-          drawTurned(ctx!, cue.shadow, x, y + STICKER_SHADOW.offsetY * pose.scale, pose.rotation, scale)
+          ctx!.globalAlpha = pose.opacity ?? 1
+          drawTurned(ctx!, cue.shadow, x, y + STICKER_SHADOW.offsetY * size, pose.rotation, scale)
           drawTurned(ctx!, cue.bitmap, x, y, pose.rotation, scale)
+          ctx!.globalAlpha = 1
         } else {
           ctx!.drawImage(cue.bitmap, Math.round((width - cue.bitmap.width) / 2), cue.y)
         }

@@ -8,10 +8,31 @@ class FakeCanvas {
   width: number
   height: number
   ctx: Record<string, unknown>
+  /** Drawing calls in order, for checking what is drawn under what. */
+  calls: string[] = []
+  /** ctx.globalAlpha at each drawImage. */
+  alphasAtDraw: number[] = []
   constructor(width: number, height: number) {
     this.width = width
     this.height = height
-    this.ctx = { canvas: this, drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), translate: vi.fn(), rotate: vi.fn(), scale: vi.fn() }
+    const log = (name: string) => vi.fn(() => void this.calls.push(name))
+    this.ctx = {
+      canvas: this,
+      globalAlpha: 1,
+      drawImage: vi.fn(() => {
+        this.calls.push('drawImage')
+        this.alphasAtDraw.push(this.ctx.globalAlpha as number)
+      }),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      quadraticCurveTo: vi.fn(),
+      fill: log('fill'),
+    }
     canvases.push(this)
   }
   getContext() {
@@ -97,5 +118,30 @@ describe('createOverlayProcess travelling sticker', () => {
     const { process } = await createOverlayProcess([{ start: 0, end: 2, image: new Blob(['png']), y: 0, sprite }])
     process(frameAt(1).sample)
     expect(canvases[0].ctx.translate).not.toHaveBeenCalled()
+  })
+
+  it('draws a sprite\'s sparkles under it, at its scale, with its opacity', async () => {
+    const path = () => ({ x: 0.5, y: 0.5, rotation: 0, scale: 1, opacity: 0.5 })
+    const sparkles = [{ born: 0, life: 1, x: 0.5, y: 0.5, vx: 0, vy: 0, radius: 10, color: '#FFFFFF' }]
+    const sprite = { shadow: new Blob(['shadow']), path, resolution: 1.4, scale: 0.62, sparkles }
+    const { process } = await createOverlayProcess([{ start: 0, end: 1, image: new Blob(['png']), y: 0, sprite }])
+    process(frameAt(0.5).sample)
+    const { calls, alphasAtDraw, ctx } = canvases[0]
+    // The stars are filled before the shadow and the sprite are drawn.
+    expect(calls.indexOf('fill')).toBeGreaterThanOrEqual(0)
+    expect(calls.indexOf('fill')).toBeLessThan(calls.indexOf('drawImage'))
+    expect((ctx.scale as ReturnType<typeof vi.fn>).mock.calls).toEqual([[0.62 / 1.4, 0.62 / 1.4], [0.62 / 1.4, 0.62 / 1.4]])
+    // Shadow and sprite both fade, and the alpha is back to 1 for what comes next.
+    expect(alphasAtDraw).toEqual([0.5, 0.5])
+    expect(ctx.globalAlpha).toBe(1)
+  })
+
+  it('draws a sprite without the new fields as before', async () => {
+    const path = () => ({ x: 0.5, y: 0.5, rotation: 0, scale: 1 })
+    const sprite = { shadow: new Blob(['shadow']), path, resolution: 1 }
+    const { process } = await createOverlayProcess([{ start: 0, end: 1, image: new Blob(['png']), y: 0, sprite }])
+    process(frameAt(0.5).sample)
+    expect(canvases[0].calls).toEqual(['drawImage', 'drawImage'])
+    expect(canvases[0].alphasAtDraw).toEqual([1, 1])
   })
 })
