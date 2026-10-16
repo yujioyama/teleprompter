@@ -1,3 +1,4 @@
+import type { TrimRecord } from '../../shared/videoRecord'
 import type { SubtitleCue } from './subtitleCues'
 import type { SubtitlePosition } from './subtitlePosition'
 
@@ -27,6 +28,8 @@ export interface SavedCombinedClip {
 export interface SavedCombined {
   blob: Blob
   clips: SavedCombinedClip[]
+  /** The cuts it was made with, for the video record; absent on older saves. */
+  trim?: TrimRecord
 }
 
 /**

@@ -470,6 +470,21 @@ describe('FinalizePage trim step: picks up where it was left', () => {
     expect(trimAndNormalizeShot).not.toHaveBeenCalled()
   })
 
+  it('keeps the cuts each 結合 was made with', async () => {
+    const script = seedScript()
+    script.shots = [{ id: SHOT_1, text: 'ショット1', keepPause: true }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await combineOnce()
+
+    expect((await loadFinalizeProgress('script-1')).combined?.trim).toEqual({
+      firstStart: 0.3,
+      start: 0.3,
+      end: 0.4,
+      lastEnd: 0.4,
+      pauseShots: 1,
+    })
+  })
+
   it('drops the saved 結合 once a shot has been retaken', async () => {
     await combineOnce()
     // A later take gets a later updatedAt.
@@ -1004,6 +1019,50 @@ describe('FinalizePage export step: loudness normalization', () => {
     // No BGM mix applied the voice preset (ナチュラル by default), so this pass does.
     expect(finishAudio).toHaveBeenCalledWith(BURNED, { voice: 'natural', normalize: true })
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  function recordPosts() {
+    return vi.mocked(global.fetch).mock.calls.filter(([url]) => url === '/api/records')
+  }
+
+  it('sends a record of how the saved video was made', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+
+    await waitFor(() => expect(recordPosts()).toHaveLength(1))
+    const [, init] = recordPosts()[0]
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer key-1' })
+    const record = JSON.parse(init?.body as string)
+    expect(record).toMatchObject({
+      scriptId: 'script-1',
+      title: 'テスト動画',
+      hookLine: 'ショット1',
+      shotCount: 1,
+      effects: {
+        subtitles: { burned: true, japanese: true },
+        bgm: null,
+        voicePreset: 'natural',
+        trim: { firstStart: 0.3, start: 0.3, end: 0.4, lastEnd: 0.4, pauseShots: 0 },
+      },
+    })
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalled())
+  })
+
+  it('still saves when the record cannot be sent', async () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await walkToExport()
+    vi.mocked(global.fetch).mockRejectedValue(new Error('offline'))
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('sends no record from a device without the inbox key', async () => {
+    await walkToExport()
+    fireEvent.click(await screen.findByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalled())
+    expect(recordPosts()).toHaveLength(0)
   })
 
   it('shows progress while normalizing, and no save button until it is done', async () => {

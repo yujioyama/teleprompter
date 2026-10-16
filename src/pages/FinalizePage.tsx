@@ -42,6 +42,9 @@ import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../comp
 import { ShotCueInput } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
+import type { TrimRecord } from '../../shared/videoRecord'
+import { buildVideoRecord, type BurnInputs, type MixInputs } from '../utils/videoRecord'
+import { postVideoRecord } from '../utils/records'
 import styles from './FinalizePage.module.css'
 
 interface ShotEntry {
@@ -164,8 +167,16 @@ export default function FinalizePage() {
   // The shots exactly as they went into `combinedBlob`, for burning
   // subtitles shot by shot (trims may change afterwards without re-combining).
   const [combinedClips, setCombinedClips] = useState<ShotClip[]>([])
+  // The cuts `combinedBlob` was made with; null for a 結合 saved before they were kept.
+  const [combinedTrim, setCombinedTrim] = useState<TrimRecord | null>(null)
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixed, setMixed] = useState<MixedVideo | null>(null)
+  // What `burnedBlob` and `mixed` were made from, for the video record; only
+  // read while those are set. The refs hold the run in flight.
+  const [burnInputs, setBurnInputs] = useState<BurnInputs | null>(null)
+  const [mixInputs, setMixInputs] = useState<MixInputs | null>(null)
+  const burnInputsRef = useRef<BurnInputs | null>(null)
+  const mixInputsRef = useRef<MixInputs | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
@@ -275,7 +286,7 @@ export default function FinalizePage() {
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
-        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips))
+        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips), combined.trim ?? null)
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
@@ -383,13 +394,14 @@ export default function FinalizePage() {
     )
   }
 
-  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[]) {
+  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[], trim: TrimRecord | null) {
     if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
     const url = URL.createObjectURL(blob)
     combinedUrlRef.current = url
     setCombinedBlob(blob)
     setCombinedUrl(url)
     setCombinedClips(clips)
+    setCombinedTrim(trim)
     setShotCueInputs(cueInputs)
     setCombineState('done')
   }
@@ -674,11 +686,18 @@ export default function FinalizePage() {
       // Same clips, same order, same trim values used just above to build
       // `normalized` — keeps subtitle timing aligned with the actual
       // combined output by construction, not by keeping two formulas in sync.
-      showCombined(combined, clips, cueInputsOf(availableEntries, clips))
+      const trim: TrimRecord = {
+        firstStart: settings.firstShotPaddingStart,
+        start: settings.trimPaddingStart,
+        end: settings.trimPaddingEnd,
+        lastEnd: settings.lastShotPaddingEnd,
+        pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
+      }
+      showCombined(combined, clips, cueInputsOf(availableEntries, clips), trim)
       if (script) {
         const saved = savedClipsOf(clips, takesRef.current)
         // Subtitles made on the previous 結合 no longer line up with this one.
-        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved }, subtitles: null }).catch(err =>
+        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved, trim }, subtitles: null }).catch(err =>
           console.warn('[FinalizePage] could not save the 結合:', err),
         )
       }
@@ -696,6 +715,23 @@ export default function FinalizePage() {
 
   async function handleSaveFinal() {
     if (!exportBlob || !script) return
+    // Tapping 保存する is "this is the version": record how it was made,
+    // without holding up or failing the save.
+    if (settings.inboxKey) {
+      const record = buildVideoRecord({
+        script,
+        savedAt: new Date().toISOString(),
+        durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
+        shotCount: combinedClips.length,
+        burn: burnedBlob ? burnInputs : null,
+        mix: mixed ? mixInputs : null,
+        voicePreset,
+        trim: combinedTrim,
+      })
+      postVideoRecord(settings.inboxKey, record).catch(err =>
+        console.warn('[FinalizePage] could not send the video record:', err),
+      )
+    }
     await shareOrDownload(exportBlob, `${script.title}-final`)
   }
 
@@ -863,8 +899,9 @@ export default function FinalizePage() {
                 hookSettings={hookSettings}
                 onHookSettingsChange={updateSettings}
                 inboxKey={settings.inboxKey}
-                burn={(cues, position, onProgress, signal) =>
-                  burnSubtitlesByShot(
+                burn={(cues, position, onProgress, signal) => {
+                  burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
+                  return burnSubtitlesByShot(
                     getEncodeCache(),
                     combinedClips,
                     combinedBlob,
@@ -874,9 +911,10 @@ export default function FinalizePage() {
                     onProgress,
                     signal,
                   )
-                }
+                }}
                 onBurned={burned => {
                   setBurnedBlob(burned)
+                  setBurnInputs(burnInputsRef.current)
                   setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
                 }}
@@ -902,21 +940,25 @@ export default function FinalizePage() {
                 initialTrackId={defaultTrack?.id ?? null}
                 initialVolume={bgmVolume}
                 autoMix={bgmAutoPending}
-                mix={(track, trackBlob, volume) =>
-                  mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
+                mix={(track, trackBlob, volume) => {
+                  mixInputsRef.current = { trackId: track.id, title: track.title, volume }
+                  return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
                     trackId: track.id,
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
                   })
-                }
+                }}
                 onLeaveAuto={() => {
                   // The auto mix may be waiting on a prepared-audio job that
                   // never settles; the manual mix must not wait on it too.
                   preparedAudio.clear()
                   setBgmAutoPending(false)
                 }}
-                onMixed={setMixed}
+                onMixed={mix => {
+                  setMixed(mix)
+                  setMixInputs(mix ? mixInputsRef.current : null)
+                }}
                 onNext={() => {
                   setBgmAutoPending(false)
                   markStepDone('bgm', 'export')
