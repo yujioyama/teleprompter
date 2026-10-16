@@ -46,6 +46,8 @@ export interface HookOptions {
   stickerMotion?: StickerMotion
   /** Re-rolls the sticker's route (ルートを変える); 0 by default. */
   stickerRoute?: number
+  /** Mid-video cameos and the finale (default: on). */
+  fairies?: boolean
 }
 
 export type HookSettings = Pick<
