@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
@@ -6,7 +6,8 @@ import { clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { createCanvasMeasure, layoutCue } from '../utils/subtitleLayout'
 import { placeSticker } from '../utils/stickerMotion'
 import { styleCues } from '../utils/subtitleHook'
-import { STICKER_PLACEMENTS } from '../utils/subtitleSticker'
+import { STICKER_EMOJI_PX, STICKER_PLACEMENTS } from '../utils/subtitleSticker'
+import type { FairyAppearance } from '../utils/fairyPlan'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
@@ -136,5 +137,95 @@ describe('SubtitleOverlayPreview', () => {
     render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)
     expect(screen.getByText('love')).toHaveStyle({ color: '#FFD60A' })
     expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
+  })
+
+  const FAIRY = {
+    emoji: '💡', kind: 'cameo', start: 2.3, end: 3.5,
+    path: () => ({ x: 0.3, y: 0.5, rotation: 0, scale: 1 }),
+    scale: 0.62, sparkles: [], key: 'k',
+  } as FairyAppearance
+
+  it('shows a fairy only during its window', () => {
+    const { rerender } = render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[FAIRY]} />)
+    expect(screen.getByTestId('subtitle-fairy')).toHaveTextContent('💡')
+    rerender(<SubtitleOverlayPreview cues={[]} position={72} currentTime={3.6} fairies={[FAIRY]} />)
+    expect(screen.queryByTestId('subtitle-fairy')).toBeNull()
+  })
+
+  it('draws a fairy at its pose scale times its own scale', () => {
+    const path = () => ({ x: 0.3, y: 0.5, rotation: 10, scale: 1.2 })
+    render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[{ ...FAIRY, path }]} />)
+    const style = screen.getByTestId('subtitle-fairy').style
+    expect(style.left).toBe('30%')
+    expect(style.top).toBe('50%')
+    expect(style.transform).toBe(`translate(-50%, -50%) rotate(10deg) scale(${1.2 * 0.62})`)
+  })
+
+  it('fades the finale with its pose opacity', () => {
+    const path = () => ({ x: 0.5, y: 0.5, rotation: 0, scale: 1, opacity: 0.4 })
+    render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[{ ...FAIRY, kind: 'finale', path }]} />)
+    expect(screen.getByTestId('subtitle-fairy').style.opacity).toBe('0.4')
+  })
+
+  it('keeps every emoji out of a normal cue\'s text', () => {
+    const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 2, en: 'It keeps them 💡 neat', ja: 'きれい' }]
+    render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)
+    const text = screen.getByTestId('subtitle-overlay-box').textContent ?? ''
+    expect(text).not.toMatch(/\p{Extended_Pictographic}/u)
+    expect(text).toContain('neat')
+  })
+
+  it('draws the sticker at 200px', () => {
+    const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン' }]
+    render(<SubtitleOverlayPreview cues={cues} position={72} currentTime={0.5} hook={HOOK} firstShotDuration={2} />)
+    // jsdom drops cqw lengths, so the size can't be read back from the style: pin the constant it is built from.
+    expect(STICKER_EMOJI_PX).toBe(200)
+    expect(screen.getByTestId('subtitle-sticker')).toBeInTheDocument()
+  })
+
+  describe('sparkle canvas', () => {
+    const originalRO = globalThis.ResizeObserver
+    afterEach(() => {
+      globalThis.ResizeObserver = originalRO
+      vi.restoreAllMocks()
+    })
+
+    it('renders only while a fairy or the sticker is shown', () => {
+      const { container, rerender } = render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[FAIRY]} />)
+      const canvas = container.querySelector('canvas')!
+      expect(canvas).not.toBeNull()
+      expect(canvas.className).toMatch(/sparkles/)
+      rerender(<SubtitleOverlayPreview cues={[]} position={72} currentTime={9} fairies={[FAIRY]} />)
+      expect(container).toBeEmptyDOMElement()
+    })
+
+    it('does not draw where there is no 2d context, and survives a missing ResizeObserver', () => {
+      // @ts-expect-error simulating a browser without it
+      delete globalThis.ResizeObserver
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+      render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[FAIRY]} />)
+      expect(getContext).not.toHaveBeenCalled()
+    })
+
+    it('draws the active fairy\'s sparkles on the canvas', () => {
+      const ctx = {
+        clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(),
+        quadraticCurveTo: vi.fn(), fill: vi.fn(), globalAlpha: 1, fillStyle: '',
+      }
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D)
+      class FakeRO {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe(el: Element) {
+          this.cb([{ target: el, contentRect: { width: 360, height: 640 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+        }
+        unobserve() {}
+        disconnect() {}
+      }
+      globalThis.ResizeObserver = FakeRO as unknown as typeof ResizeObserver
+      const sparkle = { born: 2.4, life: 0.5, x: 0.3, y: 0.5, vx: 0, vy: 0, radius: 20, color: '#fff' }
+      render(<SubtitleOverlayPreview cues={[]} position={72} currentTime={2.5} fairies={[{ ...FAIRY, sparkles: [sparkle] }]} />)
+      expect(ctx.clearRect).toHaveBeenCalled()
+      expect(ctx.fill).toHaveBeenCalled()
+    })
   })
 })

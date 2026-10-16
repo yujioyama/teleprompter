@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
@@ -18,6 +18,7 @@ import {
   type PunchInDuration,
   type ZoomDirection,
 } from '../utils/subtitleHook'
+import { planFairies } from '../utils/fairyPlan'
 import { reapplySticker, type StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
@@ -157,13 +158,15 @@ export default function SubtitleWorkflow({
   // The same element as previewRef, as state, so the frame-time hook
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
-  const hook = hookOptionsOf(hookSettings)
+  // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
+  const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
+  const fairies = useMemo(() => planFairies(shotCueInputs, hook), [shotCueInputs, hook])
   // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
   // is enough, and per-frame state would re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {
-    if (followsFrames(t, hook, firstShotDuration)) setPreviewTime(t)
+    if (followsFrames(t, hook, firstShotDuration, fairies)) setPreviewTime(t)
   })
   // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
   const attachPreview = useCallback((el: HTMLVideoElement | null) => {
@@ -460,6 +463,7 @@ export default function SubtitleWorkflow({
                   currentTime={previewTime}
                   hook={hook}
                   firstShotDuration={firstShotDuration}
+                  fairies={fairies}
                 />
               </div>
 
