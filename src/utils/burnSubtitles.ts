@@ -29,6 +29,7 @@ import {
   stripStickers,
 } from './subtitleSticker'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
+import type { FairyAppearance } from './fairyPlan'
 import {
   EN_STYLE,
   JA_STYLE,
@@ -108,6 +109,8 @@ export interface SubtitleLook {
    * joined video, or the first shot's own clip); null for any other shot.
    */
   firstShotDuration: number | null
+  /** The fairies to burn in, in this video's own timeline; default none. */
+  fairies?: FairyAppearance[]
 }
 
 /** Where a cue is centered: hook cues have a position of their own. */
@@ -319,8 +322,10 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
  * hook position for hook cues) but kept fully on screen. Cues without a
  * translation aren't burned in. An emoji in a hook cue isn't drawn in its
  * text: it becomes the sticker, from 0 s to the end of the first shot,
- * travelling around as the hook says unless `still` (the ffmpeg path,
- * which can only place it).
+ * travelling around (with its sparkles) as the hook says unless `still`
+ * (the ffmpeg path, which can only place it). No cue draws an emoji in its
+ * text. Unless `still`, each of the look's fairies is a scaled sprite with
+ * its sparkles over its own window.
  */
 export async function renderSubtitleOverlays(
   cues: StyledCue[],
@@ -330,8 +335,8 @@ export async function renderSubtitleOverlays(
   const overlays: SubtitleOverlay[] = []
   for (const cue of cues) {
     if (cue.ja === null) continue
-    const drawn = cue.variant === 'hook' ? { ...cue, en: stripStickers(cue.en) } : cue
-    const { image, height } = await renderCueImage(drawn)
+    // A hook cue's emoji became the sticker; in a normal cue it has no place.
+    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) })
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration)
@@ -339,10 +344,26 @@ export async function renderSubtitleOverlays(
     const window = { start: 0, end: look.firstShotDuration }
     if (sticker.path && !still) {
       const { image, shadow } = await renderStickerSprite(sticker.emoji)
-      overlays.push({ ...window, image, y: 0, sprite: { shadow, path: sticker.path, resolution: STICKER_MAX_SCALE } })
+      overlays.push({ ...window, image, y: 0, sprite: { shadow, path: sticker.path, resolution: STICKER_MAX_SCALE, sparkles: sticker.sparkles } })
     } else {
       const { image, height } = await renderStickerImage(sticker.emoji, sticker.home.x, sticker.home.rotation)
       overlays.push({ ...window, image, y: clampedSubtitleY(sticker.home.y * 100, height) })
+    }
+  }
+  if (!still) {
+    // The same emoji in several fairies is rendered once.
+    const sprites = new Map<string, { image: Blob; shadow: Blob }>()
+    for (const f of look.fairies ?? []) {
+      let sprite = sprites.get(f.emoji)
+      if (!sprite) sprites.set(f.emoji, (sprite = await renderStickerSprite(f.emoji)))
+      const { image, shadow } = sprite
+      overlays.push({
+        start: f.start,
+        end: f.end,
+        image,
+        y: 0,
+        sprite: { shadow, path: f.path, resolution: STICKER_MAX_SCALE, scale: f.scale, sparkles: f.sparkles },
+      })
     }
   }
   return overlays
@@ -370,7 +391,8 @@ export async function burnSubtitles(
   // The whole joined video starts with the first shot, so hook cues are
   // those starting within its length, as in the per-shot path.
   const translated = styleCues(cues, look.firstShotDuration, look.hook.style).filter(c => c.ja !== null)
-  if (translated.length === 0 && !hasFirstShotExtras(look.hook, look.firstShotDuration)) {
+  const fairies = look.fairies ?? []
+  if (translated.length === 0 && !hasFirstShotExtras(look.hook, look.firstShotDuration) && fairies.length === 0) {
     // Nothing to burn in — return the video unchanged.
     return videoBlob
   }

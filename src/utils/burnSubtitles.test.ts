@@ -16,6 +16,7 @@ import { CancelledError } from './cancellation'
 import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLayout'
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
+import type { FairyAppearance } from './fairyPlan'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -84,6 +85,8 @@ function stubCanvas() {
 }
 
 const LOOK: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null, stickerMotion: 'none' }, firstShotDuration: 2 }
+
+const FAIRY = { emoji: '💡', kind: 'cameo', start: 0.3, end: 1.5, path: () => ({ x: 0.3, y: 0.5, rotation: 0, scale: 1 }), scale: 0.62, sparkles: [], key: 'k' } as FairyAppearance
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -216,6 +219,32 @@ describe('renderSubtitleOverlays', () => {
     const overlays = await renderSubtitleOverlays([untranslated, normal], LOOK)
     expect(overlays.map(o => [o.start, o.end])).toEqual([[2, 3]])
   })
+
+  it('sends each fairy as a scaled sprite with its sparkles over its window', async () => {
+    stubCanvas()
+    const [fairy] = await renderSubtitleOverlays([], { ...LOOK, fairies: [FAIRY] })
+    expect([fairy.start, fairy.end]).toEqual([0.3, 1.5])
+    expect(fairy.sprite).toMatchObject({ scale: 0.62, sparkles: [], resolution: STICKER_MAX_SCALE })
+  })
+
+  it('gives the travelling sticker its sparkles', async () => {
+    stubCanvas()
+    const hook: StyledCue = { id: 'a', start: 0, end: 1, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }
+    const look = { ...LOOK, hook: { ...LOOK.hook, sticker: 'right' as const, stickerMotion: 'orbit' as const } }
+    const [, sticker] = await renderSubtitleOverlays([hook], look)
+    expect(sticker.sprite!.sparkles!.length).toBeGreaterThan(0)
+  })
+
+  it('leaves fairies and sparkles out for ffmpeg', async () => {
+    stubCanvas()
+    expect(await renderSubtitleOverlays([], { ...LOOK, fairies: [FAIRY] }, { still: true })).toEqual([])
+  })
+
+  it('never draws an emoji in a normal cue\'s text', async () => {
+    const { drawn } = stubCanvas()
+    await renderSubtitleOverlays([{ id: 'b', start: 2, end: 3, en: 'It keeps them 💡 neat 👍🏽', ja: 'きれい', variant: 'normal' }], LOOK)
+    expect(drawn.some(d => /\p{Extended_Pictographic}/u.test(d.text))).toBe(false)
+  })
 })
 
 describe('burnSubtitles', () => {
@@ -237,6 +266,12 @@ describe('burnSubtitles', () => {
     await burnSubtitles(new Blob(['x']), cues, LOOK)
     const overlays = vi.mocked(burnSubtitlesWebCodecs).mock.calls[0][1]
     expect(overlays.map(o => [o.start, o.end])).toEqual([[0, 1.5], [2.4, 3]])
+  })
+
+  it('burns a video that only has fairies', async () => {
+    stubCanvas()
+    await burnSubtitles(new Blob(['v']), [], { ...LOOK, fairies: [FAIRY] })
+    expect(burnSubtitlesWebCodecs).toHaveBeenCalled()
   })
 
   it('returns the video unchanged when nothing is translated', async () => {
