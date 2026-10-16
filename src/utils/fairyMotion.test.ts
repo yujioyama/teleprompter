@@ -77,6 +77,16 @@ describe('finale', () => {
     expect(finalePath({ x: 0.18, y: 0.42, rotation: -8 }, timing)(0).x).toBeLessThan(0)
   })
 
+  it('keeps bobbing into the burst, with no jump where the hover ends', () => {
+    const timing = finaleTiming(3)!
+    const path = finalePath({ x: 0.5, y: 0.66, rotation: -6 }, timing)
+    const at = timing.fly + timing.hover
+    const [before, after] = [path(at - 1e-4), path(at + 1e-4)]
+    expect(Math.abs(before.y - after.y)).toBeLessThan(1e-4)
+    expect(Math.abs(before.rotation - after.rotation)).toBeLessThan(0.01)
+    expect(after.y).not.toBeCloseTo(0.66, 3) // it is mid-bob there, not snapped to rest
+  })
+
   it.each(Object.entries(STICKER_PLACEMENTS))('%s home never crosses the button column on-frame', (name, at) => {
     const timing = finaleTiming(3)!
     const path = finalePath({ x: at.x, y: at.y / 100, rotation: at.rotation }, timing)

@@ -54,6 +54,8 @@ export interface EmitOptions {
 
 /** Every particle for one appearance, between `start` and `end`. */
 export function emitSparkles({ path, start, end, seed, spread, bursts, moving }: EmitOptions): Sparkle[] {
+  // A non-finite span would never reach `last` below.
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return []
   const rand = random(seed)
   const out: Sparkle[] = []
   const last = end - TAIL

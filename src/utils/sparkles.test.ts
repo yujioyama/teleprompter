@@ -27,6 +27,9 @@ describe('emitSparkles', () => {
     expect(burst).toHaveLength(18)
     for (const s of burst) expect(Math.hypot(s.vx, s.vy / (1080 / 1920))).toBeGreaterThanOrEqual(0.18 - 1e-9)
   })
+  it.each([[NaN, 3], [1, Infinity], [-Infinity, 3]])('emits nothing for a non-finite span (%s, %s) instead of looping forever', (start, end) => {
+    expect(emitSparkles({ ...base, start, end })).toEqual([])
+  })
   it('uses only white and gold, radius 10-28', () => {
     for (const s of emitSparkles(base)) {
       expect(['#FFFFFF', '#FAC775']).toContain(s.color)

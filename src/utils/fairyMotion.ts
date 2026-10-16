@@ -135,11 +135,11 @@ export function finalePath(home: Home, timing: FinaleTiming): StickerPath {
       const e = easeOut(phase(t, 0, timing.fly))
       return { x: lerp(fromX, home.x, e), y: lerp(home.y - 0.22, home.y, e), rotation: lerp(-25, home.rotation, e), scale: lerp(0.6, 1, e) }
     }
-    if (t < burstStart) {
-      const u = t - timing.fly
-      return { x: home.x, y: home.y + 0.012 * Math.sin(u * 5), rotation: home.rotation + 5 * Math.sin(u * 4), scale: 1 }
-    }
+    // The bob runs on through the burst, so the burst starts from where the hover left off, not from rest.
+    const u = t - timing.fly
+    const bob = { x: home.x, y: home.y + 0.012 * Math.sin(u * 5), rotation: home.rotation + 5 * Math.sin(u * 4) }
+    if (t < burstStart) return { ...bob, scale: 1 }
     const b = phase(t, burstStart, burstStart + timing.burst)
-    return { x: home.x, y: home.y, rotation: home.rotation, scale: lerp(1, 1.4, b), opacity: 1 - b }
+    return { ...bob, scale: lerp(1, 1.4, b), opacity: 1 - b }
   }
 }

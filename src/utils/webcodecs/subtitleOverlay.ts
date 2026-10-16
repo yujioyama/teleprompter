@@ -12,8 +12,9 @@ export interface SubtitleOverlay {
   /** Top edge of the image in the output frame (unused for a sprite). */
   y: number
   /**
-   * The travelling sticker: `image` is its upright sprite, drawn centered
-   * on path(t) with its pose's turn and size, over `shadow` kept below it.
+   * A sticker sprite, travelling or still, or a fairy: `image` is its upright
+   * sprite, drawn centered on path(t) with its pose's turn and size, over
+   * `shadow` kept below it.
    * `scale` multiplies the pose's size (a fairy is a small cameo) and the
    * pose's opacity fades the shadow and sprite; `sparkles` are drawn under both.
    */

@@ -162,7 +162,7 @@ export default function SubtitleWorkflow({
   const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
   // The first clip of the 結合: hook cues are the ones starting within it.
   const firstShotDuration = shotCueInputs[0]?.duration ?? null
-  const fairies = useMemo(() => planFairies(shotCueInputs, hook), [shotCueInputs, hook])
+  const fairies = useMemo(() => planFairies(shotCueInputs, hook, position), [shotCueInputs, hook, position])
   // Frame accuracy only matters around the first shot; elsewhere onTimeUpdate
   // is enough, and per-frame state would re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {

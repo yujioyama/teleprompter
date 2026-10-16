@@ -337,9 +337,25 @@ describe('fairies', () => {
   const TEXTS = ['A 🧴', 'B 💡', 'C']
   const CLIPS = [clip('s1', 0, 2), clip('s2', 0, 3), clip('s3', 0, 2.5)]
 
-  it('burns a shot that only has a fairy, with the fairy in its own timeline', () => {
-    const [, middle] = shotBurnRequests(CLIPS, [], 50, FAIRY_HOOK, TEXTS)
-    expect(middle.key).not.toBe(normalizeRequest(CLIPS[1]).key)
+  it('burns a shot that only has a fairy, with the fairy in its own timeline', async () => {
+    const requests = shotBurnRequests(CLIPS, [], 50, FAIRY_HOOK, TEXTS)
+    expect(requests[1].key).not.toBe(normalizeRequest(CLIPS[1]).key)
+    await encodeAll(new ShotEncodeCache(), requests)
+    const looks = new Map(vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => [c[0], c[4]]))
+    expect(looks.get(CLIPS[0].blob)?.fairies ?? []).toEqual([])
+    const middle = looks.get(CLIPS[1].blob)!.fairies!
+    expect(middle.map(f => f.kind)).toEqual(['cameo'])
+    expect(middle[0].start).toBeCloseTo(0.3)
+    const last = looks.get(CLIPS[2].blob)!.fairies!
+    expect(last.map(f => f.kind)).toEqual(['finale'])
+    expect(last[0].start).toBeCloseTo(0)
+  })
+
+  it("plans the finale clear of the normal subtitles' position, so moving them re-keys only the last shot", () => {
+    const at = (position: number) => shotBurnRequests(CLIPS, [], position, { ...FAIRY_HOOK, sticker: 'chest' }, TEXTS).map(r => r.key)
+    const [a, b] = [at(72.29), at(50)]
+    expect(b[1]).toBe(a[1])
+    expect(b[2]).not.toBe(a[2])
   })
 
   it('re-keys a shot when the fairies are turned off', () => {

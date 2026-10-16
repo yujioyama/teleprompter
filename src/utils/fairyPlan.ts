@@ -37,12 +37,26 @@ export interface FairyAppearance {
 /** The sprite is about STICKER_EMOJI_PX wide at scale 1 on a 1080 frame; the sparkles spread around its radius. */
 const spreadOf = (scale: number) => (0.5 * STICKER_EMOJI_PX * scale) / 1080
 
+/** The times are relative to the appearance's shot, so re-trimming an earlier shot doesn't re-key (and re-encode) the later ones. */
 const keyOf = (kind: string, emoji: string, motion: string, mirror: boolean, start: number, end: number, seed: number) =>
   JSON.stringify([kind, emoji, motion, mirror, start.toFixed(3), end.toFixed(3), seed])
 
+/** The finale keeps this far (frame heights) from the normal subtitles' center, about the sprite's height plus its bob and burst. */
+const FINALE_SUBTITLE_CLEARANCE = 0.15
+/** Where the finale may hover, whatever the subtitles do. */
+const FINALE_Y = { min: 0.27, max: 0.75 }
+
+/** The finale's home y, moved to the clear side of the normal subtitles (`subtitleY`, 0-1) when it would sit on them. */
+function clearOfSubtitles(homeY: number, subtitleY: number): number {
+  const y = Math.abs(homeY - subtitleY) < FINALE_SUBTITLE_CLEARANCE ? subtitleY + (subtitleY >= homeY ? -1 : 1) * FINALE_SUBTITLE_CLEARANCE : homeY
+  return Math.min(FINALE_Y.max, Math.max(FINALE_Y.min, y))
+}
+
 export function planFairies(
   shots: { text: string; duration: number }[],
-  hook: Pick<HookOptions, 'sticker' | 'stickerRoute' | 'fairies'>,
+  hook: Pick<HookOptions, 'style' | 'sticker' | 'stickerRoute' | 'fairies'>,
+  /** Where the normal subtitles are centered, 0-100 (the finale keeps clear of them). */
+  position: number,
 ): FairyAppearance[] {
   const placement = hook.sticker ?? DEFAULT_STICKER_PLACEMENT
   if (hook.fairies === false || placement === 'off' || shots.length === 0) return []
@@ -89,11 +103,12 @@ export function planFairies(
         bursts: cameoBursts(motion, length).map(b => start + b),
         moving: t => !(hover && t >= start + hover[0] && t < start + hover[1]),
       }),
-      key: keyOf('cameo', emoji, motion, mirror, start, end, seed),
+      key: keyOf('cameo', emoji, motion, mirror, CAMEO_DELAY, CAMEO_DELAY + length, seed),
     })
   })
 
-  const finale = planFinale(shots, placement, route, shotStart)
+  // With the hook style off there is no first-shot sticker to bring back.
+  const finale = hook.style ? planFinale(shots, placement, route, shotStart, position / 100) : null
   if (finale) plan.push(finale)
   return plan
 }
@@ -103,6 +118,7 @@ function planFinale(
   placement: Exclude<NonNullable<HookOptions['sticker']>, 'off'>,
   route: number,
   total: number,
+  subtitleY: number,
 ): FairyAppearance | null {
   if (shots.length < 2) return null
   const emoji = findSticker(shots[0].text)
@@ -111,9 +127,11 @@ function planFinale(
   if (!emoji || !timing) return null
 
   const home = STICKER_PLACEMENTS[placement]
-  const local = finalePath({ x: home.x, y: home.y / 100, rotation: home.rotation }, timing)
+  const y = clearOfSubtitles(home.y / 100, subtitleY)
+  const local = finalePath({ x: home.x, y, rotation: home.rotation }, timing)
   const start = total - last.duration
-  const end = start + timing.fly + timing.hover + timing.burst
+  const length = timing.fly + timing.hover + timing.burst
+  const end = start + length
   const path: StickerPath = t => local(t - start)
   const seed = stickerSeed(last.text, route)
   return {
@@ -132,7 +150,7 @@ function planFinale(
       bursts: [start + timing.fly, start + timing.fly + timing.hover],
       moving: t => t < start + timing.fly,
     }),
-    key: keyOf('finale', emoji, placement, false, start, end, seed),
+    key: keyOf('finale', emoji, `${placement}@${y.toFixed(3)}`, false, 0, length, seed),
   }
 }
 

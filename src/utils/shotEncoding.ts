@@ -36,10 +36,11 @@ function firstShotDurationOf(clips: ShotClip[]): number | null {
 }
 
 /** The fairies over the joined timeline; a shot without a text (shotTexts runs short) gets none. */
-function fairyPlanOf(clips: ShotClip[], shotTexts: string[], hook: HookOptions): FairyAppearance[] {
+function fairyPlanOf(clips: ShotClip[], shotTexts: string[], hook: HookOptions, position: SubtitlePosition): FairyAppearance[] {
   return planFairies(
     clips.map((c, i) => ({ text: shotTexts[i] ?? '', duration: c.end - c.start })),
     hook,
+    position,
   )
 }
 
@@ -96,7 +97,7 @@ export function shotBurnRequests(
   shotTexts: string[],
 ): EncodeRequest[] {
   const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
-  const plan = fairyPlanOf(clips, shotTexts, hook)
+  const plan = fairyPlanOf(clips, shotTexts, hook, position)
   let offset = 0
   return clips.map((clip, i) => {
     const duration = clip.end - clip.start
@@ -181,7 +182,7 @@ export async function burnSubtitlesByShot(
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  const plan = fairyPlanOf(clips, shotTexts, hook)
+  const plan = fairyPlanOf(clips, shotTexts, hook, position)
   if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0) {
     return combinedBlob
   }
