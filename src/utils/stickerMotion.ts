@@ -15,12 +15,13 @@ export type StickerMotion = 'none' | 'random' | 'wander' | 'bounce' | 'orbit' | 
 export const STICKER_TRIPS: Exclude<StickerMotion, 'none' | 'random'>[] = ['wander', 'bounce', 'orbit', 'warp', 'dash']
 export const DEFAULT_STICKER_MOTION: StickerMotion = 'random'
 
-/** Where the sticker is: x and y as fractions of the frame, rotation in degrees, scale 1 = its normal size. */
+/** Where the sticker is: x and y as fractions of the frame, rotation in degrees, scale 1 = its normal size, opacity 1 (the default) = fully visible. */
 export interface StickerPose {
   x: number
   y: number
   rotation: number
   scale: number
+  opacity?: number
 }
 
 export type StickerPath = (t: number) => StickerPose
@@ -101,7 +102,7 @@ function fold(v: number, lo: number, hi: number): number {
   return lo + (m <= span ? m : 2 * span - m)
 }
 
-type Home = Point & { rotation: number }
+export type Home = Point & { rotation: number }
 /** One trip over the travel time: `s` 0→1, starting and ending exactly at home. */
 type Trip = (s: number) => StickerPose
 type TripMaker = (rand: () => number, home: Home, travel: number) => Trip
