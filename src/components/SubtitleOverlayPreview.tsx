@@ -2,7 +2,7 @@ import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'r
 import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, type HookOptions } from '../utils/subtitleHook'
-import { EMPHASIS_COLOR } from '../utils/subtitleEmphasis'
+import { runColor } from '../utils/subtitleEmphasis'
 import {
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
@@ -48,7 +48,7 @@ function blockStyle(block: TextBlockLayout): CSSProperties {
   }
 }
 
-/** A block's lines, with `*emphasized*` runs in yellow as burned in. */
+/** A block's lines, with `*theme*` runs in yellow and `{word}` runs in mint, as burned in. */
 function BlockLines({ block }: { block: TextBlockLayout }) {
   return (
     <>
@@ -56,7 +56,7 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
         <span key={i} className={styles.line}>
           {runs.map((run, j) =>
             run.emphasized
-              ? <span key={j} style={{ color: EMPHASIS_COLOR }}>{run.text}</span>
+              ? <span key={j} style={{ color: runColor(run) }}>{run.text}</span>
               : <Fragment key={j}>{run.text}</Fragment>,
           )}
         </span>

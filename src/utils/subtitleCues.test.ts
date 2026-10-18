@@ -31,6 +31,12 @@ describe('buildClaudePrompt emphasis', () => {
     expect(prompt).toContain('1. I love it')
     expect(prompt).not.toContain('*love*')
   })
+
+  it('keeps the {word} marker so the translation marks the same word', () => {
+    const prompt = buildClaudePrompt([{ id: 'c0', start: 0, end: 1, en: '*Turmeric*. We call it {ukon}.', ja: null }])
+    expect(prompt).toContain('1. Turmeric. We call it {ukon}.')
+    expect(prompt).toContain('【{…} で囲まれた語句】')
+  })
 })
 
 describe('buildClaudePrompt with a request id', () => {
