@@ -37,9 +37,9 @@ describe('SettingsPage voice preset', () => {
 })
 
 describe('SettingsPage BGM', () => {
-  it('starts on Tokyo Lofi at 30%', () => {
+  it("starts on Lili's Dream at 30%", () => {
     renderSettings()
-    expect(screen.getByRole('combobox', { name: 'いつものBGM' })).toHaveValue('lofi-tokyo')
+    expect(screen.getByRole('combobox', { name: 'いつものBGM' })).toHaveValue('musicbox-lilis-dream')
     expect(screen.getByRole('slider', { name: 'BGMの音量' })).toHaveValue('0.3')
     expect(screen.getByText('30%')).toBeInTheDocument()
   })

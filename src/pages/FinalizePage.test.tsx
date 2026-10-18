@@ -1213,8 +1213,9 @@ describe('FinalizePage export step: loudness normalization', () => {
 describe('FinalizePage with a usual BGM', () => {
   const BURNED = new Blob(['burned'], { type: 'video/mp4' })
 
+  // Saved in the current shape, so no migration touches the BGM chosen here.
   function useSettingsOf(settings: object) {
-    localStorage.setItem('teleprompter_settings', JSON.stringify(settings))
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmStopBeforePunchline: true, ...settings }))
   }
 
   // Trim/combine → subtitle (translated) → 次へ.

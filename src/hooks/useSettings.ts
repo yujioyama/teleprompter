@@ -65,7 +65,7 @@ const DEFAULTS: AppSettings = {
   trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
-  defaultBgmId: 'lofi-tokyo',
+  defaultBgmId: 'musicbox-lilis-dream',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
@@ -109,6 +109,11 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   if (!('lastShotPaddingEnd' in next)) {
     if (next.trimPaddingStart === 0.3) next.trimPaddingStart = DEFAULTS.trimPaddingStart
     if (next.trimPaddingEnd === 0.4) next.trimPaddingEnd = DEFAULTS.trimPaddingEnd
+  }
+  // The usual BGM moved to a music box (2026-10-18); one left on the old
+  // default follows. Saved since, a settings object has bgmStopBeforePunchline.
+  if (!('bgmStopBeforePunchline' in next) && next.defaultBgmId === 'lofi-tokyo') {
+    next.defaultBgmId = DEFAULTS.defaultBgmId
   }
   return next as Partial<AppSettings>
 }
