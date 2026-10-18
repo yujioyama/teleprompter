@@ -1,4 +1,4 @@
-import { stripEmphasis } from './subtitleEmphasis'
+import { stripThemeEmphasis } from './subtitleEmphasis'
 
 export interface SubtitleCue {
   id: string
@@ -14,8 +14,10 @@ export interface SubtitleCue {
  * the subtitle step without pasting.
  */
 export function buildClaudePrompt(cues: SubtitleCue[], requestId?: string): string {
-  // The *emphasis* markers are for the burn-in only, not for translating.
-  const lines = cues.map((cue, i) => `${i + 1}. ${stripEmphasis(cue.en)}`).join('\n')
+  // The *theme* markers are for the burn-in only, not for translating. The
+  // {word} ones stay: the translator marks the same word in Japanese, so
+  // it is colored in both lines.
+  const lines = cues.map((cue, i) => `${i + 1}. ${stripThemeEmphasis(cue.en)}`).join('\n')
   return `以下は、僕（Yuji）のショート動画の英語セリフです。動画に焼き込む日本語字幕を作ってください。
 
 【話し手】
@@ -47,6 +49,11 @@ export function buildClaudePrompt(cues: SubtitleCue[], requestId?: string): stri
    - 日本であまり知られていないもの：名前より「それが何か」が伝わる言い方にする（例：無名の番組名 → 「オーストラリアのリアリティ番組」、海外の歌手 → 「オーストラリアの歌手」）
    - ただし、その名前自体がオチや話の中心になっている場合は、カタカナ表記の名前に短い説明を添える（例：「オーストラリアの歌手の〇〇」）
 4. 日本人に通じにくい英語圏の習慣・スラング・文化的な話は、短い言い換えで意味が伝わるようにする。注釈やカッコ書きの説明は付けない
+
+【{…} で囲まれた語句】
+英語セリフの中で {…} で囲まれた語句は、その回に紹介する日本語の単語です（字幕で色が付きます）。
+- その行の日本語訳でも、対応する日本語の単語を {…} で囲む（日本語表記に戻したうえで。例：In Japanese, we call it {ukon}. → 日本語だと{ウコン}って言うの）
+- 囲むのはその1か所だけ。ほかの行や、ほかの語句には {…} を付けない
 
 【出力】
 - 「番号. 日本語訳」の形式のみ。番号と行数は英語と完全に一致させる

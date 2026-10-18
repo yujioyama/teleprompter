@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emphasisRuns, parseEmphasis, reapplyEmphasis, stripEmphasis } from './subtitleEmphasis'
+import { EMPHASIS_COLOR, WORD_COLOR, emphasisRuns, parseEmphasis, reapplyEmphasis, runColor, stripEmphasis, stripThemeEmphasis } from './subtitleEmphasis'
 
 describe('parseEmphasis', () => {
   it('removes the markers and flags what they enclosed', () => {
@@ -31,11 +31,41 @@ describe('parseEmphasis', () => {
   it('does not read ** as an empty emphasis', () => {
     expect(parseEmphasis('a ** b').text).toBe('a ** b')
   })
+
+  it('reads {…} as the Japanese word, apart from *…*', () => {
+    const e = parseEmphasis('*Reckon*. In Japanese, {renkon}.')
+    expect(e.text).toBe('Reckon. In Japanese, renkon.')
+    expect(emphasisRuns([e.text], e)).toEqual([[
+      { text: 'Reckon', emphasized: true },
+      { text: '. In Japanese, ', emphasized: false },
+      { text: 'renkon', emphasized: true, word: true },
+      { text: '.', emphasized: false },
+    ]])
+  })
+
+  it('leaves braces around spaces or with nothing inside as typed', () => {
+    expect(parseEmphasis('a { b } c {} d').text).toBe('a { b } c {} d')
+  })
+})
+
+describe('runColor', () => {
+  it('draws plain runs white, *theme* yellow and {word} mint', () => {
+    expect(runColor({ text: 'a', emphasized: false })).toBe('#ffffff')
+    expect(runColor({ text: 'a', emphasized: true })).toBe(EMPHASIS_COLOR)
+    expect(runColor({ text: 'a', emphasized: true, word: true })).toBe(WORD_COLOR)
+  })
 })
 
 describe('stripEmphasis', () => {
   it('returns the text without its markers', () => {
     expect(stripEmphasis("I still *carry a torch*, don't I?")).toBe("I still carry a torch, don't I?")
+    expect(stripEmphasis('We call it {ukon}.')).toBe('We call it ukon.')
+  })
+})
+
+describe('stripThemeEmphasis', () => {
+  it('drops the *…* markers but keeps the {…} ones', () => {
+    expect(stripThemeEmphasis('*Turmeric*. We call it {ukon}.')).toBe('Turmeric. We call it {ukon}.')
   })
 })
 
@@ -55,6 +85,14 @@ describe('emphasisRuns', () => {
       { text: 'very', emphasized: true },
       { text: ' tired', emphasized: false },
     ]])
+  })
+
+  it('keeps a {word} run apart across a Japanese line break', () => {
+    const e = parseEmphasis('日本語だと{ウコン}って言うの')
+    expect(emphasisRuns(['日本語だとウコ', 'ンって言うの'], e)).toEqual([
+      [{ text: '日本語だと', emphasized: false }, { text: 'ウコ', emphasized: true, word: true }],
+      [{ text: 'ン', emphasized: true, word: true }, { text: 'って言うの', emphasized: false }],
+    ])
   })
 
   it('works for Japanese lines, which break without a space', () => {
@@ -116,6 +154,11 @@ describe('reapplyEmphasis', () => {
 
   it('marks several phrases in one cue', () => {
     expect(reapplyEmphasis([cue("don't stop me now")], ['*Dont* *stop*'])[0].en).toBe("*don't* *stop* me now")
+  })
+
+  it('puts a {word} back with braces, in script order with the *phrases*', () => {
+    const out = reapplyEmphasis([cue('I reckon. In Japanese, renkon is lotus root.')], ['I *reckon*.', 'In Japanese, {renkon}.'])
+    expect(out[0].en).toBe('I *reckon*. In Japanese, {renkon} is lotus root.')
   })
 
   it('returns the cues as they were when the script has no markers', () => {

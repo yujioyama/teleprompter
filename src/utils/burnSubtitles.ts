@@ -19,7 +19,7 @@ import {
   type PunchInPlan,
   type StyledCue,
 } from './subtitleHook'
-import { EMPHASIS_COLOR, type Run } from './subtitleEmphasis'
+import { runColor, type Run } from './subtitleEmphasis'
 import {
   EMOJI_FONT_FAMILY,
   STICKER_EMOJI_PX,
@@ -123,7 +123,7 @@ export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePositio
 
 /**
  * Draw one line's runs centered on `centerX`: first every run's black
- * outline under a soft shadow, then the fills (white, emphasis yellow)
+ * outline under a soft shadow, then the fills (white, theme yellow, word mint)
  * without one, so the outline sits under the letters and never thins them.
  */
 function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, fontPx: number) {
@@ -146,7 +146,7 @@ function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: n
 
   x = left
   runs.forEach((run, i) => {
-    ctx.fillStyle = run.emphasized ? EMPHASIS_COLOR : '#ffffff'
+    ctx.fillStyle = runColor(run)
     ctx.fillText(run.text, x, y)
     x += widths[i]
   })
@@ -188,8 +188,8 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * Render one cue's subtitle (English above, Japanese smaller below) as a
  * transparent PNG as wide as the video and
  * exactly as tall as its layout: white outlined text, no box. Text is
- * wrapped onto balanced lines (see subtitleLayout); `*emphasized*` words are
- * yellow.
+ * wrapped onto balanced lines (see subtitleLayout); `*theme*` words are
+ * yellow and the `{word}` the episode introduces is mint.
  */
 export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; height: number }> {
   const layout = layoutCue(cue, canvasMeasure())

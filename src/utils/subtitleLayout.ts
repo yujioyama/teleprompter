@@ -62,7 +62,7 @@ export function fontFor(style: TextStyle, px: number): string {
 export interface TextBlockLayout {
   fontPx: number
   lines: string[]
-  /** `lines` split into plain and emphasized (`*…*`) runs, markers removed. */
+  /** `lines` split into plain and emphasized (`*…*`, `{…}`) runs, markers removed. */
   runs: Run[][]
   lineHeightPx: number
 }
