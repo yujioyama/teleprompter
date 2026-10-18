@@ -14,7 +14,7 @@ const TRACK = new Blob(['track'], { type: 'audio/mpeg' })
 const PREPARED = new Blob(['prepared'], { type: 'audio/mp4' })
 const JOINED = new Blob(['joined'], { type: 'video/mp4' })
 const MIXED = new Blob(['mixed'], { type: 'video/mp4' })
-const KEY: FinalAudioKey = { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural' }
+const KEY: FinalAudioKey = { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural', stopAt: null }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -53,7 +53,7 @@ describe('PreparedAudio', () => {
     prepared.prepare(COMBINED, { ...KEY }, track)
     await expect(prepared.get(COMBINED, KEY)).resolves.toBe(PREPARED)
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
-    expect(prepareFinalAudio).toHaveBeenCalledWith(COMBINED, TRACK, 0.3, true, 'natural')
+    expect(prepareFinalAudio).toHaveBeenCalledWith(COMBINED, TRACK, 0.3, true, 'natural', null)
   })
 
   it('has nothing for another source or key', () => {
@@ -98,7 +98,7 @@ describe('mixForExport', () => {
     prepared.prepare(COMBINED, KEY, async () => TRACK)
     const other = { ...KEY, volume: 0.6 }
     await expect(mixForExport(prepared, COMBINED, BURNED, TRACK, other)).resolves.toBe(MIXED)
-    expect(mixMusic).toHaveBeenCalledWith(BURNED, TRACK, 0.6, 'natural')
+    expect(mixMusic).toHaveBeenCalledWith(BURNED, TRACK, 0.6, 'natural', null)
     expect(joinVideoAndAudio).not.toHaveBeenCalled()
     expect(console.info).toHaveBeenCalledWith(expect.stringMatching(/mixing instead/))
   })

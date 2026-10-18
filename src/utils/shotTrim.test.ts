@@ -38,6 +38,7 @@ describe('resolveShotTrimSettings', () => {
     voicePreset: 'natural',
     defaultBgmId: null,
     bgmVolume: 0.3,
+    bgmStopBeforePunchline: true,
     subtitlePosition: 72,
     hookStyleEnabled: true,
     hookPosition: 50,

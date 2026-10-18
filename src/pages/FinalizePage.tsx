@@ -31,6 +31,7 @@ import { finishAudio } from '../utils/normalizeLoudness'
 import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
 import { raceAbort } from '../utils/cancellation'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
+import { punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
@@ -148,7 +149,7 @@ export default function FinalizePage() {
   const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled } = settings
   const { normalizeAudio, voicePreset } = settings
   const defaultTrack = defaultBgmTrack(settings)
-  const { bgmVolume } = settings
+  const { bgmVolume, bgmStopBeforePunchline } = settings
   // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
   const initialSubtitleState = (): SubtitleState => ({ ...INITIAL_SUBTITLE_STATE, position: settings.subtitlePosition })
   const script = id ? getScript(id) : undefined
@@ -557,6 +558,12 @@ export default function FinalizePage() {
     return () => clearTimeout(timer)
   }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook])
 
+  // Where the BGM drops out: just before the last shot, the punchline.
+  const bgmStopAt = useMemo(
+    () => punchlineStart(combinedClips.map(c => c.end - c.start), bgmStopBeforePunchline),
+    [combinedClips, bgmStopBeforePunchline],
+  )
+
   // Build the finished audio (usual BGM + loudness) while the subtitles
   // are worked on: they only change the picture, so after the burn the
   // BGM step just joins this audio to the burned video. Hardware path
@@ -568,14 +575,14 @@ export default function FinalizePage() {
       if (cancelled || !ok) return
       preparedAudio.prepare(
         combinedBlob,
-        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset },
+        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset, stopAt: bgmStopAt },
         () => fetchTrack(defaultTrack),
       )
     })
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, preparedAudio])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -960,6 +967,7 @@ export default function FinalizePage() {
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
+                    stopAt: bgmStopAt,
                   })
                 }}
                 onLeaveAuto={() => {

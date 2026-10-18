@@ -55,6 +55,7 @@ export async function prepareFinalAudio(
   volume: number,
   normalize: boolean,
   voice: VoicePreset,
+  stopAt: number | null = null,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(source), formats: ALL_FORMATS })
   let audio: AudioBuffer
@@ -68,7 +69,7 @@ export async function prepareFinalAudio(
     applyVoicePreset(channelsOf(decoded), decoded.sampleRate, voice)
     // The offline context cuts or pads the decoded audio to this length, so
     // no second full-length copy is held next to it (~23 MB a minute).
-    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate))
+    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate), stopAt)
   } finally {
     input.dispose()
   }

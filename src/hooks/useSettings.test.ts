@@ -11,6 +11,7 @@ const DEFAULTS = {
   voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
+  bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,

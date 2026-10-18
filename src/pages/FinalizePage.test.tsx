@@ -1315,7 +1315,7 @@ describe('FinalizePage with a usual BGM', () => {
     const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
     expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
-    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural'])
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', null])
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()

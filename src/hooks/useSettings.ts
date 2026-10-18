@@ -22,6 +22,8 @@ export interface AppSettings {
   defaultBgmId: string | null
   /** 0-1, the BGM step's volume slider. */
   bgmVolume: number
+  /** Drop the BGM out just before the punchline (the last shot). */
+  bgmStopBeforePunchline: boolean
   /** 0-100, where the subtitle step starts its position. */
   subtitlePosition: number
   /** Draw the first shot's cues at the hook position, from its first frame. */
@@ -65,6 +67,7 @@ const DEFAULTS: AppSettings = {
   voicePreset: 'natural',
   defaultBgmId: 'lofi-tokyo',
   bgmVolume: 0.3,
+  bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,
