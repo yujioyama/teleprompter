@@ -1,4 +1,4 @@
-export type MusicGenre = 'lofi' | 'pop' | 'cinematic' | 'corporate'
+export type MusicGenre = 'musicbox' | 'lofi' | 'pop' | 'cinematic' | 'corporate'
 
 export interface MusicTrack {
   id: string
@@ -10,6 +10,7 @@ export interface MusicTrack {
 }
 
 export const GENRE_LABELS: Record<MusicGenre, string> = {
+  musicbox: 'オルゴール',
   lofi: 'Lo-fi / チル',
   pop: 'ポップ / アップビート',
   cinematic: '感動 / シネマチック',
@@ -17,13 +18,49 @@ export const GENRE_LABELS: Record<MusicGenre, string> = {
 }
 
 /** Order genres are offered in. */
-export const GENRE_ORDER: MusicGenre[] = ['lofi', 'pop', 'cinematic', 'corporate']
+export const GENRE_ORDER: MusicGenre[] = ['musicbox', 'lofi', 'pop', 'cinematic', 'corporate']
 
 // Sourced from Pixabay Music (pixabay.com/music), used under the Pixabay
 // Content License (free to use, no attribution required, modification
 // allowed) — see https://pixabay.com/service/license-summary/.
 // `credit` is not currently rendered anywhere in the UI; kept for reference.
 export const MUSIC_TRACKS: MusicTrack[] = [
+  // Music box (added 2026-10-18): a cute sound under the deadpan voice.
+  {
+    id: 'musicbox-lilis-dream',
+    title: "Lili's Dream",
+    genre: 'musicbox',
+    credit: 'Alban_Gogh (Pixabay)',
+    file: 'music/musicbox-01-lilis-dream.mp3',
+  },
+  {
+    id: 'musicbox-clockwork-ballerina',
+    title: 'Clockwork Ballerina',
+    genre: 'musicbox',
+    credit: 'geoffharvey (Pixabay)',
+    file: 'music/musicbox-02-clockwork-ballerina.mp3',
+  },
+  {
+    id: 'musicbox-sleep-lullaby',
+    title: 'Music Box Sleep Lullaby',
+    genre: 'musicbox',
+    credit: 'Tunetank (Pixabay)',
+    file: 'music/musicbox-03-sleep-lullaby.mp3',
+  },
+  {
+    id: 'musicbox-twilight',
+    title: 'Music Box Twilight',
+    genre: 'musicbox',
+    credit: 'Playlistsons (Pixabay)',
+    file: 'music/musicbox-04-twilight.mp3',
+  },
+  {
+    id: 'musicbox-cat-box',
+    title: 'Cat Box',
+    genre: 'musicbox',
+    credit: 'ChillRIghtsMusic (Pixabay)',
+    file: 'music/musicbox-05-cat-box.mp3',
+  },
   {
     id: 'lofi-sunny-cafe',
     title: 'Lofi Sunny Cafe',
