@@ -6,10 +6,11 @@ import styles from './BgmSettings.module.css'
 interface BgmSettingsProps {
   trackId: string | null
   volume: number
-  onChange: (patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'bgmVolume'>>) => void
+  stopBeforePunchline: boolean
+  onChange: (patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'bgmVolume' | 'bgmStopBeforePunchline'>>) => void
 }
 
-export default function BgmSettings({ trackId, volume, onChange }: BgmSettingsProps) {
+export default function BgmSettings({ trackId, volume, stopBeforePunchline, onChange }: BgmSettingsProps) {
   const track = MUSIC_TRACKS.find(t => t.id === trackId) ?? null
   const { previewingId, toggle, stop } = useTrackPreview()
   const previewing = previewingId !== null && previewingId === track?.id
@@ -62,6 +63,20 @@ export default function BgmSettings({ trackId, volume, onChange }: BgmSettingsPr
           disabled={!track}
           onChange={e => onChange({ bgmVolume: parseFloat(e.target.value) })}
         />
+      </div>
+
+      <div className={`${styles.field} ${!track ? styles.disabled : ''}`}>
+        <label className={styles.header}>
+          <span className={styles.label}>オチの直前でBGMを止める</span>
+          <input
+            aria-label="オチの直前でBGMを止める"
+            type="checkbox"
+            checked={stopBeforePunchline}
+            disabled={!track}
+            onChange={e => onChange({ bgmStopBeforePunchline: e.target.checked })}
+          />
+        </label>
+        <div className={styles.sub}>最後のショットの手前でBGMがふっと消え、最後の一言は無音になります</div>
       </div>
     </div>
   )
