@@ -1,5 +1,6 @@
 function getExtension(mimeType: string): string {
   if (mimeType === 'application/json') return 'json'
+  if (mimeType === 'image/png') return 'png'
   return mimeType.includes('mp4') ? 'mp4' : 'webm'
 }
 

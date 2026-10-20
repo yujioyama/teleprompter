@@ -1,0 +1,86 @@
+.maker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.frame {
+  position: relative;
+  width: min(100%, 320px);
+  aspect-ratio: 9 / 16;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Feeds the canvas only. Kept on screen (but invisible) so iOS still decodes its frames. */
+.source {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The 3:4 window the profile grid shows: 240px of 1920 cut off at top and bottom. */
+.gridGuide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12.5%;
+  bottom: 12.5%;
+  border-top: 2px dashed rgba(255, 255, 255, 0.6);
+  border-bottom: 2px dashed rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.text {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 1rem;
+}
+
+.error {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+}
+
+.saveBtn {
+  background: var(--accent);
+  color: #fff;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+}
