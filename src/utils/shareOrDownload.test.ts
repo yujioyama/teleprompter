@@ -47,6 +47,18 @@ describe('shareOrDownload', () => {
     expect(files[0].type).toBe('application/json')
   })
 
+  it('shares a cover image with a .png extension', async () => {
+    const shareMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: shareMock, configurable: true })
+
+    await shareOrDownload(new Blob(['png'], { type: 'image/png' }), 'reckon-cover')
+
+    const [{ files }] = shareMock.mock.calls[0]
+    expect(files[0].name).toBe('reckon-cover.png')
+    expect(files[0].type).toBe('image/png')
+  })
+
   it('returns false without downloading when the user cancels the share sheet', async () => {
     const abortError = new DOMException('cancelled', 'AbortError')
     Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })

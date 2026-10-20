@@ -42,6 +42,8 @@ import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
 import { ShotCueInput } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
+import CoverMaker from '../components/CoverMaker'
+import { coverWordsOf } from '../utils/coverImage'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
 import { buildVideoRecord, type BurnInputs, type MixInputs } from '../utils/videoRecord'
@@ -200,6 +202,8 @@ export default function FinalizePage() {
   // brought to the platforms' level, or `finalBlob` itself if that's off.
   const [exportBlob, setExportBlob] = useState<Blob | null>(null)
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
+  // The export step's cover maker; while open, the final preview is hidden so only one video decodes.
+  const [coverOpen, setCoverOpen] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
@@ -997,7 +1001,7 @@ export default function FinalizePage() {
           {step === 'export' && exportBlob && finalUrl && (
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
-              <video className={styles.preview} src={finalUrl} controls playsInline />
+              {!coverOpen && <video className={styles.preview} src={finalUrl} controls playsInline />}
               {loudnessState === 'failed' && (
                 <p className={styles.missing}>音声の自動調整に失敗したため、元の音声のまま保存されます</p>
               )}
@@ -1022,6 +1026,21 @@ export default function FinalizePage() {
                       ? 'コピーできませんでした'
                       : 'キャプションをコピー'}
                 </button>
+              )}
+              {combinedUrl && (
+                <button className={styles.copyCaptionBtn} onClick={() => setCoverOpen(open => !open)}>
+                  {coverOpen ? 'カバー画像を閉じる' : 'カバー画像を作る'}
+                </button>
+              )}
+              {coverOpen && combinedUrl && (
+                <CoverMaker
+                  videoUrl={combinedUrl}
+                  initialWords={coverWordsOf(
+                    script.shots.map(s => s.text),
+                    subtitleCues.map(c => c.ja),
+                  )}
+                  filenameBase={script.title}
+                />
               )}
             </div>
           )}
