@@ -25,13 +25,14 @@ function saveToStorage(scripts: Script[]): void {
 export function useScripts() {
   const [scripts, setScripts] = useState<Script[]>(loadFromStorage)
 
-  function createScript(title: string, shots: Shot[], caption?: string): Script {
+  function createScript(title: string, shots: Shot[], caption?: string, oneTake?: boolean): Script {
     const now = new Date().toISOString()
     const script: Script = {
       id: generateId(),
       title,
       shots,
       ...(caption ? { caption } : {}),
+      ...(oneTake ? { oneTake } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -44,12 +45,13 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
       // A cleared caption is stored as no caption, as createScript does.
       if (!next.caption) delete next.caption
+      if (!next.oneTake) delete next.oneTake
       return next
     })
     saveToStorage(updated)

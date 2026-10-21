@@ -31,9 +31,15 @@ export function normalizeRequest(clip: ShotClip): EncodeRequest {
   }
 }
 
-/** How long the joined video's first shot is, or null with no shots. */
-function firstShotDurationOf(clips: ShotClip[]): number | null {
-  return clips.length > 0 ? clips[0].end - clips[0].start : null
+/**
+ * How long the hook lasts at the start of the joined video: its first shot,
+ * or null with no shots. `hookEnd` ends it sooner — a 一発撮り take is one
+ * shot, and its hook is just its first line.
+ */
+function firstShotDurationOf(clips: ShotClip[], hookEnd?: number): number | null {
+  if (clips.length === 0) return null
+  const first = clips[0].end - clips[0].start
+  return hookEnd !== undefined ? Math.min(first, hookEnd) : first
 }
 
 /** The peaks' and the punchline's zoom over the joined timeline, read from the subtitles. */
@@ -97,8 +103,10 @@ export function shotBurnRequests(
   cues: SubtitleCue[],
   position: SubtitlePosition,
   hook: HookOptions,
+  hookEnd?: number,
 ): EncodeRequest[] {
-  const styled = styleCues(cues, firstShotDurationOf(clips), hook.style)
+  const hookSpan = firstShotDurationOf(clips, hookEnd)
+  const styled = styleCues(cues, hookSpan, hook.style)
   const plan = fairyPlanOf(clips, cues, hook, position)
   const zoomPlan = midZoomPlanOf(clips, cues, hook)
   let offset = 0
@@ -107,7 +115,7 @@ export function shotBurnRequests(
     const look: SubtitleLook = {
       position,
       hook,
-      firstShotDuration: i === 0 ? duration : null,
+      firstShotDuration: i === 0 ? hookSpan : null,
       fairies: fairiesForShot(plan, offset, duration),
       midZoom: midZoomForShot(zoomPlan, offset, duration),
     }
@@ -181,16 +189,18 @@ export async function burnSubtitlesByShot(
   hook: HookOptions,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  hookEnd?: number,
 ): Promise<Blob> {
   const plan = fairyPlanOf(clips, cues, hook, position)
   const zoomPlan = midZoomPlanOf(clips, cues, hook)
-  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, firstShotDurationOf(clips)) && plan.length === 0 && zoomPlan.length === 0) {
+  const hookSpan = firstShotDurationOf(clips, hookEnd)
+  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, hookSpan) && plan.length === 0 && zoomPlan.length === 0) {
     return combinedBlob
   }
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd), onProgress, signal)
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -209,7 +219,7 @@ export async function burnSubtitlesByShot(
   return burnSubtitles(
     combinedBlob,
     cues,
-    { position, hook, firstShotDuration: firstShotDurationOf(clips), fairies: plan, midZoom: zoomPlan },
+    { position, hook, firstShotDuration: hookSpan, fairies: plan, midZoom: zoomPlan },
     onProgress,
     signal,
   )

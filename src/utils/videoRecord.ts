@@ -2,7 +2,7 @@ import type { TrimRecord, VideoRecord } from '../../shared/videoRecord'
 import type { Script } from '../types'
 import { fairiesFromSubtitles } from './fairyPlan'
 import { planMidZoom } from './midZoom'
-import type { SubtitleCue } from './subtitleCues'
+import { takeLinesOf, type SubtitleCue } from './subtitleCues'
 import { stripEmphasis } from './subtitleEmphasis'
 import { styleCues, type HookOptions } from './subtitleHook'
 import { stickerOf, stripStickers } from './subtitleSticker'
@@ -46,7 +46,8 @@ export function buildVideoRecord(input: {
   return {
     scriptId: script.id,
     title: script.title,
-    hookLine: stripStickers(stripEmphasis(script.shots[0]?.text ?? '')),
+    // A 一発撮り shot holds every line; line 1 is the hook.
+    hookLine: stripStickers(stripEmphasis(takeLinesOf(script.shots[0]?.text ?? '')[0] ?? '')),
     savedAt: input.savedAt,
     durationSec: input.durationSec,
     shotCount: input.shotCount,
@@ -68,6 +69,7 @@ export function buildVideoRecord(input: {
       voicePreset: input.voicePreset,
       trim: input.trim,
       midZoom: burn ? planMidZoom(burn.cues, burn.durations, burn.hook).length > 0 : false,
+      oneTake: Boolean(script.oneTake),
     },
   }
 }

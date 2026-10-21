@@ -126,6 +126,69 @@ export function withJapaneseLines(cues: SubtitleCue[], lines: string[]): ParseSu
 export interface ShotCueInput {
   text: string
   duration: number
+  /**
+   * 一発撮り: where each line after the first starts, in seconds from the
+   * shot's first frame. With one start per line break, the shot is
+   * subtitled line by line instead of with one cue.
+   */
+  lineStarts?: number[]
+}
+
+/** The lines of a 一発撮り shot's text, one subtitle each. */
+export function takeLinesOf(text: string): string[] {
+  return text.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+}
+
+/** A silence shorter than this is a breath inside a line, not a line break. */
+const MIN_LINE_PAUSE_S = 0.2
+/** No line is given less than this, however the pauses fall. */
+const MIN_LINE_S = 0.5
+/** The next line's subtitle shows a moment before its first word. */
+const LINE_LEAD_S = 0.15
+
+/**
+ * Where each line after the first starts in a 一発撮り take, in seconds from
+ * the clip's first frame (the clip being [clipStart, clipEnd] of the take).
+ *
+ * The lines are read with a pause between them, so the longest pauses in
+ * the speech are taken as the line breaks — skipping any that would leave a
+ * line implausibly short. When there aren't enough pauses (or none were
+ * found), the clip is shared out by each line's length instead. Either way
+ * the subtitle editor can move a break by hand afterwards.
+ */
+export function lineStartsInTake(
+  lines: string[],
+  clipStart: number,
+  clipEnd: number,
+  pauses?: { start: number; end: number }[],
+): number[] {
+  const breaks = lines.length - 1
+  const duration = clipEnd - clipStart
+  if (breaks <= 0 || duration <= 0) return []
+
+  const inside = (pauses ?? [])
+    .filter(p => p.end - p.start >= MIN_LINE_PAUSE_S && p.start > clipStart && p.end < clipEnd)
+    .sort((a, b) => b.end - b.start - (a.end - a.start))
+  const chosen: number[] = []
+  for (const pause of inside) {
+    if (chosen.length === breaks) break
+    // The next line starts just before speech resumes, never inside the pause's first half.
+    const at = Math.max((pause.start + pause.end) / 2, pause.end - LINE_LEAD_S) - clipStart
+    // Every line keeps at least MIN_LINE_S: far enough from each break so far and both ends.
+    if ([0, ...chosen, duration].every(b => Math.abs(b - at) >= MIN_LINE_S)) chosen.push(at)
+  }
+  if (chosen.length === breaks) return chosen.sort((a, b) => a - b)
+
+  // By length: each line's share of the clip, from its character count.
+  const weights = lines.map(line => Math.max(1, line.length))
+  const total = weights.reduce((sum, w) => sum + w, 0)
+  const starts: number[] = []
+  let acc = 0
+  for (let i = 0; i < breaks; i++) {
+    acc += weights[i]
+    starts.push((acc / total) * duration)
+  }
+  return starts
 }
 
 // Cue timing follows the requested trim durations exactly; it does not
@@ -136,7 +199,13 @@ export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
   let offset = 0
   entries.forEach((entry, i) => {
     const text = entry.text.trim()
-    if (text) {
+    const lines = entry.lineStarts ? takeLinesOf(text) : []
+    if (entry.lineStarts && lines.length > 1 && entry.lineStarts.length === lines.length - 1) {
+      const bounds = [0, ...entry.lineStarts, entry.duration]
+      lines.forEach((line, j) => {
+        cues.push({ id: `shot-${i}-line-${j}`, start: offset + bounds[j], end: offset + bounds[j + 1], en: line, ja: null })
+      })
+    } else if (text) {
       cues.push({ id: `shot-${i}`, start: offset, end: offset + entry.duration, en: text, ja: null })
     }
     offset += entry.duration
@@ -184,4 +253,22 @@ export function cuesByShot<T extends { start: number }>(cues: T[], durations: nu
 /** Each shot's English subtitles joined, which is where its fairy's emoji is read from. */
 export function shotTextsOf(cues: { start: number; en: string }[], durations: number[]): string[] {
   return cuesByShot(cues, durations).map(group => group.map(c => c.en).join(' '))
+}
+
+/** The shortest a line can be squeezed to by moving its neighbours' breaks. */
+const MIN_SHIFTED_LINE_S = 0.3
+
+/**
+ * Move where cue `id` starts by `delta` seconds, the cue before it ending
+ * there too, so the lines stay back to back. Neither line is squeezed
+ * below MIN_SHIFTED_LINE_S; the first cue (nothing before it) can't move.
+ */
+export function shiftCueStart<T extends SubtitleCue>(cues: T[], id: string, delta: number): T[] {
+  const i = cues.findIndex(c => c.id === id)
+  if (i <= 0) return cues
+  const prev = cues[i - 1]
+  const cue = cues[i]
+  const at = Math.min(Math.max(cue.start + delta, prev.start + MIN_SHIFTED_LINE_S), cue.end - MIN_SHIFTED_LINE_S)
+  if (Math.abs(at - cue.start) < 1e-9) return cues
+  return cues.map((c, j) => (j === i - 1 ? { ...c, end: at } : j === i ? { ...c, start: at } : c))
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines } from '../utils/subtitleCues'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, shiftCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -11,6 +11,7 @@ import {
 } from '../utils/subtitlePosition'
 import {
   hookOptionsOf,
+  oneTakeHookSettings,
   PUNCH_IN_ZOOMS,
   punchInScale,
   followsFrames,
@@ -95,6 +96,12 @@ interface SubtitleWorkflowProps {
    * Claude to send the Japanese back and this step picks it up by itself.
    */
   inboxKey?: string
+  /**
+   * 一発撮り: the video is one take subtitled line by line. The hook lasts
+   * the first line, line starts can be nudged, and there are no fairies or
+   * mid-video zooms.
+   */
+  oneTake?: boolean
 }
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
@@ -141,6 +148,7 @@ export default function SubtitleWorkflow({
   onBurned,
   transcribe = transcribeSpeech,
   inboxKey = '',
+  oneTake = false,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
@@ -161,9 +169,13 @@ export default function SubtitleWorkflow({
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
-  const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
+  const hook = useMemo(
+    () => hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
+    [hookSettings, oneTake],
+  )
   // The first clip of the 結合: hook cues are the ones starting within it.
-  const firstShotDuration = shotCueInputs[0]?.duration ?? null
+  // In a 一発撮り take that's its first line.
+  const firstShotDuration = oneTake ? (cues[0]?.end ?? null) : (shotCueInputs[0]?.duration ?? null)
   // Read from the subtitles' emoji, so editing them is what the preview shows.
   const fairies = useMemo(
     () => fairiesFromSubtitles(cues, shotCueInputs.map(s => s.duration), hook, position),
@@ -263,6 +275,10 @@ export default function SubtitleWorkflow({
 
   function handleEditEn(id: string, text: string) {
     patch({ cues: cues.map(c => (c.id === id ? { ...c, en: text } : c)) })
+  }
+
+  function handleShiftStart(id: string, delta: number) {
+    patch({ cues: shiftCueStart(cues, id, delta) })
   }
 
   function handleEditJa(id: string, text: string) {
@@ -413,7 +429,12 @@ export default function SubtitleWorkflow({
             <p className={styles.sectionTitle}>
               {source === 'speech' ? '英語字幕（聞き取り違いがあれば直してください）' : '英語字幕（必要なら修正してください）'}
             </p>
-            <SubtitleEditor cues={cues} onEditEn={handleEditEn} onEditJa={handleEditJa} />
+            <SubtitleEditor
+              cues={cues}
+              onEditEn={handleEditEn}
+              onEditJa={handleEditJa}
+              onShiftStart={oneTake ? handleShiftStart : undefined}
+            />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
             <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
           </div>
@@ -570,15 +591,19 @@ export default function SubtitleWorkflow({
                   </div>
                 </>
               )}
-              <label className={styles.toggleRow}>
-                <input
-                  type="checkbox"
-                  checked={hookSettings.midZoomEnabled}
-                  onChange={e => onHookSettingsChange({ midZoomEnabled: e.target.checked })}
-                />
-                中盤のズーム
-              </label>
-              <p className={styles.hint}>途中の山場（英語字幕に絵文字がある行）でじわっと寄り、最後のオチはカットの瞬間に寄ります（字幕は拡大しません）</p>
+              {!oneTake && (
+                <>
+                  <label className={styles.toggleRow}>
+                    <input
+                      type="checkbox"
+                      checked={hookSettings.midZoomEnabled}
+                      onChange={e => onHookSettingsChange({ midZoomEnabled: e.target.checked })}
+                    />
+                    中盤のズーム
+                  </label>
+                  <p className={styles.hint}>途中の山場（英語字幕に絵文字がある行）でじわっと寄り、最後のオチはカットの瞬間に寄ります（字幕は拡大しません）</p>
+                </>
+              )}
               <p className={styles.sectionTitle}>ステッカーの位置</p>
               <div className={styles.positionRow} role="group" aria-label="ステッカーの位置">
                 {STICKER_PLACEMENT_OPTIONS.map(o => (
@@ -611,6 +636,8 @@ export default function SubtitleWorkflow({
                   {hookSettings.stickerMotion !== 'none' && (
                     <p className={styles.hint}>画面を旅して、最初のショットが終わるまでに元の位置に戻ってきます。ルートは動画ごとに決まります（最初のショットが短いと動きません）</p>
                   )}
+                  {!oneTake && (
+                  <>
                   <p className={styles.sectionTitle}>妖精（途中と締め）</p>
                   <div className={styles.positionRow} role="group" aria-label="妖精（途中と締め）">
                     {[{ label: 'オン', value: true }, { label: 'オフ', value: false }].map(o => (
@@ -625,7 +652,9 @@ export default function SubtitleWorkflow({
                     ))}
                   </div>
                   <p className={styles.hint}>途中のショットの英語字幕に入れた絵文字が妖精になって横切り、最後のショットで最初の字幕の絵文字が戻ってきます</p>
-                  {(hookSettings.stickerMotion !== 'none' || hookSettings.fairyEnabled) && (
+                  </>
+                  )}
+                  {(hookSettings.stickerMotion !== 'none' || (!oneTake && hookSettings.fairyEnabled)) && (
                     <button
                       className={styles.copyBtn}
                       onClick={() => onHookSettingsChange({ stickerRoute: hookSettings.stickerRoute + 1 })}

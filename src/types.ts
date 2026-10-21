@@ -14,6 +14,11 @@ export interface Script {
   shots: Shot[]
   /** TikTok caption to post with the video. */
   caption?: string
+  /**
+   * 一発撮り: the whole script is one shot, recorded in a single take, with
+   * one line of it per subtitle (split where the pauses are).
+   */
+  oneTake?: boolean
   createdAt: string
   updatedAt: string
 }

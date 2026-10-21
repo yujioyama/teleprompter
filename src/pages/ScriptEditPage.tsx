@@ -64,6 +64,8 @@ export default function ScriptEditPage() {
   const [splitOptions, setSplitOptions] = useState<SplitOptions>(
     () => existingScript ? DEFAULT_SPLIT_OPTIONS : NEW_SCRIPT_SPLIT_OPTIONS
   )
+  // 一発撮り is the usual way to film now (2026-10-21), so new scripts start with it.
+  const [oneTake, setOneTake] = useState<boolean>(() => existingScript ? Boolean(existingScript.oneTake) : true)
 
   // Grow the textarea to fit its content so a long pasted script is visible
   // in full, instead of hiding most of it in a small scroll box nested
@@ -95,6 +97,12 @@ export default function ScriptEditPage() {
   }
 
   function handleSplit() {
+    if (oneTake) {
+      // One shot holding every line; each line becomes one subtitle.
+      const lines = splitShots(body, NEW_SCRIPT_SPLIT_OPTIONS)
+      setPreview(lines.length > 0 ? [lines.join('\n')] : [])
+      return
+    }
     const segments = splitShots(body, splitOptions)
     setPreview(segments)
   }
@@ -111,11 +119,11 @@ export default function ScriptEditPage() {
 
     if (existingScript) {
       const shots = reconcileShots(existingScript.shots, preview, generateId)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim() })
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
-      const script = createScript(title.trim(), shots, caption.trim())
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake)
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
@@ -167,6 +175,19 @@ export default function ScriptEditPage() {
           rows={8}
         />
 
+        <label className={styles.splitOptionItem}>
+          <input
+            type="checkbox"
+            checked={oneTake}
+            onChange={e => {
+              setOneTake(e.target.checked)
+              setPreview([])
+            }}
+          />
+          一発撮り（最初から最後まで1回で撮る。字幕は1行ずつ自動で切り替え）
+        </label>
+
+        {!oneTake && (
         <div className={styles.splitOptions}>
           <span className={styles.splitOptionsLabel}>区切り単位</span>
           <div className={styles.splitOptionsList}>
@@ -187,17 +208,20 @@ export default function ScriptEditPage() {
             ))}
           </div>
         </div>
+        )}
 
         <button className={styles.splitBtn} onClick={handleSplit}>
-          自動分割する
+          {oneTake ? '行に分ける' : '自動分割する'}
         </button>
 
         {preview.length > 0 && (
           <div className={styles.preview}>
             <p className={styles.previewLabel}>
-              分割結果（{preview.length}ショット）
+              {oneTake
+                ? `一発撮り（字幕${preview[0].split('\n').length}行）`
+                : `分割結果（${preview.length}ショット）`}
             </p>
-            {preview.map((text, i) => (
+            {(oneTake ? preview[0].split('\n') : preview).map((text, i) => (
               <div key={i} className={styles.previewItem}>
                 <span className={styles.previewNum}>{i + 1}</span>
                 <span className={styles.previewText}>{text}</span>

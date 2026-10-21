@@ -47,6 +47,11 @@ export interface SpeechRegion {
   /** Start of the sound just after the speech (e.g. the stop tap), or the duration. */
   ceiling: number
   duration: number
+  /**
+   * The silences inside the speech, in time order — where a 一発撮り take is
+   * split into its lines. Missing on regions found before it was added.
+   */
+  pauses?: { start: number; end: number }[]
 }
 
 interface Segment {
@@ -125,12 +130,16 @@ export function findSpeechRegion(samples: Float32Array, sampleRate: number): Spe
   while (first > 0 && segments[first].start - segments[first - 1].end <= ATTACH_GAP_S) first--
   while (last < segments.length - 1 && segments[last + 1].start - segments[last].end <= ATTACH_GAP_S) last++
 
+  const pauses: { start: number; end: number }[] = []
+  for (let i = first; i < last; i++) pauses.push({ start: segments[i].end, end: segments[i + 1].start })
+
   return {
     speechStart: segments[first].start,
     speechEnd: segments[last].end,
     floor: segments[first - 1]?.end ?? 0,
     ceiling: segments[last + 1]?.start ?? duration,
     duration,
+    pauses,
   }
 }
 
