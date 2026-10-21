@@ -19,14 +19,13 @@ import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
-import { finishAudio } from '../utils/normalizeLoudness'
-import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
 import { punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
+import { useExport } from '../hooks/useExport'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
@@ -59,7 +58,6 @@ interface ShotEntry {
   trimEdited: boolean
 }
 
-type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
 
@@ -178,17 +176,11 @@ export default function FinalizePage() {
   const [bgmAutoPending, setBgmAutoPending] = useState(false)
   const [preparedAudio] = useState(() => new PreparedAudio())
   const urlsRef = useRef<string[]>([])
-  const finalUrlRef = useRef<string | null>(null)
-  const [finalUrl, setFinalUrl] = useState<string | null>(null)
-  // What the export step previews and saves: `finalBlob` with its loudness
-  // brought to the platforms' level, or `finalBlob` itself if that's off.
-  const [exportBlob, setExportBlob] = useState<Blob | null>(null)
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
   // The export step's cover maker; while open, the final preview is hidden so only one video decodes.
   const [coverOpen, setCoverOpen] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
-  const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
   // Each shot's current take (StoredShotVideo.updatedAt), which saved cuts
   // and the saved 結合 are tied to.
@@ -555,61 +547,10 @@ export default function FinalizePage() {
   // final audio can be brought to the level Instagram/TikTok play back at.
   // The voice preset goes on the voice before any BGM under it, so this pass
   // applies it only when no mix did.
-  const hasMix = mixed !== null
-  useEffect(() => {
-    if (step !== 'export' || !finalBlob) {
-      setExportBlob(null)
-      setLoudnessState('idle')
-      return
-    }
-    const finish: AudioFinish = { voice: hasMix ? 'none' : voicePreset, normalize: normalizeAudio }
-    if (isNoFinish(finish)) {
-      setExportBlob(finalBlob)
-      setLoudnessState('idle')
-      return
-    }
-    let cancelled = false
-    setExportBlob(null)
-    setLoudnessState('normalizing')
-    finishAudio(finalBlob, finish).then(
-      normalized => {
-        if (cancelled) return
-        setExportBlob(normalized)
-        setLoudnessState('idle')
-      },
-      err => {
-        if (cancelled) return
-        // Still let the video be saved, just with its audio as it was.
-        console.warn('[FinalizePage] finishing the audio failed:', err)
-        setExportBlob(finalBlob)
-        setLoudnessState('failed')
-      },
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [step, finalBlob, hasMix, normalizeAudio, voicePreset])
-
-  useEffect(() => {
-    if (!exportBlob) {
-      if (finalUrlRef.current) {
-        URL.revokeObjectURL(finalUrlRef.current)
-        finalUrlRef.current = null
-      }
-      setFinalUrl(null)
-      return
-    }
-    const url = URL.createObjectURL(exportBlob)
-    if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
-    finalUrlRef.current = url
-    setFinalUrl(url)
-  }, [exportBlob])
-
-  useEffect(() => {
-    return () => {
-      if (finalUrlRef.current) URL.revokeObjectURL(finalUrlRef.current)
-    }
-  }, [])
+  const { blob: exportBlob, url: finalUrl, loudness: loudnessState } = useExport(
+    step === 'export' ? finalBlob : null,
+    { voice: mixed ? 'none' : voicePreset, normalize: normalizeAudio },
+  )
 
   async function handleCombine() {
     // Re-combining invalidates any later step's output. `completedSteps`

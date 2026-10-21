@@ -3,6 +3,7 @@ import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, pars
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { useObjectUrl } from '../hooks/useObjectUrl'
 import {
   SubtitlePosition,
   SUBTITLE_POSITION_BOTTOM,
@@ -150,7 +151,7 @@ export default function SubtitleWorkflow({
   const [previewTime, setPreviewTime] = useState(0)
   // The zoom in is only shown while playing: it would scale (and clip) the native controls.
   const [previewPlaying, setPreviewPlaying] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const previewUrl = useObjectUrl(combinedBlob)
   const [burnProgress, setBurnProgress] = useState(0)
   const [transcribeProgress, setTranscribeProgress] = useState<WhisperProgress | null>(null)
   const [copyToastVisible, setCopyToastVisible] = useState(false)
@@ -191,20 +192,6 @@ export default function SubtitleWorkflow({
   function patch(changes: Partial<SubtitleState>) {
     onStateChange(prev => ({ ...prev, ...changes }))
   }
-
-  // Create the preview object URL inside the effect (not via useMemo) and
-  // revoke the previous one in this same effect's cleanup. Under StrictMode's
-  // dev-only mount→unmount→remount simulation, an effect's cleanup always
-  // reruns before its body reruns on the same deps — so the URL created here
-  // is always the one currently revoked, unlike useMemo (which caches across
-  // the simulated remount and would keep returning an already-revoked URL).
-  useEffect(() => {
-    const url = URL.createObjectURL(combinedBlob)
-    setPreviewUrl(url)
-    return () => {
-      URL.revokeObjectURL(url)
-    }
-  }, [combinedBlob])
 
   useEffect(() => {
     return () => {
