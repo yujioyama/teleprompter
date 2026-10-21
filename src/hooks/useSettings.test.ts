@@ -9,7 +9,7 @@ const DEFAULTS = {
   trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
-  defaultBgmId: 'musicbox-lilis-dream',
+  defaultBgmId: 'warmpiano-my-nightly-prayer',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
@@ -28,6 +28,7 @@ const DEFAULTS = {
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   inboxKey: '',
+  bgmDefaultRev: 1,
 }
 
 beforeEach(() => {
@@ -134,20 +135,35 @@ describe('useSettings', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ trimEnabled: false }))
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toMatchObject({
-      defaultBgmId: 'musicbox-lilis-dream',
+      defaultBgmId: 'warmpiano-my-nightly-prayer',
       bgmVolume: 0.3,
       subtitlePosition: SUBTITLE_POSITION_BOTTOM,
     })
   })
 
-  it('moves a BGM left on the old Tokyo Lofi default to the music box, keeping a later choice', () => {
+  it('moves a BGM left on the old Tokyo Lofi default to the current default, keeping a later choice', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: 'lofi-tokyo' }))
-    expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('musicbox-lilis-dream')
+    expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('warmpiano-my-nightly-prayer')
     localStorage.setItem(
       'teleprompter_settings',
       JSON.stringify({ defaultBgmId: 'lofi-tokyo', bgmStopBeforePunchline: true }),
     )
     expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('lofi-tokyo')
+  })
+
+  it('moves a BGM left on the music box default to the warm piano, keeping a later choice', () => {
+    localStorage.setItem(
+      'teleprompter_settings',
+      JSON.stringify({ defaultBgmId: 'musicbox-lilis-dream', bgmStopBeforePunchline: true }),
+    )
+    expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('warmpiano-my-nightly-prayer')
+    localStorage.setItem(
+      'teleprompter_settings',
+      JSON.stringify({ defaultBgmId: 'musicbox-lilis-dream', bgmStopBeforePunchline: true, bgmDefaultRev: 1 }),
+    )
+    expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('musicbox-lilis-dream')
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ defaultBgmId: 'summer-pop' }))
+    expect(renderHook(() => useSettings()).result.current[0].defaultBgmId).toBe('summer-pop')
   })
 
   it('stores the hook settings, defaulting older stored settings to them', () => {

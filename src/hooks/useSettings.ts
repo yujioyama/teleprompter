@@ -56,6 +56,8 @@ export interface AppSettings {
   lastShotPaddingEnd: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
+  /** Which usual-BGM default this object was saved under (see migrateSettings). */
+  bgmDefaultRev: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -65,7 +67,7 @@ const DEFAULTS: AppSettings = {
   trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
-  defaultBgmId: 'musicbox-lilis-dream',
+  defaultBgmId: 'warmpiano-my-nightly-prayer',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_BOTTOM,
@@ -84,6 +86,7 @@ const DEFAULTS: AppSettings = {
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   inboxKey: '',
+  bgmDefaultRev: 1,
 }
 
 /** Stored settings brought up to date with the current shape. */
@@ -113,6 +116,11 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // The usual BGM moved to a music box (2026-10-18); one left on the old
   // default follows. Saved since, a settings object has bgmStopBeforePunchline.
   if (!('bgmStopBeforePunchline' in next) && next.defaultBgmId === 'lofi-tokyo') {
+    next.defaultBgmId = DEFAULTS.defaultBgmId
+  }
+  // The usual BGM moved to a warm solo piano (2026-10-21); one left on the
+  // music box follows. Saved since, a settings object has bgmDefaultRev.
+  if (!('bgmDefaultRev' in next) && next.defaultBgmId === 'musicbox-lilis-dream') {
     next.defaultBgmId = DEFAULTS.defaultBgmId
   }
   return next as Partial<AppSettings>

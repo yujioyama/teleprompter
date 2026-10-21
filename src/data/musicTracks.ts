@@ -1,4 +1,4 @@
-export type MusicGenre = 'musicbox' | 'lofi' | 'pop' | 'cinematic' | 'corporate'
+export type MusicGenre = 'warmpiano' | 'musicbox' | 'lofi' | 'pop' | 'cinematic' | 'corporate'
 
 export interface MusicTrack {
   id: string
@@ -10,6 +10,7 @@ export interface MusicTrack {
 }
 
 export const GENRE_LABELS: Record<MusicGenre, string> = {
+  warmpiano: '温かいピアノ',
   musicbox: 'オルゴール',
   lofi: 'Lo-fi / チル',
   pop: 'ポップ / アップビート',
@@ -18,13 +19,22 @@ export const GENRE_LABELS: Record<MusicGenre, string> = {
 }
 
 /** Order genres are offered in. */
-export const GENRE_ORDER: MusicGenre[] = ['musicbox', 'lofi', 'pop', 'cinematic', 'corporate']
+export const GENRE_ORDER: MusicGenre[] = ['warmpiano', 'musicbox', 'lofi', 'pop', 'cinematic', 'corporate']
 
 // Sourced from Pixabay Music (pixabay.com/music), used under the Pixabay
 // Content License (free to use, no attribution required, modification
 // allowed) — see https://pixabay.com/service/license-summary/.
 // `credit` is not currently rendered anywhere in the UI; kept for reference.
 export const MUSIC_TRACKS: MusicTrack[] = [
+  // Warm piano (added 2026-10-21): a quiet, sparse solo piano under the
+  // deadpan voice, like the 2021 videos that did best.
+  {
+    id: 'warmpiano-my-nightly-prayer',
+    title: 'My nightly prayer',
+    genre: 'warmpiano',
+    credit: 'MultiMusicas (Pixabay)',
+    file: 'music/warmpiano-01-my-nightly-prayer.mp3',
+  },
   // Music box (added 2026-10-18): a cute sound under the deadpan voice.
   {
     id: 'musicbox-lilis-dream',
