@@ -62,11 +62,12 @@ describe('MusicMixer', () => {
   })
 
   it('fetches a track once for both the preview and the mix', async () => {
-    // One the other tests don't load, from the genre the picker opens on.
-    const track = MUSIC_TRACKS.filter(t => t.genre === MUSIC_TRACKS[0].genre)[1]
+    // One the other tests don't load, picked from its own genre.
+    const track = MUSIC_TRACKS.find(t => t.genre !== MUSIC_TRACKS[0].genre)!
     const onNext = vi.fn()
     render(<MusicMixer videoBlob={VIDEO_BLOB} onMixed={vi.fn()} onNext={onNext} />)
 
+    fireEvent.change(screen.getByRole('combobox', { name: 'ジャンル' }), { target: { value: track.genre } })
     fireEvent.click(screen.getByText(track.title))
     fireEvent.click(nextButton())
     await waitFor(() => expect(onNext).toHaveBeenCalled())

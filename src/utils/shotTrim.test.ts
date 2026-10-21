@@ -55,6 +55,7 @@ describe('resolveShotTrimSettings', () => {
     firstShotPaddingStart: 0.05,
     lastShotPaddingEnd: 0.1,
     inboxKey: '',
+    bgmDefaultRev: 1,
   }
 
   it('gives the first shot its own lead-in before the speech', () => {
