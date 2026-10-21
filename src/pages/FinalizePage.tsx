@@ -26,6 +26,7 @@ import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { useExport } from '../hooks/useExport'
+import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
@@ -191,10 +192,44 @@ export default function FinalizePage() {
   // Each shot's current take (StoredShotVideo.updatedAt), which saved cuts
   // and the saved 結合 are tied to.
   const takesRef = useRef<Map<string, string>>(new Map())
-  // The hand-set cuts as last loaded or saved, so they're only written on a change.
-  const savedTrimsRef = useRef<string | null>(null)
-  // Likewise the subtitle work.
-  const savedSubtitlesRef = useRef<string | null>(null)
+
+  // Keep the hand-set cuts, so they survive leaving the page or iOS
+  // reloading it. Not until they're loaded, or the saved ones would be
+  // overwritten with none.
+  const handSetTrims = handSetTrimsOf(entries)
+  const markTrimsSaved = useSaveWhenSettled(
+    script && !loading && !loadError ? trimSignatureOf(handSetTrims) : null,
+    () => {
+      const trims = Object.fromEntries(
+        handSetTrims.map(t => [t.shotId, { videoUpdatedAt: takesRef.current.get(t.shotId)!, start: t.start, end: t.end }]),
+      )
+      updateFinalizeProgress(script!.id, { trims }).catch(err =>
+        console.warn('[FinalizePage] could not save the trims:', err),
+      )
+    },
+    PROGRESS_SAVE_DELAY_MS,
+  )
+
+  // Keep the subtitle work on the current 結合 the same way.
+  const subtitlesToSave: SavedSubtitles | null =
+    combinedClips.length === 0
+      ? null
+      : {
+          combinedClips: combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current)),
+          cues: subtitleState.cues,
+          pasteText: subtitleState.pasteText,
+          position: subtitleState.position,
+          source: subtitleState.source,
+        }
+  const markSubtitlesSaved = useSaveWhenSettled(
+    script && subtitlesToSave ? subtitlesSignatureOf(subtitlesToSave) : null,
+    () => {
+      updateFinalizeProgress(script!.id, { subtitles: subtitlesToSave! }).catch(err =>
+        console.warn('[FinalizePage] could not save the subtitles:', err),
+      )
+    },
+    PROGRESS_SAVE_DELAY_MS,
+  )
 
   // Encodes run in the background only on the hardware (WebCodecs) path:
   // ffmpeg.wasm's memory use made iOS drop the on-screen previews (issue #12).
@@ -265,7 +300,7 @@ export default function FinalizePage() {
         return entry.duration > 0 && !entry.trimEdited ? { ...entry, ...autoTrimRange(entry) } : entry
       })
       setEntries(next)
-      savedTrimsRef.current = trimSignatureOf(handSetTrimsOf(next))
+      markTrimsSaved(trimSignatureOf(handSetTrimsOf(next)))
       // Back where 結合 left off, as long as it's still these takes.
       const withVideo = next.filter(e => e.blob)
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
@@ -276,7 +311,7 @@ export default function FinalizePage() {
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
           const { cues, pasteText, position, source } = subtitles
-          savedSubtitlesRef.current = subtitlesSignatureOf(subtitles)
+          markSubtitlesSaved(subtitlesSignatureOf(subtitles))
           setSubtitleState({ stage: cues.length > 0 ? 'reviewing' : 'idle', cues, pasteText, position, source })
           if (cues.length > 0) {
             setCompletedSteps(['trim'])
@@ -455,50 +490,6 @@ export default function FinalizePage() {
     // availableEntries is captured through trimSignature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, canCombine, combining, trimSignature, combinedIsCurrent])
-
-  // Keep the hand-set cuts, so they survive leaving the page or iOS reloading it.
-  const handSetTrims = handSetTrimsOf(entries)
-  const handSetTrimSignature = trimSignatureOf(handSetTrims)
-  useEffect(() => {
-    if (!script || savedTrimsRef.current === null || handSetTrimSignature === savedTrimsRef.current) return
-    const timer = setTimeout(() => {
-      const trims = Object.fromEntries(
-        handSetTrims.map(t => [t.shotId, { videoUpdatedAt: takesRef.current.get(t.shotId)!, start: t.start, end: t.end }]),
-      )
-      savedTrimsRef.current = handSetTrimSignature
-      updateFinalizeProgress(script.id, { trims }).catch(err =>
-        console.warn('[FinalizePage] could not save the trims:', err),
-      )
-    }, PROGRESS_SAVE_DELAY_MS)
-    return () => clearTimeout(timer)
-    // handSetTrims is captured through handSetTrimSignature.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [script?.id, handSetTrimSignature])
-
-  // Keep the subtitle work on the current 結合 the same way.
-  const subtitlesToSave: SavedSubtitles | null =
-    combinedClips.length === 0
-      ? null
-      : {
-          combinedClips: combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current)),
-          cues: subtitleState.cues,
-          pasteText: subtitleState.pasteText,
-          position: subtitleState.position,
-          source: subtitleState.source,
-        }
-  const subtitlesSignature = subtitlesToSave && subtitlesSignatureOf(subtitlesToSave)
-  useEffect(() => {
-    if (!script || !subtitlesToSave || subtitlesSignature === savedSubtitlesRef.current) return
-    const timer = setTimeout(() => {
-      savedSubtitlesRef.current = subtitlesSignature
-      updateFinalizeProgress(script.id, { subtitles: subtitlesToSave }).catch(err =>
-        console.warn('[FinalizePage] could not save the subtitles:', err),
-      )
-    }, PROGRESS_SAVE_DELAY_MS)
-    return () => clearTimeout(timer)
-    // subtitlesToSave is captured through subtitlesSignature.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [script?.id, subtitlesSignature])
 
   // Likewise burn subtitles into each shot once every cue is translated,
   // while the user checks the preview and position, so 次へ only has to
