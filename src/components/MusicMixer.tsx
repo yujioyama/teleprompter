@@ -3,6 +3,7 @@ import { MUSIC_TRACKS, MusicTrack } from '../data/musicTracks'
 import { mixMusic } from '../utils/mixMusic'
 import { fetchTrack } from '../utils/fetchTrack'
 import { BgmPreview } from '../utils/bgmPreview'
+import { useObjectUrl } from '../hooks/useObjectUrl'
 import MusicPicker from './MusicPicker'
 import styles from './MusicMixer.module.css'
 
@@ -50,7 +51,7 @@ export default function MusicMixer({
   const [volume, setVolume] = useState(initialVolume)
   const [stage, setStage] = useState<Stage>(autoMix && initialTrack ? 'auto' : 'idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const previewUrl = useObjectUrl(videoBlob)
   const videoRef = useRef<HTMLVideoElement>(null)
   const previewRef = useRef<BgmPreview | null>(null)
   // Bumped when the component unmounts, the user skips or picks another
@@ -72,14 +73,6 @@ export default function MusicMixer({
     if (autoMix && initialTrack) void runMix(initialTrack, initialVolume, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Created and revoked in the same effect so StrictMode's simulated
-  // remount never leaves the player on a revoked URL (see SubtitleWorkflow).
-  useEffect(() => {
-    const url = URL.createObjectURL(videoBlob)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [videoBlob])
 
   useEffect(() => {
     const video = videoRef.current
