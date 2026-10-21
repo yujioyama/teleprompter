@@ -105,3 +105,19 @@ describe('speechBoundsFor', () => {
     expect(wider.end).toBeCloseTo(3.8, 1)
   })
 })
+
+describe('findSpeechRegion pauses', () => {
+  it('lists the silences inside the speech, where a one-take splits into lines', () => {
+    const clip = makeClip(8, [
+      { from: 1, to: 2.5, kind: 'voice' },
+      { from: 3.3, to: 4.5, kind: 'voice' },
+      { from: 5.6, to: 7, kind: 'voice' },
+    ])
+    const pauses = findSpeechRegion(clip, SR)!.pauses!
+    expect(pauses).toHaveLength(2)
+    expect(pauses[0].start).toBeCloseTo(2.5, 1)
+    expect(pauses[0].end).toBeCloseTo(3.3, 1)
+    expect(pauses[1].start).toBeCloseTo(4.5, 1)
+    expect(pauses[1].end).toBeCloseTo(5.6, 1)
+  })
+})

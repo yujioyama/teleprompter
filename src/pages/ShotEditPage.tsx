@@ -161,10 +161,16 @@ export default function ShotEditPage() {
       </header>
 
       <div className={styles.body}>
-        <p className={styles.hint}>
-          {/* eslint-disable-next-line no-irregular-whitespace -- full-width space is intentional Japanese UI spacing */}
-          タップ → 編集　長押しで重ねる → 合体 ({shots.length}ショット)
-        </p>
+        {safeScript.oneTake ? (
+          <p className={styles.hint}>
+            一発撮り：最初から最後まで1回で撮ります。字幕は行ごとに自動で切り替わります
+          </p>
+        ) : (
+          <p className={styles.hint}>
+            {/* eslint-disable-next-line no-irregular-whitespace -- full-width space is intentional Japanese UI spacing */}
+            タップ → 編集　長押しで重ねる → 合体 ({shots.length}ショット)
+          </p>
+        )}
 
         <DndContext
           sensors={sensors}

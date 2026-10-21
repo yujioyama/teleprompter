@@ -69,17 +69,29 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(screen.getByLabelText('タイトル')).toHaveValue('朝のルーティン')
   })
 
-  it('splits one shot per line, creates the script with its caption, and clears the item', async () => {
+  it('makes a one-take script by default, one shot holding every line, and clears the item', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    expect(screen.getByText('一発撮り（字幕2行）')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()).toHaveLength(1)
+    expect(stored()[0]).toMatchObject({ title: '朝のルーティン', caption: '#朝活', oneTake: true })
+    expect(stored()[0].shots.map(s => s.text)).toEqual(['一行目\n二行目'])
+    expect(deleteInboxItem).toHaveBeenCalledWith('secret', 'inbox-1')
+  })
+
+  it('splits one shot per line with 一発撮り switched off', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /一発撮り/ }))
     fireEvent.click(screen.getByText('自動分割する'))
     expect(screen.getByText('分割結果（2ショット）')).toBeInTheDocument()
     fireEvent.click(screen.getByText('編集へ進む →'))
 
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
-    expect(stored()).toHaveLength(1)
-    expect(stored()[0]).toMatchObject({ title: '朝のルーティン', caption: '#朝活' })
+    expect(stored()[0].oneTake).toBeUndefined()
     expect(stored()[0].shots.map(s => s.text)).toEqual(['一行目', '二行目'])
-    expect(deleteInboxItem).toHaveBeenCalledWith('secret', 'inbox-1')
   })
 
   it('leaves a hand-typed draft alone while editing and creating from an inbox item', async () => {
@@ -87,7 +99,7 @@ describe('ScriptEditPage from the Claude inbox', () => {
     sessionStorage.setItem('teleprompter_new_script_draft', JSON.stringify(seeded))
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     fireEvent.change(screen.getByLabelText('タイトル'), { target: { value: '届いた台本を直した' } })
-    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
 
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
@@ -98,7 +110,7 @@ describe('ScriptEditPage from the Claude inbox', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(deleteInboxItem).mockRejectedValueOnce(new Error('offline'))
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
-    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
     expect(stored()).toHaveLength(1)
@@ -108,7 +120,7 @@ describe('ScriptEditPage from the Claude inbox', () => {
 
   it('does not reopen the consumed item when going back after creating the script', async () => {
     renderAt(['/', { pathname: '/scripts/new', state: { inboxItem: ITEM } }], 1)
-    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
 
@@ -125,7 +137,7 @@ describe('ScriptEditPage caption', () => {
     fireEvent.change(screen.getByLabelText('タイトル'), { target: { value: '手入力' } })
     fireEvent.change(screen.getByLabelText('スクリプト全文'), { target: { value: 'a' } })
     fireEvent.change(screen.getByLabelText('キャプション（任意）'), { target: { value: ' #手入力 ' } })
-    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
 
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()

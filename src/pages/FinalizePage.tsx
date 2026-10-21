@@ -26,12 +26,12 @@ import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { useExport } from '../hooks/useExport'
-import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, oneTakeHookSettings, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
-import { ShotCueInput } from '../utils/subtitleCues'
+import { ShotCueInput, lineStartsInTake, takeLinesOf } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import { coverWordsOf } from '../utils/coverImage'
@@ -82,8 +82,14 @@ function trimSignatureOf(clips: Pick<ShotClip, 'shotId' | 'start' | 'end'>[]): s
 }
 
 // The text each shot of a combined video is subtitled with, and for how long.
-function cueInputsOf(entries: ShotEntry[], clips: ShotClip[]): ShotCueInput[] {
-  return entries.map((entry, i) => ({ text: entry.text, duration: clips[i].end - clips[i].start }))
+// A 一発撮り take is subtitled line by line, split at the pauses in its speech.
+function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false): ShotCueInput[] {
+  return entries.map((entry, i) => {
+    const input: ShotCueInput = { text: entry.text, duration: clips[i].end - clips[i].start }
+    if (!oneTake) return input
+    const lines = takeLinesOf(entry.text)
+    return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech?.pauses) }
+  })
 }
 
 function combineLabel(phase: CombinePhase, progress: number): string {
@@ -265,7 +271,7 @@ export default function FinalizePage() {
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
-        showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips), trim: combined.trim ?? null })
+        showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips, Boolean(script.oneTake)), trim: combined.trim ?? null })
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
@@ -503,23 +509,33 @@ export default function FinalizePage() {
     () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled }),
     [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled],
   )
-  const hook = useMemo(() => hookOptionsOf(hookSettings), [hookSettings])
+  const oneTake = Boolean(script?.oneTake)
+  // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
+  const hook = useMemo(
+    () => hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
+    [hookSettings, oneTake],
+  )
+  // ...and its hook lasts just the first line rather than the whole take.
+  const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
   useEffect(() => {
     if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
-      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook)) {
+      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd)) {
         cache.prefetch(request)
       }
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook])
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd])
 
-  // Where the BGM drops out: just before the last shot, the punchline.
+  // Where the BGM drops out: just before the last shot, the punchline —
+  // in a 一発撮り take, just before its last line.
   const bgmStopAt = useMemo(
-    () => punchlineStart(combinedClips.map(c => c.end - c.start), bgmStopBeforePunchline),
-    [combinedClips, bgmStopBeforePunchline],
+    () => oneTake
+      ? (bgmStopBeforePunchline && subtitleCues.length > 1 ? subtitleCues[subtitleCues.length - 1].start : null)
+      : punchlineStart(combinedClips.map(c => c.end - c.start), bgmStopBeforePunchline),
+    [oneTake, subtitleCues, combinedClips, bgmStopBeforePunchline],
   )
 
   // Build the finished audio (usual BGM + loudness) while the subtitles
@@ -575,7 +591,7 @@ export default function FinalizePage() {
       lastEnd: settings.lastShotPaddingEnd,
       pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
     }
-    showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips), trim })
+    showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips, Boolean(script?.oneTake)), trim })
     if (script) {
       const saved = savedClipsOf(clips, takesRef.current)
       // Subtitles made on the previous 結合 no longer line up with this one.
@@ -779,6 +795,7 @@ export default function FinalizePage() {
                 hookSettings={hookSettings}
                 onHookSettingsChange={updateSettings}
                 inboxKey={settings.inboxKey}
+                oneTake={oneTake}
                 burn={(cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   return burnSubtitlesByShot(
@@ -790,6 +807,7 @@ export default function FinalizePage() {
                     hook,
                     onProgress,
                     signal,
+                    oneTake && cues.length > 0 ? cues[0].end : undefined,
                   )
                 }}
                 onBurned={burned => {

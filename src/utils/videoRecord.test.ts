@@ -72,6 +72,7 @@ describe('buildVideoRecord', () => {
         voicePreset: 'natural',
         trim: TRIM,
         midZoom: true,
+        oneTake: false,
       },
     })
   })
@@ -102,5 +103,22 @@ describe('buildVideoRecord', () => {
 
   it('passes on unknown cuts as unknown', () => {
     expect(build({ trim: null }).effects.trim).toBeNull()
+  })
+})
+
+describe('buildVideoRecord for a one-take script', () => {
+  it('takes the hook line from the first line of the single shot and marks it one-take', () => {
+    const script: Script = {
+      ...SCRIPT,
+      oneTake: true,
+      shots: [{ id: 'a', text: 'I put *Vaseline*🧴 on my eyebrows every night.\nNobody noticed.' }],
+    }
+    const record = build({ script, shotCount: 1 })
+    expect(record.hookLine).toBe('I put Vaseline on my eyebrows every night.')
+    expect(record.effects.oneTake).toBe(true)
+  })
+
+  it('marks a usual script as not one-take', () => {
+    expect(build().effects.oneTake).toBe(false)
   })
 })

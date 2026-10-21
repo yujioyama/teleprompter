@@ -44,6 +44,8 @@ export const videoRecordSchema = z.object({
       .nullable(),
     /** Peaks drifted in and the punchline punched in (中盤のズーム); absent on records from before it. */
     midZoom: z.boolean().optional(),
+    /** 一発撮り: recorded in one take, subtitled line by line; absent on records from before it. */
+    oneTake: z.boolean().optional(),
   }),
 })
 

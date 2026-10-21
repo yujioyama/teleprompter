@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, takeLinesOf, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -228,5 +228,76 @@ describe('shotTextsOf', () => {
       { start: 2.5, end: 4, en: 'It keeps them 💡 neat' },
     ]
     expect(shotTextsOf(cues, [2, 3, 1])).toEqual(['I put Vaseline on🧴 my eyebrows', 'It keeps them 💡 neat', ''])
+  })
+})
+
+describe('takeLinesOf', () => {
+  it('splits a one-take shot into its non-empty lines', () => {
+    expect(takeLinesOf(' One. \n\nTwo.\n Three. ')).toEqual(['One.', 'Two.', 'Three.'])
+  })
+})
+
+describe('lineStartsInTake', () => {
+  const lines = ['I used sticky notes.', 'To come back later.', 'I never came back.']
+
+  it('puts each line break at one of the longest pauses, just before speech resumes', () => {
+    // Clip [1, 9]: a short breath at 2.0, line breaks at 3.0–3.6 and 6.0–7.0.
+    const pauses = [{ start: 2, end: 2.25 }, { start: 3, end: 3.6 }, { start: 6, end: 7 }]
+    const starts = lineStartsInTake(lines, 1, 9, pauses)
+    expect(starts).toHaveLength(2)
+    expect(starts[0]).toBeCloseTo(3.6 - 0.15 - 1, 5)
+    expect(starts[1]).toBeCloseTo(7 - 0.15 - 1, 5)
+  })
+
+  it('skips a long pause that would leave a line under half a second', () => {
+    const pauses = [{ start: 3, end: 4 }, { start: 4.02, end: 4.45 }, { start: 6.6, end: 7 }]
+    const starts = lineStartsInTake(lines, 0, 9, pauses)
+    expect(starts).toHaveLength(2)
+    expect(starts[0]).toBeCloseTo(3.85, 5)
+    expect(starts[1]).toBeCloseTo(6.85, 5)
+  })
+
+  it('shares the clip out by line length when there are too few pauses', () => {
+    const starts = lineStartsInTake(['aa', 'aaaa', 'aa'], 0, 8, [{ start: 4, end: 4.1 }])
+    expect(starts[0]).toBeCloseTo(2, 5)
+    expect(starts[1]).toBeCloseTo(6, 5)
+    expect(lineStartsInTake(['aa', 'aa'], 0, 4)).toEqual([2])
+  })
+
+  it('has no breaks for a single line', () => {
+    expect(lineStartsInTake(['Only line.'], 0, 3, [{ start: 1, end: 2 }])).toEqual([])
+  })
+})
+
+describe('cuesFromShotEntries with line starts', () => {
+  it('gives a one-take shot one cue per line, back to back', () => {
+    const cues = cuesFromShotEntries([{ text: 'One.\nTwo.\nThree.', duration: 6, lineStarts: [1.5, 4] }])
+    expect(cues.map(c => [c.en, c.start, c.end])).toEqual([
+      ['One.', 0, 1.5],
+      ['Two.', 1.5, 4],
+      ['Three.', 4, 6],
+    ])
+  })
+
+  it('falls back to one cue when the starts do not match the lines', () => {
+    const cues = cuesFromShotEntries([{ text: 'One.\nTwo.', duration: 4, lineStarts: [] }])
+    expect(cues).toHaveLength(1)
+  })
+})
+
+describe('shiftCueStart', () => {
+  const cues = makeCues(['a', 'b', 'c'])
+
+  it('moves a line start and the previous line end together', () => {
+    const moved = shiftCueStart(cues, 'cue-1', 0.2)
+    expect(moved[0].end).toBeCloseTo(1.2, 5)
+    expect(moved[1].start).toBeCloseTo(1.2, 5)
+    expect(moved[2]).toEqual(cues[2])
+  })
+
+  it('never squeezes either line below 0.3 seconds, and leaves the first line alone', () => {
+    expect(shiftCueStart(cues, 'cue-1', -5)[1].start).toBeCloseTo(0.3, 5)
+    expect(shiftCueStart(cues, 'cue-1', 5)[1].start).toBeCloseTo(1.7, 5)
+    expect(shiftCueStart(cues, 'cue-0', 0.2)).toBe(cues)
   })
 })

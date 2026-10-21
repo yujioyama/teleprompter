@@ -70,6 +70,14 @@ export type HookSettings = Pick<
   | 'midZoomEnabled'
 >
 
+/**
+ * A 一発撮り take has no shots in the middle to fly fairies over or zoom on
+ * (and its punchline is a line, not a cut), so those two are left out.
+ */
+export function oneTakeHookSettings(settings: HookSettings): HookSettings {
+  return { ...settings, fairyEnabled: false, midZoomEnabled: false }
+}
+
 export function hookOptionsOf(settings: HookSettings): HookOptions {
   return {
     style: settings.hookStyleEnabled,
