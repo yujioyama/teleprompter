@@ -12,16 +12,8 @@ import {
   type SavedCombinedClip,
   type SavedSubtitles,
 } from '../utils/finalizeProgressStore'
-import { unifyNormalizeBackends } from '../utils/trimAndNormalizeShot'
-import { concatVideos } from '../utils/concatVideos'
 import { ShotEncodeCache } from '../utils/shotEncodeCache'
-import {
-  burnSubtitlesByShot,
-  encodeAll,
-  normalizeRequest,
-  shotBurnRequests,
-  type ShotClip,
-} from '../utils/shotEncoding'
+import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type ShotClip } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
@@ -29,12 +21,12 @@ import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/sh
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { finishAudio } from '../utils/normalizeLoudness'
 import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
-import { raceAbort } from '../utils/cancellation'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
 import { punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
+import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
@@ -67,11 +59,6 @@ interface ShotEntry {
   trimEdited: boolean
 }
 
-type CombineState = 'idle' | 'combining' | 'done' | 'error' | 'cancelled'
-// What 結合 is busy with, so the button never sits at 100% while work
-// remains (issue #31): encoding each shot, re-encoding some onto one
-// encoder after WebCodecs broke down partway, then joining them.
-type CombinePhase = 'encoding' | 'unifying' | 'joining'
 type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
 const STEP_ORDER: WizardStepId[] = ['trim', 'subtitle', 'bgm', 'export']
@@ -83,6 +70,10 @@ const BACKGROUND_ENCODE_DELAY_MS = 800
 // Likewise for saving hand-set cuts and subtitle work, but short: leaving
 // the page right after a drag or an edit must not lose it.
 const PROGRESS_SAVE_DELAY_MS = 300
+
+// Stands in for the clips of a 結合 not made yet; one array, so effects
+// that depend on the clips don't re-run on every render.
+const NO_CLIPS: ShotClip[] = []
 
 function clipOf(entry: ShotEntry): ShotClip {
   return { shotId: entry.shotId, blob: entry.blob!, start: entry.trimStart, end: entry.trimEnd || entry.duration }
@@ -163,18 +154,10 @@ export default function FinalizePage() {
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [combineState, setCombineState] = useState<CombineState>('idle')
-  const [combineError, setCombineError] = useState<string | null>(null)
-  const [combineProgress, setCombineProgress] = useState(0)
-  const [combinePhase, setCombinePhase] = useState<CombinePhase>('encoding')
-  const [combinedUrl, setCombinedUrl] = useState<string | null>(null)
-  const [combinedBlob, setCombinedBlob] = useState<Blob | null>(null)
-  const [shotCueInputs, setShotCueInputs] = useState<ShotCueInput[]>([])
-  // The shots exactly as they went into `combinedBlob`, for burning
-  // subtitles shot by shot (trims may change afterwards without re-combining).
-  const [combinedClips, setCombinedClips] = useState<ShotClip[]>([])
-  // The cuts `combinedBlob` was made with; null for a 結合 saved before they were kept.
-  const [combinedTrim, setCombinedTrim] = useState<TrimRecord | null>(null)
+  const { status: combineStatus, combined, show: showCombined, combine, cancel: cancelCombine } = useCombine()
+  const combinedBlob = combined?.blob ?? null
+  const combinedUrl = combined?.url ?? null
+  const combinedClips = combined?.clips ?? NO_CLIPS
   const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
   const [mixed, setMixed] = useState<MixedVideo | null>(null)
   // What `burnedBlob` and `mixed` were made from, for the video record; only
@@ -195,7 +178,6 @@ export default function FinalizePage() {
   const [bgmAutoPending, setBgmAutoPending] = useState(false)
   const [preparedAudio] = useState(() => new PreparedAudio())
   const urlsRef = useRef<string[]>([])
-  const combinedUrlRef = useRef<string | null>(null)
   const finalUrlRef = useRef<string | null>(null)
   const [finalUrl, setFinalUrl] = useState<string | null>(null)
   // What the export step previews and saves: `finalBlob` with its loudness
@@ -208,8 +190,6 @@ export default function FinalizePage() {
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const [loudnessState, setLoudnessState] = useState<LoudnessState>('idle')
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
-  // Aborted by 中断する (issue #34) or when the page goes away mid-combine.
-  const combineAbortRef = useRef<AbortController | null>(null)
   // Each shot's current take (StoredShotVideo.updatedAt), which saved cuts
   // and the saved 結合 are tied to.
   const takesRef = useRef<Map<string, string>>(new Map())
@@ -229,7 +209,6 @@ export default function FinalizePage() {
 
   useEffect(() => {
     return () => {
-      combineAbortRef.current?.abort()
       encodeCacheRef.current?.dispose()
       encodeCacheRef.current = null
     }
@@ -294,7 +273,7 @@ export default function FinalizePage() {
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
-        showCombined(combined.blob, clips, cueInputsOf(withVideo, clips), combined.trim ?? null)
+        showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips), trim: combined.trim ?? null })
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
@@ -376,12 +355,6 @@ export default function FinalizePage() {
     }
   }, [])
 
-  useEffect(() => {
-    return () => {
-      if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
-    }
-  }, [])
-
   // A duration can arrive twice — from the probe and from the ShotTrimmer
   // player loading that shot — so only the first one initializes the trim range.
   function setDurationOnce(shotId: string, duration: number) {
@@ -402,18 +375,6 @@ export default function FinalizePage() {
         return next.duration > 0 && !next.trimEdited ? { ...next, ...autoTrimRange(next) } : next
       }),
     )
-  }
-
-  function showCombined(blob: Blob, clips: ShotClip[], cueInputs: ShotCueInput[], trim: TrimRecord | null) {
-    if (combinedUrlRef.current) URL.revokeObjectURL(combinedUrlRef.current)
-    const url = URL.createObjectURL(blob)
-    combinedUrlRef.current = url
-    setCombinedBlob(blob)
-    setCombinedUrl(url)
-    setCombinedClips(clips)
-    setCombinedTrim(trim)
-    setShotCueInputs(cueInputs)
-    setCombineState('done')
   }
 
   // 間を残す: the shot keeps a longer silence after its speech. A cut set by
@@ -484,9 +445,10 @@ export default function FinalizePage() {
   // Nothing to encode ahead when 結合 already has these exact cuts — e.g.
   // reopened from a save, where encoding every shot again would only cost
   // memory iOS reloads the page over.
-  const combinedIsCurrent = combineState === 'done' && trimSignatureOf(combinedClips) === trimSignature
+  const combining = combineStatus.state === 'combining'
+  const combinedIsCurrent = combineStatus.state === 'done' && trimSignatureOf(combinedClips) === trimSignature
   useEffect(() => {
-    if (step !== 'trim' || !canCombine || combineState === 'combining' || combinedIsCurrent) return
+    if (step !== 'trim' || !canCombine || combining || combinedIsCurrent) return
     const timer = setTimeout(() => {
       const cache = getEncodeCache()
       for (const entry of availableEntries) cache.prefetch(normalizeRequest(clipOf(entry)))
@@ -494,7 +456,7 @@ export default function FinalizePage() {
     return () => clearTimeout(timer)
     // availableEntries is captured through trimSignature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, canCombine, combineState, trimSignature, combinedIsCurrent])
+  }, [step, canCombine, combining, trimSignature, combinedIsCurrent])
 
   // Keep the hand-set cuts, so they survive leaving the page or iOS reloading it.
   const handSetTrims = handSetTrimsOf(entries)
@@ -650,17 +612,6 @@ export default function FinalizePage() {
   }, [])
 
   async function handleCombine() {
-    const controller = new AbortController()
-    combineAbortRef.current = controller
-    const { signal } = controller
-    // A cancelled run may still report in late; it must not touch the page.
-    const whileLive = <T,>(update: (value: T) => void) => (value: T) => {
-      if (!signal.aborted) update(value)
-    }
-    setCombineState('combining')
-    setCombineError(null)
-    setCombinePhase('encoding')
-    setCombineProgress(0)
     // Re-combining invalidates any later step's output. `completedSteps`
     // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
     // back here is goToStep, which already truncates completedSteps), so
@@ -670,62 +621,26 @@ export default function FinalizePage() {
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(initialSubtitleState())
     preparedAudio.clear()
-    try {
-      const clips = availableEntries.map(clipOf)
-      // Raced so 中断する frees the page even if an encode never settles.
-      const combined = await raceAbort(
-        (async () => {
-          const encoded = await encodeAll(
-            getEncodeCache(),
-            clips.map(normalizeRequest),
-            whileLive(setCombineProgress),
-            signal,
-          )
-          // If WebCodecs broke down partway (see trimAndNormalizeShot), some
-          // clips came from the hardware encoder and some from ffmpeg; their
-          // H.264 headers differ and can't be joined by packet copy, so some
-          // have to be re-encoded onto the other's profile.
-          const normalized = await unifyNormalizeBackends(
-            clips,
-            encoded,
-            whileLive((ratio: number) => {
-              setCombinePhase('unifying')
-              setCombineProgress(ratio)
-            }),
-            signal,
-          )
-          whileLive(setCombinePhase)('joining')
-          return concatVideos(normalized, signal)
-        })(),
-        signal,
+    const clips = availableEntries.map(clipOf)
+    const joined = await combine(getEncodeCache(), clips)
+    if (!joined) return
+    // Same clips, same order, same trim values used just above to build
+    // `joined` — keeps subtitle timing aligned with the actual combined
+    // output by construction, not by keeping two formulas in sync.
+    const trim: TrimRecord = {
+      firstStart: settings.firstShotPaddingStart,
+      start: settings.trimPaddingStart,
+      end: settings.trimPaddingEnd,
+      lastEnd: settings.lastShotPaddingEnd,
+      pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
+    }
+    showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips), trim })
+    if (script) {
+      const saved = savedClipsOf(clips, takesRef.current)
+      // Subtitles made on the previous 結合 no longer line up with this one.
+      updateFinalizeProgress(script.id, { combined: { blob: joined, clips: saved, trim }, subtitles: null }).catch(err =>
+        console.warn('[FinalizePage] could not save the 結合:', err),
       )
-      // Same clips, same order, same trim values used just above to build
-      // `normalized` — keeps subtitle timing aligned with the actual
-      // combined output by construction, not by keeping two formulas in sync.
-      const trim: TrimRecord = {
-        firstStart: settings.firstShotPaddingStart,
-        start: settings.trimPaddingStart,
-        end: settings.trimPaddingEnd,
-        lastEnd: settings.lastShotPaddingEnd,
-        pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
-      }
-      showCombined(combined, clips, cueInputsOf(availableEntries, clips), trim)
-      if (script) {
-        const saved = savedClipsOf(clips, takesRef.current)
-        // Subtitles made on the previous 結合 no longer line up with this one.
-        updateFinalizeProgress(script.id, { combined: { blob: combined, clips: saved, trim }, subtitles: null }).catch(err =>
-          console.warn('[FinalizePage] could not save the 結合:', err),
-        )
-      }
-    } catch (err) {
-      if (signal.aborted) {
-        setCombineState('cancelled')
-        return
-      }
-      setCombineError(err instanceof Error ? err.message : String(err))
-      setCombineState('error')
-    } finally {
-      if (combineAbortRef.current === controller) combineAbortRef.current = null
     }
   }
 
@@ -754,7 +669,7 @@ export default function FinalizePage() {
       burn: burnedBlob ? burnInputs : null,
       mix: mixed ? mixInputs : null,
       voicePreset,
-      trim: combinedTrim,
+      trim: combined?.trim ?? null,
     })
     postVideoRecord(key, record).catch(err => console.warn('[FinalizePage] could not send the video record:', err))
   }
@@ -875,29 +790,29 @@ export default function FinalizePage() {
               <button
                 className={styles.finalizeBtn}
                 onClick={handleCombine}
-                disabled={!canCombine || combineState === 'combining'}
+                disabled={!canCombine || combining}
               >
-                {combineState === 'combining'
-                  ? combineLabel(combinePhase, combineProgress)
+                {combineStatus.state === 'combining'
+                  ? combineLabel(combineStatus.phase, combineStatus.progress)
                   : detectingCount > 0
                     ? `前後の無音を検出中... (残り${detectingCount})`
                     : '結合する'}
               </button>
 
-              {combineState === 'combining' && (
+              {combineStatus.state === 'combining' && (
                 <CancelProcessing
-                  progress={`${combinePhase}:${combineProgress}`}
-                  onCancel={() => combineAbortRef.current?.abort()}
+                  progress={`${combineStatus.phase}:${combineStatus.progress}`}
+                  onCancel={cancelCombine}
                 />
               )}
 
-              {combineState === 'cancelled' && <p className={styles.missing}>中断しました</p>}
+              {combineStatus.state === 'cancelled' && <p className={styles.missing}>中断しました</p>}
 
-              {combineState === 'error' && (
-                <p className={styles.missing}>結合に失敗しました: {combineError}</p>
+              {combineStatus.state === 'error' && (
+                <p className={styles.missing}>結合に失敗しました: {combineStatus.error}</p>
               )}
 
-              {combineState === 'done' && combinedUrl && (
+              {combineStatus.state === 'done' && combinedUrl && (
                 <div className={styles.shotEntry}>
                   <p className={styles.shotEntryText}>結合結果</p>
                   <video className={styles.preview} src={combinedUrl} controls playsInline />
@@ -917,7 +832,7 @@ export default function FinalizePage() {
               <SubtitleWorkflow
                 key={combinedUrl}
                 combinedBlob={combinedBlob}
-                shotCueInputs={shotCueInputs}
+                shotCueInputs={combined?.cueInputs ?? []}
                 state={subtitleState}
                 onStateChange={setSubtitleState}
                 hookSettings={hookSettings}
