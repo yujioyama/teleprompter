@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
-import { fetchInbox, type InboxItem } from '../utils/inbox'
+import { deleteInboxItem, fetchInbox, type InboxItem } from '../utils/inbox'
 import styles from './ClaudeInbox.module.css'
 
 interface Props {
@@ -11,7 +11,8 @@ interface Props {
 /**
  * Scripts sent from Claude chat and not yet made into a script, checked on
  * mount and whenever the app returns to the foreground. Any failure just
- * hides the section: Home must work the same without the inbox.
+ * hides the section: Home must work the same without the inbox. One that is
+ * no longer wanted can be thrown away with ×.
  */
 export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
   const [items, setItems] = useState<InboxItem[]>([])
@@ -28,6 +29,20 @@ export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
       })
   })
 
+  function discard(item: InboxItem) {
+    if (!confirm(`「${item.title}」を受け取り箱から消しますか？`)) return
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    deleteInboxItem(inboxKey, item.id).catch(err => {
+      console.error('Failed to discard the inbox item', err)
+      alert('消せませんでした。通信状況を確認して、もう一度お試しください。')
+      setItems(prev =>
+        prev.some(i => i.id === item.id)
+          ? prev
+          : [...prev, item].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      )
+    })
+  }
+
   if (!inboxKey || items.length === 0) return null
 
   return (
@@ -35,7 +50,7 @@ export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
       <h2 className={styles.heading}>Claudeから届いたスクリプト</h2>
       <ul className={styles.list}>
         {items.map(item => (
-          <li key={item.id}>
+          <li key={item.id} className={styles.row}>
             <button className={styles.item} onClick={() => onOpen(item)}>
               <span className={styles.title}>{item.title}</span>
               <span className={styles.meta}>
@@ -46,6 +61,9 @@ export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
                   minute: '2-digit',
                 })}
               </span>
+            </button>
+            <button className={styles.discard} onClick={() => discard(item)} aria-label={`「${item.title}」を消す`}>
+              ×
             </button>
           </li>
         ))}

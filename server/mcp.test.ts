@@ -129,6 +129,26 @@ describe('handleMcpRequest', () => {
     ])
   })
 
+  it('replaces a waiting version with the same title and says so', async () => {
+    const ids = ['v1', 'v2']
+    store = createInboxStore(createFakeRedis().redis, () => new Date('2026-10-09T00:00:00.000Z'), () => ids.shift()!)
+    await handleMcpRequest(callTool({ title: '朝のルーティン', script: '初版' }), deps)
+
+    const res = await handleMcpRequest(callTool({ title: '朝のルーティン', script: '修正版' }), deps)
+    const { result } = await res.json()
+
+    expect(result.content[0].text).toBe(
+      '『朝のルーティン』をteleprompterに送りました（1行）。受け取り箱にあった同じタイトルの前の版は置き換えました。teleprompterのホーム画面に届いています。',
+    )
+    expect((await store.list()).map(i => [i.id, i.body])).toEqual([['v2', '修正版']])
+  })
+
+  it('tells Claude to resend a fixed script under the same title', async () => {
+    const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
+    const { result } = await res.json()
+    expect(result.tools[0].description).toContain('前と同じ title で送ってください')
+  })
+
   it('stores an empty caption when none is sent', async () => {
     await handleMcpRequest(callTool({ title: 'A', script: 'a' }), deps)
     expect((await store.list())[0].caption).toBe('')
