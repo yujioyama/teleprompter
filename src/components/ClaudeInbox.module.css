@@ -20,8 +20,15 @@
   gap: 8px;
 }
 
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -40,5 +47,14 @@
 .meta {
   flex: none;
   font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.discard {
+  flex: none;
+  padding: 10px 12px;
+  background: none;
+  font-size: 1.2rem;
+  line-height: 1;
   color: var(--text-muted);
 }
