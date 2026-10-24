@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { COVER_HEIGHT, COVER_WIDTH, canvasToPng, drawCover, type CoverWords } from '../utils/coverImage'
 import { shareOrDownload } from '../utils/shareOrDownload'
+import type { StickerPlacement } from '../utils/subtitleSticker'
 import styles from './CoverMaker.module.css'
 
 interface Props {
@@ -9,21 +10,29 @@ interface Props {
   /** The words found in the script, editable here before saving. */
   initialWords: CoverWords
   filenameBase: string
+  /** 0-100, where the words start: the position used last time. */
+  initialPosition: number
+  /** Called when the slider moves, so the next cover starts there. */
+  onPositionChange: (position: number) => void
+  /** Where the video's first frame has its sticker; the cover puts it there too. */
+  stickerPlacement: StickerPlacement
 }
 
 /**
  * Pick a frame with the slider and save it as a 1080×1920 PNG with the
- * episode's English phrase and Japanese word on it, for the profile grid.
+ * episode's English phrase and Japanese word on it, and the first shot's
+ * sticker, for the profile grid.
  * Its one <video> only feeds the canvas; the page hides its own preview
  * while this is open, so only one video decoder is live.
  */
-export default function CoverMaker({ videoUrl, initialWords, filenameBase }: Props) {
+export default function CoverMaker({ videoUrl, initialWords, filenameBase, initialPosition, onPositionChange, stickerPlacement }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [duration, setDuration] = useState(0)
   const [time, setTime] = useState(0)
   const [ready, setReady] = useState(false)
   const [words, setWords] = useState<CoverWords>(initialWords)
+  const [position, setPosition] = useState(initialPosition)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,14 +40,14 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase }: Pro
     const video = videoRef.current
     const ctx = canvasRef.current?.getContext('2d')
     if (!video || !ctx) return
-    drawCover(ctx, video, video.videoWidth, video.videoHeight, words)
+    drawCover(ctx, video, video.videoWidth, video.videoHeight, words, position, stickerPlacement)
   }
 
-  // Draw again whenever the words change; frame changes redraw on 'seeked'.
+  // Draw again whenever the words or their position change; frame changes redraw on 'seeked'.
   useEffect(() => {
     if (ready) redraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [words, ready])
+  }, [words, position, ready])
 
   function handleLoaded() {
     const video = videoRef.current
@@ -110,6 +119,21 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase }: Pro
         />
       </label>
       <label className={styles.field}>
+        <span>文字の位置(上 ↔ 下)</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={position}
+          onChange={e => {
+            const value = Number(e.target.value)
+            setPosition(value)
+            onPositionChange(value)
+          }}
+        />
+      </label>
+      <label className={styles.field}>
         <span>英語(黄色)</span>
         <input
           className={styles.text}
@@ -125,6 +149,15 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase }: Pro
           value={words.ja}
           onChange={e => setWords(w => ({ ...w, ja: e.target.value }))}
           placeholder="renkon レンコン"
+        />
+      </label>
+      <label className={styles.field}>
+        <span>ステッカー(絵文字・空欄でなし)</span>
+        <input
+          className={styles.text}
+          value={words.sticker}
+          onChange={e => setWords(w => ({ ...w, sticker: e.target.value }))}
+          placeholder="🪷"
         />
       </label>
 

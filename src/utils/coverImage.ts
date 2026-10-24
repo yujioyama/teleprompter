@@ -1,10 +1,13 @@
 import { SUBTITLE_FONT_FAMILY, OUTLINE_WIDTH_RATIO, SUBTITLE_SHADOW } from './subtitleLayout'
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
+import { STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type StickerPlacement } from './subtitleSticker'
+import { dieCutSticker } from './stickerCanvas'
 
 /**
  * A cover image for the profile grid: a frame of the video with the
  * episode's English phrase (yellow, the `*…*` one) and its Japanese word
- * (mint, the `{…}` one) drawn large, so the grid reads like a word list.
+ * (mint, the `{…}` one) drawn large, so the grid reads like a word list,
+ * and the first shot's sticker where the video's first frame has it.
  */
 
 export const COVER_WIDTH = 1080
@@ -20,6 +23,8 @@ export interface CoverWords {
   en: string
   /** The Japanese word in romaji, from the first `{…}` in the script, with its kana from the Japanese subtitles when there is one. */
   ja: string
+  /** The first line's emoji, the one the first shot shows as a sticker. */
+  sticker: string
 }
 
 const STAR = /\*([^\s*](?:[^*\n]*[^\s*])?)\*/
@@ -36,7 +41,8 @@ function firstMatch(texts: (string | null | undefined)[], pattern: RegExp): stri
 /**
  * The words for the cover, taken from the shots' text and (for the kana)
  * the Japanese subtitle lines, where the translator marks the same word in
- * `{…}`. Either is an empty string when the script has no such marker.
+ * `{…}`. Either is an empty string when the script has no such marker, and
+ * the sticker is one when the first line has no emoji.
  */
 export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = []): CoverWords {
   const en = firstMatch(shotTexts, STAR) ?? ''
@@ -45,7 +51,8 @@ export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = [
   // Show the kana only when it adds something: not when the translator
   // left the romaji as it was.
   const ja = kana && kana.toLowerCase() !== romaji.toLowerCase() ? [romaji, kana].filter(Boolean).join(' ') : romaji
-  return { en, ja }
+  const sticker = findSticker(shotTexts[0] ?? '') ?? ''
+  return { en, ja, sticker }
 }
 
 export type MeasureWidth = (text: string, font: string) => number
@@ -75,10 +82,16 @@ const EN_MIN_PX = 72
 const JA_MAX_PX = 150
 const JA_MIN_PX = 60
 const LINE_GAP = 40
-/** Where the block sits: in the lower half of the grid window, under the face. */
-const BLOCK_CENTER_Y = GRID_TOP + (GRID_BOTTOM - GRID_TOP) * 0.68
+/** Room kept between the words and the grid window's edges. */
+const GRID_MARGIN = 40
+/** 0-100, where the block sits by default: in the lower half of the grid window, under the face. */
+export const COVER_TEXT_POSITION_DEFAULT = 68
 
-export function coverLines(words: CoverWords, measure: MeasureWidth): CoverLine[] {
+/**
+ * The lines, centered at `position` (0 = the top of the grid window, 100 =
+ * its bottom) but kept inside the window so neither line gets cropped.
+ */
+export function coverLines(words: CoverWords, measure: MeasureWidth, position = COVER_TEXT_POSITION_DEFAULT): CoverLine[] {
   const parts: { text: string; color: string; px: number }[] = []
   if (words.en.trim()) {
     const text = words.en.trim()
@@ -89,7 +102,10 @@ export function coverLines(words: CoverWords, measure: MeasureWidth): CoverLine[
     parts.push({ text, color: WORD_COLOR, px: fitFontPx(text, JA_MAX_PX, JA_MIN_PX, measure) })
   }
   const height = parts.reduce((h, p) => h + p.px, 0) + LINE_GAP * Math.max(0, parts.length - 1)
-  let top = BLOCK_CENTER_Y - height / 2
+  const center = GRID_TOP + ((GRID_BOTTOM - GRID_TOP) * position) / 100
+  const minTop = GRID_TOP + GRID_MARGIN
+  const maxTop = GRID_BOTTOM - GRID_MARGIN - height
+  let top = Math.max(minTop, Math.min(maxTop, center - height / 2))
   return parts.map(p => {
     // Cap height is close to 0.75em; put the baseline there so the block centers on the glyphs.
     const line = { ...p, y: Math.round(top + p.px * 0.85) }
@@ -98,13 +114,15 @@ export function coverLines(words: CoverWords, measure: MeasureWidth): CoverLine[
   })
 }
 
-/** Draw `source` filling the cover (cropping what overflows), then the words. */
+/** Draw `source` filling the cover (cropping what overflows), then the sticker and the words. */
 export function drawCover(
   ctx: CanvasRenderingContext2D,
   source: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
   words: CoverWords,
+  position = COVER_TEXT_POSITION_DEFAULT,
+  stickerPlacement: StickerPlacement = 'right',
 ): void {
   ctx.clearRect(0, 0, COVER_WIDTH, COVER_HEIGHT)
   ctx.fillStyle = '#000'
@@ -120,21 +138,23 @@ export function drawCover(
     ctx.font = font
     return ctx.measureText(text).width
   }
-  const lines = coverLines(words, measure)
-  if (lines.length === 0) return
-
-  // A soft dark band behind the words, so they read over any picture.
-  const first = lines[0]
-  const last = lines[lines.length - 1]
-  const bandTop = first.y - first.px * 1.3
-  const bandBottom = last.y + last.px * 0.8
-  const gradient = ctx.createLinearGradient(0, bandTop, 0, bandBottom)
-  gradient.addColorStop(0, 'rgba(0,0,0,0)')
-  gradient.addColorStop(0.3, 'rgba(0,0,0,0.45)')
-  gradient.addColorStop(0.7, 'rgba(0,0,0,0.45)')
-  gradient.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, bandTop, COVER_WIDTH, bandBottom - bandTop)
+  const lines = coverLines(words, measure, position)
+  if (lines.length > 0) {
+    // A soft dark band behind the words, so they read over any picture.
+    const first = lines[0]
+    const last = lines[lines.length - 1]
+    const bandTop = first.y - first.px * 1.3
+    const bandBottom = last.y + last.px * 0.8
+    const gradient = ctx.createLinearGradient(0, bandTop, 0, bandBottom)
+    gradient.addColorStop(0, 'rgba(0,0,0,0)')
+    gradient.addColorStop(0.3, 'rgba(0,0,0,0.45)')
+    gradient.addColorStop(0.7, 'rgba(0,0,0,0.45)')
+    gradient.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, bandTop, COVER_WIDTH, bandBottom - bandTop)
+  }
+  // Over the band, under the words.
+  if (words.sticker.trim()) drawSticker(ctx, words.sticker.trim(), stickerPlacement)
 
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
@@ -153,6 +173,26 @@ export function drawCover(
     ctx.fillStyle = line.color
     ctx.fillText(line.text, COVER_WIDTH / 2, line.y)
   }
+}
+
+/**
+ * The sticker as the first frame has it: the die-cut emoji, tilted, with a
+ * soft shadow. With the video's sticker turned off it goes beside the face.
+ */
+function drawSticker(ctx: CanvasRenderingContext2D, emoji: string, placement: StickerPlacement): void {
+  const at = STICKER_PLACEMENTS[placement === 'off' ? 'right' : placement]
+  const sticker = dieCutSticker(emoji, 1)
+  const center = sticker.width / 2
+  ctx.save()
+  ctx.translate(COVER_WIDTH * at.x, (COVER_HEIGHT * at.y) / 100)
+  ctx.rotate((at.rotation * Math.PI) / 180)
+  ctx.shadowColor = STICKER_SHADOW.color
+  ctx.shadowBlur = STICKER_SHADOW.blur
+  ctx.shadowOffsetY = STICKER_SHADOW.offsetY
+  ctx.drawImage(sticker, -center, -center)
+  ctx.restore()
+  sticker.width = 0
+  sticker.height = 0
 }
 
 export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
