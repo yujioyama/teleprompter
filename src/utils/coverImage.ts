@@ -1,6 +1,6 @@
 import { SUBTITLE_FONT_FAMILY, OUTLINE_WIDTH_RATIO, SUBTITLE_SHADOW } from './subtitleLayout'
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
-import { STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type StickerPlacement } from './subtitleSticker'
+import { STICKER_EMOJI_PX, STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type StickerPlacement } from './subtitleSticker'
 import { dieCutSticker } from './stickerCanvas'
 
 /**
@@ -114,6 +114,33 @@ export function coverLines(words: CoverWords, measure: MeasureWidth, position = 
   })
 }
 
+/** Where the sticker's center is: x as a fraction of the width, y as a percent of the height, like STICKER_PLACEMENTS. */
+export interface CoverStickerSpot {
+  x: number
+  y: number
+}
+
+/** A spot with the sticker's tilt, in degrees. */
+export type PlacedSticker = CoverStickerSpot & { rotation: number }
+
+/** The sticker's grab area on the cover, in cover pixels: about the emoji itself. */
+export const COVER_STICKER_SIZE = STICKER_EMOJI_PX * 1.3
+
+/** `spot` with the sticker's center kept on the cover, so it can't be dragged away for good. */
+export function clampStickerSpot(spot: CoverStickerSpot): CoverStickerSpot {
+  return { x: Math.min(1, Math.max(0, spot.x)), y: Math.min(100, Math.max(0, spot.y)) }
+}
+
+/**
+ * Where the cover's sticker goes and its tilt: where it was dragged to, or
+ * else where the video's first frame has it (beside the face when the
+ * video's sticker is off).
+ */
+export function coverStickerSpot(placement: StickerPlacement, moved: CoverStickerSpot | null): PlacedSticker {
+  const home = STICKER_PLACEMENTS[placement === 'off' ? 'right' : placement]
+  return { ...(moved ? clampStickerSpot(moved) : home), rotation: home.rotation }
+}
+
 /** Draw `source` filling the cover (cropping what overflows), then the sticker and the words. */
 export function drawCover(
   ctx: CanvasRenderingContext2D,
@@ -122,7 +149,7 @@ export function drawCover(
   sourceHeight: number,
   words: CoverWords,
   position = COVER_TEXT_POSITION_DEFAULT,
-  stickerPlacement: StickerPlacement = 'right',
+  sticker: PlacedSticker = coverStickerSpot('right', null),
 ): void {
   ctx.clearRect(0, 0, COVER_WIDTH, COVER_HEIGHT)
   ctx.fillStyle = '#000'
@@ -154,7 +181,7 @@ export function drawCover(
     ctx.fillRect(0, bandTop, COVER_WIDTH, bandBottom - bandTop)
   }
   // Over the band, under the words.
-  if (words.sticker.trim()) drawSticker(ctx, words.sticker.trim(), stickerPlacement)
+  if (words.sticker.trim()) drawSticker(ctx, words.sticker.trim(), sticker)
 
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
@@ -175,12 +202,8 @@ export function drawCover(
   }
 }
 
-/**
- * The sticker as the first frame has it: the die-cut emoji, tilted, with a
- * soft shadow. With the video's sticker turned off it goes beside the face.
- */
-function drawSticker(ctx: CanvasRenderingContext2D, emoji: string, placement: StickerPlacement): void {
-  const at = STICKER_PLACEMENTS[placement === 'off' ? 'right' : placement]
+/** The sticker as the first frame has it: the die-cut emoji, tilted, with a soft shadow. */
+function drawSticker(ctx: CanvasRenderingContext2D, emoji: string, at: PlacedSticker): void {
   const sticker = dieCutSticker(emoji, 1)
   const center = sticker.width / 2
   ctx.save()

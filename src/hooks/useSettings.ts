@@ -10,7 +10,7 @@ import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subti
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
-import { COVER_TEXT_POSITION_DEFAULT } from '../utils/coverImage'
+import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -57,6 +57,8 @@ export interface AppSettings {
   lastShotPaddingEnd: number
   /** 0-100, where the cover image's words sit in the grid window. */
   coverTextPosition: number
+  /** Where the cover's sticker was dragged to; null = where the video has it. */
+  coverStickerSpot: CoverStickerSpot | null
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -89,6 +91,7 @@ const DEFAULTS: AppSettings = {
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   coverTextPosition: COVER_TEXT_POSITION_DEFAULT,
+  coverStickerSpot: null,
   inboxKey: '',
   bgmDefaultRev: 1,
 }

@@ -28,6 +28,7 @@ const DEFAULTS = {
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   coverTextPosition: 68,
+  coverStickerSpot: null,
   inboxKey: '',
   bgmDefaultRev: 1,
 }
