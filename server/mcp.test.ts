@@ -6,6 +6,7 @@ import { createSubtitleStore, type SubtitleStore } from './subtitleStore.js'
 import { createRecordStore, type RecordStore } from './recordStore.js'
 import { sampleRecord } from './testing/videoRecords.js'
 import { createFakeRedis } from './testing/fakeRedis.js'
+import { JAPANESE_SUBTITLE_RULES } from '../shared/japaneseSubtitles.js'
 
 let store: InboxStore
 let subtitles: SubtitleStore
@@ -86,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'japanese'])
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
   })
@@ -176,6 +177,47 @@ describe('handleMcpRequest', () => {
     const { result } = await res.json()
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('受け取り箱に保存できませんでした')
+  })
+
+  describe('japanese', () => {
+    it('is offered, with the translation rules in the description', async () => {
+      const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
+      const { result } = await res.json()
+      expect(Object.keys(result.tools[0].inputSchema.properties)).toContain('japanese')
+      expect(result.tools[0].description).toContain(JAPANESE_SUBTITLE_RULES)
+    })
+
+    it('keeps one line per script line with the script', async () => {
+      const res = await handleMcpRequest(
+        callTool({ title: 'A', script: 'One.\n\nTwo.\n', japanese: [' ひとつ ', 'ふたつ'] }),
+        deps,
+      )
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toBe('『A』をteleprompterに送りました（2行・日本語訳つき）。teleprompterのホーム画面に届いています。')
+      expect((await store.list())[0].japanese).toEqual(['ひとつ', 'ふたつ'])
+    })
+
+    it('asks for the right number of lines when the count is off, and keeps nothing', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'A', script: 'One.\nTwo.', japanese: ['ひとつ'] }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toBe('japanese の行数が合いません。script は2行、japanese は1行です。2行で送り直してください。')
+      expect(await store.list()).toEqual([])
+    })
+
+    it('asks for the lines again without numbers when they are numbered', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'A', script: 'One.', japanese: ['1. ひとつ'] }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toContain('番号を付けず')
+      expect(await store.list()).toEqual([])
+    })
+
+    it('stores none when none is sent', async () => {
+      await handleMcpRequest(callTool({ title: 'A', script: 'a' }), deps)
+      expect((await store.list())[0]).not.toHaveProperty('japanese')
+    })
   })
 })
 

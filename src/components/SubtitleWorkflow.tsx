@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, shiftCueStart } from '../utils/subtitleCues'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -31,6 +31,7 @@ import CancelProcessing from './CancelProcessing'
 import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
+import type { LineJapanese } from '../types'
 import styles from './SubtitleWorkflow.module.css'
 
 // No 'error' stage: a failed generate/transcribe/burn reverts to the stage
@@ -102,6 +103,8 @@ interface SubtitleWorkflowProps {
    * mid-video zooms.
    */
   oneTake?: boolean
+  /** The Japanese Claude sent with the script, put on the script's cues as they are made. */
+  scriptJapanese?: LineJapanese[]
 }
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
@@ -149,9 +152,11 @@ export default function SubtitleWorkflow({
   transcribe = transcribeSpeech,
   inboxKey = '',
   oneTake = false,
+  scriptJapanese = [],
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
+  const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -221,12 +226,20 @@ export default function SubtitleWorkflow({
   }, [])
 
   function handleGenerate() {
-    const generated = cuesFromShotEntries(shotCueInputs)
+    const generated = withScriptJapanese(cuesFromShotEntries(shotCueInputs), scriptJapanese)
     if (generated.length === 0) {
       setErrorMessage('字幕にできるテキストがありません。トリミング画面でスクリプトのテキストを確認してください。')
       return
     }
     setErrorMessage(null)
+    const missing = generated.filter(c => c.ja === '').length
+    if (generated.some(c => c.ja)) {
+      setNotice(
+        missing > 0
+          ? `台本と一緒に届いた日本語訳を入れました（台本を直した${missing}行は空欄です。手で入れるか、Claude用プロンプトで訳せます）`
+          : '台本と一緒に届いた日本語訳を入れました',
+      )
+    }
     patch({ cues: generated, stage: 'reviewing', source: 'script', pasteText: '' })
   }
 
@@ -301,7 +314,7 @@ export default function SubtitleWorkflow({
   // asking about every keystroke's version.
   const requestId = subtitleRequestId(cues)
   const settledRequestId = useDebouncedValue(requestId, 500)
-  const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !hasAnyJapanese
+  const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !allTranslated
   // The cues as they are when an answer arrives, not when the check began.
   const latestCuesRef = useRef(cues)
   useLayoutEffect(() => {
@@ -376,7 +389,6 @@ export default function SubtitleWorkflow({
     }
   }
 
-  const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
   // The zoom in is previewed by zooming the player itself; the subtitle
   // overlay is a sibling of it, so it keeps its size as in the burn.
   const previewZoom = !previewPlaying
@@ -439,7 +451,7 @@ export default function SubtitleWorkflow({
             <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
           </div>
 
-          {!hasAnyJapanese && (
+          {!allTranslated && (
             <div className={styles.section}>
               <p className={styles.sectionTitle}>Claudeで日本語訳を作成</p>
               <button className={styles.copyBtn} onClick={handleCopyPrompt}>
