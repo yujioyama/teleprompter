@@ -120,4 +120,15 @@ describe('findSpeechRegion pauses', () => {
     expect(pauses[1].start).toBeCloseTo(4.5, 1)
     expect(pauses[1].end).toBeCloseTo(5.6, 1)
   })
+
+  it('finds a line break shorter than the gaps closed up when finding where the speech starts and ends', () => {
+    const clip = makeClip(6, [
+      { from: 1, to: 3, kind: 'voice' },
+      { from: 3.16, to: 5, kind: 'voice' },
+    ])
+    const pauses = findSpeechRegion(clip, SR)!.pauses!
+    expect(pauses).toHaveLength(1)
+    expect(pauses[0].start).toBeCloseTo(3, 1)
+    expect(pauses[0].end).toBeCloseTo(3.16, 1)
+  })
 })

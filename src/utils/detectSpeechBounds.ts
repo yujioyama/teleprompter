@@ -25,6 +25,8 @@ const MIN_THRESHOLD_DB = -60
 const MERGE_GAP_S = 0.25
 const MIN_SPEECH_S = 0.25
 const ATTACH_GAP_S = 0.4
+// Gaps in the speech at least this long are listed as its pauses.
+const PAUSE_MERGE_GAP_S = 0.12
 
 // Below this on both ends there's nothing worth trimming.
 const MIN_SAVED_S = 0.1
@@ -110,16 +112,20 @@ export function findSpeechRegion(samples: Float32Array, sampleRate: number): Spe
     peak - BELOW_PEAK_DB,
   )
 
-  // Runs of loud windows, with gaps shorter than a breath closed up.
-  const segments: Segment[] = []
-  levels.forEach((level, i) => {
-    if (level <= threshold) return
-    const start = (i * windowSize) / sampleRate
-    const end = Math.min(((i + 1) * windowSize) / sampleRate, duration)
-    const last = segments[segments.length - 1]
-    if (last && start - last.end < MERGE_GAP_S) last.end = end
-    else segments.push({ start, end })
-  })
+  // Runs of loud windows, with gaps shorter than `mergeGap` closed up.
+  const loudRuns = (mergeGap: number): Segment[] => {
+    const runs: Segment[] = []
+    levels.forEach((level, i) => {
+      if (level <= threshold) return
+      const start = (i * windowSize) / sampleRate
+      const end = Math.min(((i + 1) * windowSize) / sampleRate, duration)
+      const last = runs[runs.length - 1]
+      if (last && start - last.end < mergeGap) last.end = end
+      else runs.push({ start, end })
+    })
+    return runs
+  }
+  const segments = loudRuns(MERGE_GAP_S)
 
   const isSpeech = (s: Segment) => s.end - s.start >= MIN_SPEECH_S
   let first = segments.findIndex(isSpeech)
@@ -130,12 +136,17 @@ export function findSpeechRegion(samples: Float32Array, sampleRate: number): Spe
   while (first > 0 && segments[first].start - segments[first - 1].end <= ATTACH_GAP_S) first--
   while (last < segments.length - 1 && segments[last + 1].start - segments[last].end <= ATTACH_GAP_S) last++
 
+  const speechStart = segments[first].start
+  const speechEnd = segments[last].end
+  // Lines read off the prompter can follow each other closer than a breath,
+  // so the pauses come from runs split at shorter gaps.
+  const runs = loudRuns(PAUSE_MERGE_GAP_S).filter(r => r.end > speechStart && r.start < speechEnd)
   const pauses: { start: number; end: number }[] = []
-  for (let i = first; i < last; i++) pauses.push({ start: segments[i].end, end: segments[i + 1].start })
+  for (let i = 0; i < runs.length - 1; i++) pauses.push({ start: runs[i].end, end: runs[i + 1].start })
 
   return {
-    speechStart: segments[first].start,
-    speechEnd: segments[last].end,
+    speechStart,
+    speechEnd,
     floor: segments[first - 1]?.end ?? 0,
     ceiling: segments[last + 1]?.start ?? duration,
     duration,

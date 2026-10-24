@@ -89,7 +89,7 @@ function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false): 
     const input: ShotCueInput = { text: entry.text, duration: clips[i].end - clips[i].start }
     if (!oneTake) return input
     const lines = takeLinesOf(entry.text)
-    return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech?.pauses) }
+    return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech) }
   })
 }
 
@@ -285,7 +285,9 @@ export default function FinalizePage() {
         const trim = trimSettings.get(shot.id)!
         // What earlier visits already found for this take (see shotAnalysisStore).
         const known = analyses.get(shot.id)
-        const speech = trim.trimEnabled ? known?.speech : null
+        // A 一発撮り take is split into its lines at the pauses in its speech,
+        // so its speech is found even when it isn't trimmed.
+        const speech = trim.trimEnabled || script.oneTake ? known?.speech : null
         // A cut set by hand on an earlier visit, unless the shot was retaken since.
         const saved = progress.trims[shot.id]
         const handSet = blob && saved?.videoUpdatedAt === takes.get(shot.id) ? saved : undefined
@@ -293,7 +295,7 @@ export default function FinalizePage() {
           shotId: shot.id, text: shot.text, blob, url, duration: known?.duration ?? 0,
           trimStart: handSet?.start ?? 0, trimEnd: handSet?.end ?? 0,
           speech,
-          autoTrim: speech ? autoTrimOf(speech, trim) : null,
+          autoTrim: speech && trim.trimEnabled ? autoTrimOf(speech, trim) : null,
           autoTrimPending: blob !== null && speech === undefined,
           trimEdited: handSet !== undefined,
         }
@@ -365,7 +367,7 @@ export default function FinalizePage() {
           // 間を残す may have been switched while this shot was being checked.
           const shot = scriptRef.current?.shots.find(s => s.id === entry.shotId)
           const trim = resolveShotTrimSettings(shot, settings, entry.shotId === firstShotId, entry.shotId === lastShotId)
-          setAutoTrim(entry.shotId, speech, speech && autoTrimOf(speech, trim))
+          setAutoTrim(entry.shotId, speech, speech && trim.trimEnabled ? autoTrimOf(speech, trim) : null)
         }
       })()
     }).catch(err => {

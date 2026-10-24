@@ -9,7 +9,7 @@ const DB_VERSION = 1
 const STORE_NAME = 'shotAnalyses'
 
 // Bump when the analysis itself changes, so older results are redone.
-const ANALYSIS_VERSION = 1
+const ANALYSIS_VERSION = 2
 
 /**
  * What the finalize step learned about a take: its duration and where its
