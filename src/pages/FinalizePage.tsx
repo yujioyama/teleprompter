@@ -911,6 +911,8 @@ export default function FinalizePage() {
                   initialPosition={settings.coverTextPosition}
                   onPositionChange={coverTextPosition => updateSettings({ coverTextPosition })}
                   stickerPlacement={stickerPlacement}
+                  initialStickerSpot={settings.coverStickerSpot}
+                  onStickerSpotChange={coverStickerSpot => updateSettings({ coverStickerSpot })}
                 />
               )}
             </div>

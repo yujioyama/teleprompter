@@ -44,6 +44,20 @@
   pointer-events: none;
 }
 
+/* Sits over the sticker drawn on the canvas and takes the drag; only it blocks scrolling. */
+.stickerHandle {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.stickerHandle:active {
+  cursor: grabbing;
+}
+
 .hint {
   color: var(--text-muted);
   font-size: 0.8rem;
@@ -70,6 +84,13 @@
 .error {
   color: #ff6b6b;
   font-size: 0.85rem;
+}
+
+.resetBtn {
+  align-self: flex-start;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: underline;
 }
 
 .saveBtn {

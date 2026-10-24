@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { COVER_HEIGHT, COVER_WIDTH, canvasToPng, drawCover, type CoverWords } from '../utils/coverImage'
+import {
+  COVER_HEIGHT,
+  COVER_STICKER_SIZE,
+  COVER_WIDTH,
+  canvasToPng,
+  clampStickerSpot,
+  coverStickerSpot,
+  drawCover,
+  type CoverStickerSpot,
+  type CoverWords,
+} from '../utils/coverImage'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import styles from './CoverMaker.module.css'
@@ -14,8 +24,12 @@ interface Props {
   initialPosition: number
   /** Called when the slider moves, so the next cover starts there. */
   onPositionChange: (position: number) => void
-  /** Where the video's first frame has its sticker; the cover puts it there too. */
+  /** Where the video's first frame has its sticker; the cover puts it there too until it is dragged. */
   stickerPlacement: StickerPlacement
+  /** Where the sticker was dragged to last time; null = where the video has it. */
+  initialStickerSpot: CoverStickerSpot | null
+  /** Called when a drag ends or the sticker goes back, so the next cover starts there. */
+  onStickerSpotChange: (spot: CoverStickerSpot | null) => void
 }
 
 /**
@@ -25,14 +39,28 @@ interface Props {
  * Its one <video> only feeds the canvas; the page hides its own preview
  * while this is open, so only one video decoder is live.
  */
-export default function CoverMaker({ videoUrl, initialWords, filenameBase, initialPosition, onPositionChange, stickerPlacement }: Props) {
+export default function CoverMaker({
+  videoUrl,
+  initialWords,
+  filenameBase,
+  initialPosition,
+  onPositionChange,
+  stickerPlacement,
+  initialStickerSpot,
+  onStickerSpotChange,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
+  /** While dragging: how far the finger is from the sticker's center, so it doesn't jump under it. */
+  const dragRef = useRef<CoverStickerSpot | null>(null)
   const [duration, setDuration] = useState(0)
   const [time, setTime] = useState(0)
   const [ready, setReady] = useState(false)
   const [words, setWords] = useState<CoverWords>(initialWords)
   const [position, setPosition] = useState(initialPosition)
+  const [movedSticker, setMovedSticker] = useState<CoverStickerSpot | null>(initialStickerSpot)
+  const sticker = coverStickerSpot(stickerPlacement, movedSticker)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,14 +68,14 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase, initi
     const video = videoRef.current
     const ctx = canvasRef.current?.getContext('2d')
     if (!video || !ctx) return
-    drawCover(ctx, video, video.videoWidth, video.videoHeight, words, position, stickerPlacement)
+    drawCover(ctx, video, video.videoWidth, video.videoHeight, words, position, sticker)
   }
 
-  // Draw again whenever the words or their position change; frame changes redraw on 'seeked'.
+  // Draw again whenever the words or where they and the sticker sit change; frame changes redraw on 'seeked'.
   useEffect(() => {
     if (ready) redraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [words, position, ready])
+  }, [words, position, movedSticker, ready])
 
   function handleLoaded() {
     const video = videoRef.current
@@ -71,6 +99,38 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase, initi
     if (video) video.currentTime = value
   }
 
+  /** The pointer's spot on the cover, in the same units as the sticker's. */
+  function pointerSpot(e: React.PointerEvent): CoverStickerSpot | null {
+    const rect = frameRef.current?.getBoundingClientRect()
+    if (!rect || rect.width === 0 || rect.height === 0) return null
+    return { x: (e.clientX - rect.left) / rect.width, y: ((e.clientY - rect.top) / rect.height) * 100 }
+  }
+
+  function handleStickerDown(e: React.PointerEvent<HTMLDivElement>) {
+    const at = pointerSpot(e)
+    if (!at) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { x: sticker.x - at.x, y: sticker.y - at.y }
+  }
+
+  function handleStickerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const offset = dragRef.current
+    const at = offset && pointerSpot(e)
+    if (!offset || !at) return
+    setMovedSticker(clampStickerSpot({ x: at.x + offset.x, y: at.y + offset.y }))
+  }
+
+  function handleStickerUp() {
+    if (!dragRef.current) return
+    dragRef.current = null
+    onStickerSpotChange(movedSticker)
+  }
+
+  function handleStickerReset() {
+    setMovedSticker(null)
+    onStickerSpotChange(null)
+  }
+
   async function handleSave() {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -89,7 +149,7 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase, initi
 
   return (
     <div className={styles.maker}>
-      <div className={styles.frame}>
+      <div className={styles.frame} ref={frameRef}>
         <video
           ref={videoRef}
           className={styles.source}
@@ -103,8 +163,24 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase, initi
         <canvas ref={canvasRef} className={styles.canvas} width={COVER_WIDTH} height={COVER_HEIGHT} />
         {/* Where the profile grid crops the cover. */}
         <div className={styles.gridGuide} aria-hidden="true" />
+        {ready && words.sticker.trim() && (
+          <div
+            className={styles.stickerHandle}
+            style={{
+              left: `${sticker.x * 100}%`,
+              top: `${sticker.y}%`,
+              width: `${(COVER_STICKER_SIZE / COVER_WIDTH) * 100}%`,
+            }}
+            role="img"
+            aria-label="ステッカー(ドラッグで移動)"
+            onPointerDown={handleStickerDown}
+            onPointerMove={handleStickerMove}
+            onPointerUp={handleStickerUp}
+            onPointerCancel={handleStickerUp}
+          />
+        )}
       </div>
-      <p className={styles.hint}>点線の内側がプロフィールの一覧に表示される範囲です</p>
+      <p className={styles.hint}>点線の内側がプロフィールの一覧に表示される範囲です。ステッカーはドラッグで動かせます</p>
 
       <label className={styles.field}>
         <span>コマを選ぶ</span>
@@ -160,6 +236,11 @@ export default function CoverMaker({ videoUrl, initialWords, filenameBase, initi
           placeholder="🪷"
         />
       </label>
+      {movedSticker && words.sticker.trim() && (
+        <button className={styles.resetBtn} onClick={handleStickerReset}>
+          ステッカーを元の位置に戻す
+        </button>
+      )}
 
       {error && <p className={styles.error}>{error}</p>}
       <button className={styles.saveBtn} onClick={handleSave} disabled={!ready || saving}>

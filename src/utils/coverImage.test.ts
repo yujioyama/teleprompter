@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { COVER_TEXT_WIDTH, GRID_BOTTOM, GRID_TOP, coverLines, coverWordsOf, fitFontPx, type MeasureWidth } from './coverImage'
+import {
+  COVER_TEXT_WIDTH,
+  GRID_BOTTOM,
+  GRID_TOP,
+  clampStickerSpot,
+  coverLines,
+  coverStickerSpot,
+  coverWordsOf,
+  fitFontPx,
+  type MeasureWidth,
+} from './coverImage'
+import { STICKER_PLACEMENTS } from './subtitleSticker'
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
 
 // Every character is 0.6em wide.
@@ -80,5 +91,21 @@ describe('coverLines', () => {
   it('skips an empty line', () => {
     expect(coverLines({ en: '  ', ja: 'ukon', sticker: '' }, measure).map(l => l.text)).toEqual(['ukon'])
     expect(coverLines({ en: '', ja: '', sticker: '' }, measure)).toEqual([])
+  })
+})
+
+describe('coverStickerSpot', () => {
+  it("puts the sticker where the video's first frame has it until it is dragged", () => {
+    expect(coverStickerSpot('chest', null)).toEqual(STICKER_PLACEMENTS.chest)
+    expect(coverStickerSpot('off', null)).toEqual(STICKER_PLACEMENTS.right)
+  })
+
+  it('goes where it was dragged, keeping the tilt', () => {
+    expect(coverStickerSpot('left', { x: 0.7, y: 20 })).toEqual({ x: 0.7, y: 20, rotation: STICKER_PLACEMENTS.left.rotation })
+  })
+
+  it('keeps a dragged sticker on the cover', () => {
+    expect(clampStickerSpot({ x: -0.2, y: 130 })).toEqual({ x: 0, y: 100 })
+    expect(coverStickerSpot('right', { x: 1.5, y: -10 })).toMatchObject({ x: 1, y: 0 })
   })
 })
