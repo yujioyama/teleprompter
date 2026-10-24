@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
-import { shareOrDownload } from './shareOrDownload'
+import { shareAllOrDownload, shareOrDownload } from './shareOrDownload'
 
 function makeBlob(type = 'video/mp4') {
   return new Blob(['fake-video-data'], { type })
@@ -82,5 +82,37 @@ describe('shareOrDownload', () => {
     expect(result).toBe(true)
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(createObjectURLSpy).toHaveBeenCalledWith(expect.any(Blob))
+  })
+
+  it('shares the video and the cover in one share sheet', async () => {
+    const shareMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: shareMock, configurable: true })
+
+    const result = await shareAllOrDownload([
+      { blob: makeBlob('video/mp4'), filenameBase: 'reckon-final' },
+      { blob: new Blob(['png'], { type: 'image/png' }), filenameBase: 'reckon-cover' },
+    ])
+
+    expect(result).toBe(true)
+    expect(shareMock).toHaveBeenCalledTimes(1)
+    const [{ files }] = shareMock.mock.calls[0]
+    expect(files.map((f: File) => f.name)).toEqual(['reckon-final.mp4', 'reckon-cover.png'])
+  })
+
+  it('downloads each file when sharing is unavailable', async () => {
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    await shareAllOrDownload([
+      { blob: makeBlob('video/mp4'), filenameBase: 'reckon-final' },
+      { blob: new Blob(['png'], { type: 'image/png' }), filenameBase: 'reckon-cover' },
+    ])
+
+    expect(clickSpy).toHaveBeenCalledTimes(2)
+    expect(clickSpy.mock.contexts.map(a => (a as HTMLAnchorElement).download)).toEqual([
+      'reckon-final.mp4',
+      'reckon-cover.png',
+    ])
   })
 })

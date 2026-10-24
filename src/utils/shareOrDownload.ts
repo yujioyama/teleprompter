@@ -4,6 +4,11 @@ function getExtension(mimeType: string): string {
   return mimeType.includes('mp4') ? 'mp4' : 'webm'
 }
 
+export interface ShareItem {
+  blob: Blob
+  filenameBase: string
+}
+
 /**
  * Share a finished video (or a script backup) via the Web Share API (saves to camera roll on iOS
  * Safari 15+), falling back to a plain download when sharing isn't
@@ -11,13 +16,23 @@ function getExtension(mimeType: string): string {
  * native share sheet, so callers can distinguish "cancelled" from "saved".
  */
 export async function shareOrDownload(blob: Blob, filenameBase: string): Promise<boolean> {
-  const ext = getExtension(blob.type)
-  const fullName = `${filenameBase}.${ext}`
-  const file = new File([blob], fullName, { type: blob.type || 'video/webm' })
+  return shareAllOrDownload([{ blob, filenameBase }])
+}
 
-  if (navigator.canShare?.({ files: [file] })) {
+/**
+ * Like shareOrDownload, but all the files go in one share sheet, so iOS
+ * saves them to the camera roll with a single "Save N Items". Without
+ * sharing, each one is downloaded.
+ */
+export async function shareAllOrDownload(items: ShareItem[]): Promise<boolean> {
+  const files = items.map(({ blob, filenameBase }) => {
+    const fullName = `${filenameBase}.${getExtension(blob.type)}`
+    return new File([blob], fullName, { type: blob.type || 'video/webm' })
+  })
+
+  if (navigator.canShare?.({ files })) {
     try {
-      await navigator.share({ files: [file], title: fullName })
+      await navigator.share(files.length === 1 ? { files, title: files[0].name } : { files })
       return true
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return false
@@ -25,11 +40,13 @@ export async function shareOrDownload(blob: Blob, filenameBase: string): Promise
     }
   }
 
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = fullName
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 100)
+  for (const file of files) {
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 100)
+  }
   return true
 }
