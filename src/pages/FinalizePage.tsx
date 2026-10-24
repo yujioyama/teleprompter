@@ -93,12 +93,13 @@ function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false): 
   })
 }
 
-function combineLabel(phase: CombinePhase, progress: number): string {
+// A 一発撮り take has nothing to join: the same work only cuts it.
+function combineLabel(phase: CombinePhase, progress: number, oneTake: boolean): string {
   // Rounded down, so 100% only shows once that phase's work is really done.
   const percent = Math.floor(progress * 100)
   if (phase === 'joining') return '仕上げ中...'
   if (phase === 'unifying') return `再変換中... ${percent}%`
-  return `結合中... ${percent}%`
+  return `${oneTake ? '準備中' : '結合中'}... ${percent}%`
 }
 
 function shotMeta(entry: ShotEntry): string {
@@ -561,7 +562,14 @@ export default function FinalizePage() {
     { voice: mixed ? 'none' : voicePreset, normalize: normalizeAudio },
   )
 
-  async function handleCombine() {
+  // A 一発撮り take skips the 結合 result: 次へ cuts it (unless already
+  // cut so) and goes straight on to the subtitles.
+  async function handleOneTakeNext() {
+    if (!combinedIsCurrent && !(await handleCombine())) return
+    markStepDone('trim', 'subtitle')
+  }
+
+  async function handleCombine(): Promise<boolean> {
     // Re-combining invalidates any later step's output. `completedSteps`
     // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
     // back here is goToStep, which already truncates completedSteps), so
@@ -573,7 +581,7 @@ export default function FinalizePage() {
     preparedAudio.clear()
     const clips = availableEntries.map(clipOf)
     const joined = await combine(getEncodeCache(), clips)
-    if (!joined) return
+    if (!joined) return false
     // Same clips, same order, same trim values used just above to build
     // `joined` — keeps subtitle timing aligned with the actual combined
     // output by construction, not by keeping two formulas in sync.
@@ -592,6 +600,7 @@ export default function FinalizePage() {
         console.warn('[FinalizePage] could not save the 結合:', err),
       )
     }
+    return true
   }
 
   async function handleSaveFinal() {
@@ -739,14 +748,14 @@ export default function FinalizePage() {
 
               <button
                 className={styles.finalizeBtn}
-                onClick={handleCombine}
+                onClick={oneTake ? handleOneTakeNext : handleCombine}
                 disabled={!canCombine || combining}
               >
                 {combineStatus.state === 'combining'
-                  ? combineLabel(combineStatus.phase, combineStatus.progress)
+                  ? combineLabel(combineStatus.phase, combineStatus.progress, oneTake)
                   : detectingCount > 0
                     ? `前後の無音を検出中... (残り${detectingCount})`
-                    : '結合する'}
+                    : oneTake ? '次へ' : '結合する'}
               </button>
 
               {combineStatus.state === 'combining' && (
@@ -759,10 +768,12 @@ export default function FinalizePage() {
               {combineStatus.state === 'cancelled' && <p className={styles.missing}>中断しました</p>}
 
               {combineStatus.state === 'error' && (
-                <p className={styles.missing}>結合に失敗しました: {combineStatus.error}</p>
+                <p className={styles.missing}>
+                  {oneTake ? '動画の準備' : '結合'}に失敗しました: {combineStatus.error}
+                </p>
               )}
 
-              {combineStatus.state === 'done' && combinedUrl && (
+              {!oneTake && combineStatus.state === 'done' && combinedUrl && (
                 <div className={styles.shotEntry}>
                   <p className={styles.shotEntryText}>結合結果</p>
                   <video className={styles.preview} src={combinedUrl} controls playsInline />

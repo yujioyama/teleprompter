@@ -290,7 +290,7 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
     renderFinalizePage('script-1')
 
-    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: '次へ' })).not.toBeDisabled())
     expect(detectSpeech).toHaveBeenCalledTimes(1)
     expect(screen.getByText('開始 0.0秒')).toBeInTheDocument()
     expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
@@ -536,6 +536,47 @@ describe('FinalizePage trim step: picks up where it was left', () => {
     renderFinalizePage('script-1')
     await screen.findByText('結合する')
     expect(screen.queryByText('結合結果')).not.toBeInTheDocument()
+  })
+})
+
+describe('FinalizePage trim step: a 一発撮り take has nothing to join', () => {
+  beforeEach(() => {
+    const script = seedScript()
+    script.oneTake = true
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+  })
+
+  function loadShotDuration(duration: number) {
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: duration, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+  }
+
+  it('goes from the cut straight to the subtitles, without 結合する or 結合結果', async () => {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    loadShotDuration(5)
+    await waitFor(() => expect(screen.getByRole('button', { name: '次へ' })).not.toBeDisabled())
+    expect(screen.queryByText('結合する')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }))
+    expect(await screen.findByLabelText('英語字幕 1')).toBeInTheDocument()
+    expect(screen.queryByText('結合結果')).not.toBeInTheDocument()
+    expect(trimAndNormalizeShot).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves on without making the video again when the cut has not changed', async () => {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    loadShotDuration(5)
+    await waitFor(() => expect(screen.getByRole('button', { name: '次へ' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }))
+    fireEvent.change(await screen.findByLabelText('英語字幕 1'), { target: { value: 'Hello there' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /トリミング/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '次へ' }))
+    expect(await screen.findByLabelText('英語字幕 1')).toHaveValue('Hello there')
+    expect(trimAndNormalizeShot).toHaveBeenCalledTimes(1)
   })
 })
 
