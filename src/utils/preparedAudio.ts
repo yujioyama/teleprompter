@@ -1,3 +1,4 @@
+import type { BgmEnding } from './bgmStop'
 import { mixMusic } from './mixMusic'
 import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
@@ -9,12 +10,12 @@ export interface FinalAudioKey {
   volume: number
   normalize: boolean
   voice: VoicePreset
-  /** Where the punchline starts, for the BGM to drop out before it; null = plays to the end. */
-  stopAt: number | null
+  /** Where the punchline starts and how the BGM ends there (see bgmStop). */
+  ending: BgmEnding
 }
 
 function sameKey(a: FinalAudioKey, b: FinalAudioKey): boolean {
-  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && a.stopAt === b.stopAt
+  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && a.ending.stopAt === b.ending.stopAt && a.ending.soft === b.ending.soft
 }
 
 /**
@@ -28,7 +29,7 @@ export class PreparedAudio {
 
   prepare(source: Blob, key: FinalAudioKey, track: () => Promise<Blob>): void {
     if (this.entry && this.entry.source === source && sameKey(this.entry.key, key)) return
-    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.stopAt))
+    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending))
     // Only means mixing the slow way later; never shown to the user.
     audio.catch(err => console.warn('[PreparedAudio] could not prepare the final audio:', err))
     this.entry = { source, key, audio }
@@ -82,5 +83,5 @@ export async function mixForExport(
   } else {
     console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
-  return mixMusic(video, trackBlob, key.volume, key.voice, key.stopAt)
+  return mixMusic(video, trackBlob, key.volume, key.voice, key.ending)
 }

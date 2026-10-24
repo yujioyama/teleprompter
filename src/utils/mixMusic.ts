@@ -5,22 +5,30 @@ import { getFFmpeg } from './ffmpegClient'
 import { finishAudio } from './normalizeLoudness'
 import type { VoicePreset } from './voicePreset'
 import { canUseWebCodecs } from './webcodecs/support'
-import { bgmFadeOut } from './bgmStop'
+import { bgmEnvelope, PLAYS_TO_END, type BgmEnding } from './bgmStop'
 import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 
 /**
  * Build the filter_complex that loops/trims the BGM track (input 1) to the
  * video's exact duration, fades it in/out at the edges (or out just before
- * the punchline at `stopAt`, see bgmStop), applies the user's chosen volume,
+ * the punchline, or lowered under it for a soft genre, see bgmStop), applies
+ * the user's chosen volume,
  * then mixes it with the original audio (input 0). Video is left untouched
  * by the caller (stream-copied, not part of this filter).
  */
-export function buildMixFilterComplex(durationSeconds: number, volume: number, stopAt: number | null = null): string {
+export function buildMixFilterComplex(durationSeconds: number, volume: number, ending: BgmEnding = PLAYS_TO_END): string {
   const duration = durationSeconds.toFixed(3)
-  const fade = bgmFadeOut(durationSeconds, stopAt)
-  const fadeOut = `afade=t=out:st=${fade.start.toFixed(3)}:d=${fade.length}`
+  const { duck, fadeOut: fade } = bgmEnvelope(durationSeconds, ending)
+  let ducking = ''
+  if (duck) {
+    const start = duck.start.toFixed(3)
+    const end = (duck.start + duck.length).toFixed(3)
+    // A linear ramp from 1 to `level`, then held, like the gain ramp in renderMix.
+    ducking = `volume='if(lt(t,${start}),1,if(lt(t,${end}),1-${+(1 - duck.level).toFixed(3)}*(t-${start})/${duck.length},${duck.level}))':eval=frame,`
+  }
+  const fadeOut = `afade=t=out:st=${fade.start.toFixed(3)}:d=${+fade.length.toFixed(3)}`
   return (
-    `[1:a]aloop=loop=-1:size=2e9,atrim=0:${duration},afade=t=in:d=1,${fadeOut},volume=${volume}[bgm];` +
+    `[1:a]aloop=loop=-1:size=2e9,atrim=0:${duration},afade=t=in:d=1,${ducking}${fadeOut},volume=${volume}[bgm];` +
     `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]`
   )
 }
@@ -69,17 +77,17 @@ let mixQueue: Promise<unknown> = Promise.resolve()
  * well be the BGM file or Web Audio at fault.
  *
  * `voice` (声の加工) is applied to the video's own audio before the BGM goes
- * under it. `stopAt` (seconds) is where the punchline starts, for the BGM
- * to drop out just before it; null keeps it to the end.
+ * under it. `ending` says where the punchline starts, for the BGM to drop
+ * out just before it (or be lowered, for a soft genre); see bgmStop.
  */
 export function mixMusic(
   videoBlob: Blob,
   trackBlob: Blob,
   volume: number,
   voice: VoicePreset = 'none',
-  stopAt: number | null = null,
+  ending: BgmEnding = PLAYS_TO_END,
 ): Promise<Blob> {
-  const run = mixQueue.then(() => mixMusicAuto(videoBlob, trackBlob, volume, voice, stopAt))
+  const run = mixQueue.then(() => mixMusicAuto(videoBlob, trackBlob, volume, voice, ending))
   // Swallow rejection in the queue chain itself so one failed mix doesn't
   // permanently wedge the queue for later calls; this call's own returned
   // promise still rejects normally for its caller.
@@ -92,27 +100,27 @@ async function mixMusicAuto(
   trackBlob: Blob,
   volume: number,
   voice: VoicePreset,
-  stopAt: number | null,
+  ending: BgmEnding,
 ): Promise<Blob> {
   if (await canUseWebCodecs()) {
     try {
-      return await mixMusicWebCodecs(videoBlob, trackBlob, volume, voice, stopAt)
+      return await mixMusicWebCodecs(videoBlob, trackBlob, volume, voice, ending)
     } catch (err) {
       console.warn('[mixMusic] WebCodecs mix failed, falling back to ffmpeg:', err)
     }
   }
   // The filtergraph has no voice preset: apply it in a pass of its own first.
   const voiced = await finishAudio(videoBlob, { voice, normalize: false })
-  return mixMusicFFmpeg(voiced, trackBlob, volume, stopAt)
+  return mixMusicFFmpeg(voiced, trackBlob, volume, ending)
 }
 
-async function mixMusicFFmpeg(videoBlob: Blob, trackBlob: Blob, volume: number, stopAt: number | null): Promise<Blob> {
+async function mixMusicFFmpeg(videoBlob: Blob, trackBlob: Blob, volume: number, ending: BgmEnding): Promise<Blob> {
   const ff = await getFFmpeg()
   await ff.writeFile('in.mp4', await fetchFile(videoBlob))
   await ff.writeFile('track.mp3', await fetchFile(trackBlob))
 
   const duration = await probeDuration(ff, 'in.mp4')
-  const filterComplex = buildMixFilterComplex(duration, volume, stopAt)
+  const filterComplex = buildMixFilterComplex(duration, volume, ending)
 
   await execFFmpeg(ff, [
     '-i', 'in.mp4',

@@ -20,7 +20,7 @@ import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/det
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
-import { punchlineStart } from '../utils/bgmStop'
+import { bgmEnding, punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
@@ -522,8 +522,8 @@ export default function FinalizePage() {
     return () => clearTimeout(timer)
   }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd])
 
-  // Where the BGM drops out: just before the last shot, the punchline —
-  // in a 一発撮り take, just before its last line.
+  // Where the BGM drops out (or is lowered, for a soft genre): just before
+  // the last shot, the punchline — in a 一発撮り take, just before its last line.
   const bgmStopAt = useMemo(
     () => oneTake
       ? (bgmStopBeforePunchline && subtitleCues.length > 1 ? subtitleCues[subtitleCues.length - 1].start : null)
@@ -542,7 +542,7 @@ export default function FinalizePage() {
       if (cancelled || !ok) return
       preparedAudio.prepare(
         combinedBlob,
-        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset, stopAt: bgmStopAt },
+        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset, ending: bgmEnding(defaultTrack.genre, bgmStopAt) },
         () => fetchTrack(defaultTrack),
       )
     })
@@ -838,7 +838,7 @@ export default function FinalizePage() {
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
-                    stopAt: bgmStopAt,
+                    ending: bgmEnding(track.genre, bgmStopAt),
                   })
                 }}
                 onLeaveAuto={() => {

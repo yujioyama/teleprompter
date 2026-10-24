@@ -2,7 +2,7 @@ import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import { applyVoicePreset, type VoicePreset } from '../voicePreset'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 import { channelsOf } from './normalizeLoudnessWebCodecs'
-import { bgmFadeOut } from '../bgmStop'
+import { bgmEnvelope, PLAYS_TO_END, type BgmEnding } from '../bgmStop'
 
 /**
  * ffmpeg's `amix` (normalize=1, the default) scales every input by
@@ -23,15 +23,15 @@ const FADE_SECONDS = 1
  * the original audio (both scaled as `amix` does). The BGM mp3 is decoded
  * with decodeAudioData, which every browser supports for mp3, rather than
  * through WebCodecs. `voice` (声の加工) is applied to the original audio
- * before the BGM goes under it. With `stopAt` the BGM drops out just before
- * the punchline instead of fading over the last second (see bgmStop).
+ * before the BGM goes under it. `ending` drops the BGM out just before the
+ * punchline, or lowers it there for a soft genre (see bgmStop).
  */
 export async function mixMusicWebCodecs(
   videoBlob: Blob,
   trackBlob: Blob,
   volume: number,
   voice: VoicePreset = 'none',
-  stopAt: number | null = null,
+  ending: BgmEnding = PLAYS_TO_END,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(videoBlob), formats: ALL_FORMATS })
   try {
@@ -42,7 +42,7 @@ export async function mixMusicWebCodecs(
     const duration = await input.computeDuration()
     const original = await decodeAudioTrack(audioTrack)
     applyVoicePreset(channelsOf(original), original.sampleRate, voice)
-    const mixed = await renderMix(original, trackBlob, volume, duration, original.length, stopAt)
+    const mixed = await renderMix(original, trackBlob, volume, duration, original.length, ending)
     return await muxWithAudio(videoTrack, mixed)
   } finally {
     input.dispose()
@@ -61,7 +61,7 @@ export async function renderMix(
   volume: number,
   duration: number,
   length = original.length,
-  stopAt: number | null = null,
+  ending: BgmEnding = PLAYS_TO_END,
 ): Promise<AudioBuffer> {
   // `amix duration=first`: the output is as long as the original audio.
   const ctx = new OfflineAudioContext(original.numberOfChannels, length, original.sampleRate)
@@ -74,22 +74,29 @@ export async function renderMix(
   originalGain.gain.value = AMIX_SCALE
   originalNode.connect(originalGain).connect(ctx.destination)
 
-  // Fade in/out are separate stages so that, like chained `afade`s, they
-  // multiply where they overlap on a clip shorter than two seconds.
+  // Fade in, duck and fade out are separate stages so that, like the
+  // chained filters, they multiply where they overlap (on a clip shorter
+  // than two seconds, or a soft BGM fading out from its lowered level).
   const bgmNode = ctx.createBufferSource()
   bgmNode.buffer = bgm
   bgmNode.loop = true
   const fadeIn = ctx.createGain()
   fadeIn.gain.setValueAtTime(0, 0)
   fadeIn.gain.linearRampToValueAtTime(1, FADE_SECONDS)
-  const fade = bgmFadeOut(duration, stopAt)
+  const { duck: duckAt, fadeOut: fade } = bgmEnvelope(duration, ending)
+  const duck = ctx.createGain()
+  if (duckAt) {
+    duck.gain.setValueAtTime(1, duckAt.start)
+    // Held at `level` after the ramp, then faded out from there.
+    duck.gain.linearRampToValueAtTime(duckAt.level, duckAt.start + duckAt.length)
+  }
   const fadeOut = ctx.createGain()
   fadeOut.gain.setValueAtTime(1, fade.start)
   // Stays at 0 after the ramp, as `afade=t=out` does.
   fadeOut.gain.linearRampToValueAtTime(0, fade.start + fade.length)
   const bgmGain = ctx.createGain()
   bgmGain.gain.value = volume * AMIX_SCALE
-  bgmNode.connect(fadeIn).connect(fadeOut).connect(bgmGain).connect(ctx.destination)
+  bgmNode.connect(fadeIn).connect(duck).connect(fadeOut).connect(bgmGain).connect(ctx.destination)
 
   originalNode.start(0)
   bgmNode.start(0)

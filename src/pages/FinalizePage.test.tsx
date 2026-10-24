@@ -1331,10 +1331,20 @@ describe('FinalizePage with a usual BGM', () => {
     const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
     expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
-    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', null])
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', { stopAt: null, soft: false }])
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('prepares a quiet genre to end softly', async () => {
+    useSettingsOf({ defaultBgmId: 'warmpiano-my-nightly-prayer' })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(prepareFinalAudio).mockResolvedValue(new Blob(['prepared'], { type: 'audio/mp4' }))
+
+    await walkThroughSubtitles()
+    await waitFor(() => expect(prepareFinalAudio).toHaveBeenCalled())
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0][5]).toEqual({ stopAt: null, soft: true })
   })
 
   it('lets 別のBGMを選ぶ escape a prepared-audio job that never settles', async () => {

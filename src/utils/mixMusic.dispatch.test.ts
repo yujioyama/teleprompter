@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mixMusic } from './mixMusic'
+import { PLAYS_TO_END } from './bgmStop'
 import { canUseWebCodecs } from './webcodecs/support'
 import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 import { getFFmpeg } from './ffmpegClient'
@@ -35,7 +36,7 @@ describe('mixMusic backend selection', () => {
     vi.mocked(mixMusicWebCodecs).mockResolvedValue(out)
 
     await expect(mixMusic(video, track, 0.3)).resolves.toBe(out)
-    expect(mixMusicWebCodecs).toHaveBeenCalledWith(video, track, 0.3, 'none', null)
+    expect(mixMusicWebCodecs).toHaveBeenCalledWith(video, track, 0.3, 'none', PLAYS_TO_END)
     expect(getFFmpeg).not.toHaveBeenCalled()
   })
 
@@ -61,7 +62,7 @@ describe('mixMusic backend selection', () => {
     vi.mocked(mixMusicWebCodecs).mockResolvedValue(new Blob(['wc']))
 
     await mixMusic(video, track, 0.3, 'radio')
-    expect(mixMusicWebCodecs).toHaveBeenCalledWith(video, track, 0.3, 'radio', null)
+    expect(mixMusicWebCodecs).toHaveBeenCalledWith(video, track, 0.3, 'radio', PLAYS_TO_END)
     expect(finishAudio).not.toHaveBeenCalled()
   })
 
