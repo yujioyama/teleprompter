@@ -13,7 +13,7 @@ import { concatVideos } from '../utils/concatVideos'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { finishAudio, markLoudnessNormalized } from '../utils/normalizeLoudness'
 import { prepareFinalAudio, joinVideoAndAudio } from '../utils/webcodecs/finalAudio'
-import { shareOrDownload } from '../utils/shareOrDownload'
+import { shareAllOrDownload, shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { listShotAnalyses, updateShotAnalysis } from '../utils/shotAnalysisStore'
 import { loadFinalizeProgress } from '../utils/finalizeProgressStore'
@@ -44,6 +44,13 @@ vi.mock('../utils/probeVideoDuration', () => ({
 }))
 vi.mock('../utils/shareOrDownload', () => ({
   shareOrDownload: vi.fn(async () => true),
+  shareAllOrDownload: vi.fn(async () => true),
+}))
+// jsdom's canvas can't encode; the cover's pixels aren't what these tests check.
+const COVER_PNG = new Blob(['cover'], { type: 'image/png' })
+vi.mock('../utils/coverImage', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/coverImage')>()),
+  canvasToPng: vi.fn(async () => COVER_PNG),
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
   finishAudio: vi.fn(),
@@ -1257,6 +1264,59 @@ describe('FinalizePage export step: loudness normalization', () => {
 
     fireEvent.click(await screen.findByText('キャプションをコピー'))
     expect(await screen.findByText('コピーできませんでした')).toBeInTheDocument()
+  })
+
+  // Opens the cover maker and lets its frame "load", so its saves are enabled.
+  async function openCover() {
+    fireEvent.click(await screen.findByText('カバー画像を作る'))
+    const coverVideo = document.querySelector('video') as HTMLVideoElement
+    fireEvent(coverVideo, new Event('loadeddata'))
+    fireEvent(coverVideo, new Event('seeked'))
+  }
+
+  it('saves the video and the cover together and copies the caption in one tap', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ ...OLD_CUTS, inboxKey: 'key-1' }))
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: '#朝活 おはよう' }]))
+    await walkToExport()
+    await openCover()
+
+    fireEvent.click(await screen.findByText('動画・カバー・キャプションを一括保存'))
+
+    expect(writeText).toHaveBeenCalledWith('#朝活 おはよう')
+    await waitFor(() =>
+      expect(shareAllOrDownload).toHaveBeenCalledWith([
+        { blob: LOUDNESS_NORMALIZED, filenameBase: 'テスト動画-final' },
+        { blob: COVER_PNG, filenameBase: 'テスト動画-cover' },
+      ]),
+    )
+    expect(await screen.findByText('コピーしました')).toBeInTheDocument()
+    await waitFor(() => expect(recordPosts()).toHaveLength(1))
+  })
+
+  it('saves the video and the cover together when the script has no caption', async () => {
+    await walkToExport()
+    await openCover()
+
+    fireEvent.click(await screen.findByText('動画とカバーを一括保存'))
+
+    await waitFor(() =>
+      expect(shareAllOrDownload).toHaveBeenCalledWith([
+        { blob: LOUDNESS_NORMALIZED, filenameBase: 'テスト動画-final' },
+        { blob: COVER_PNG, filenameBase: 'テスト動画-cover' },
+      ]),
+    )
+  })
+
+  it('still saves just the cover', async () => {
+    await walkToExport()
+    await openCover()
+
+    fireEvent.click(await screen.findByText('カバー画像だけ保存'))
+
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(COVER_PNG, 'テスト動画-cover'))
+    expect(shareAllOrDownload).not.toHaveBeenCalled()
   })
 
   it('offers no caption copy when the script has no caption', async () => {
