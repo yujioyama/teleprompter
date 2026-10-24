@@ -82,6 +82,27 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(deleteInboxItem).toHaveBeenCalledWith('secret', 'inbox-1')
   })
 
+  it('keeps the Japanese Claude sent with the script, each with its English line', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, japanese: ['いちぎょうめ', 'にぎょうめ'] } } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].japanese).toEqual([
+      { en: '一行目', ja: 'いちぎょうめ' },
+      { en: '二行目', ja: 'にぎょうめ' },
+    ])
+  })
+
+  it('stores no Japanese when none was sent', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).not.toHaveProperty('japanese')
+  })
+
   it('splits one shot per line with 一発撮り switched off', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     fireEvent.click(screen.getByRole('checkbox', { name: /一発撮り/ }))

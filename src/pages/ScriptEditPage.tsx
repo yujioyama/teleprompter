@@ -5,6 +5,7 @@ import { useSettings } from '../hooks/useSettings'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
+import { lineJapaneseOf } from '../utils/subtitleCues'
 import { Shot } from '../types'
 import styles from './ScriptEditPage.module.css'
 
@@ -123,7 +124,10 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake)
+      // Kept against the lines as Claude sent them: edits made here just
+      // leave those lines for the subtitle step's Claude用プロンプト.
+      const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese)
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If

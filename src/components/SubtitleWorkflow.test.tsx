@@ -7,6 +7,7 @@ import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
+import type { LineJapanese } from '../types'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/subtitleRequest', async importOriginal => ({
@@ -49,6 +50,7 @@ function ControlledSubtitleWorkflow({
   onHookSettingsChange,
   inboxKey,
   initialHookSettings,
+  scriptJapanese,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -57,6 +59,7 @@ function ControlledSubtitleWorkflow({
   onHookSettingsChange?: (patch: Partial<HookSettings>) => void
   inboxKey?: string
   initialHookSettings?: Partial<HookSettings>
+  scriptJapanese?: LineJapanese[]
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -81,6 +84,7 @@ function ControlledSubtitleWorkflow({
       onBurned={onBurned}
       transcribe={transcribe}
       inboxKey={inboxKey}
+      scriptJapanese={scriptJapanese}
     />
   )
 }
@@ -824,5 +828,69 @@ describe('SubtitleWorkflow Japanese sent back by Claude', () => {
     expect(await screen.findByText(/行数が一致しません/)).toBeInTheDocument()
     expect(screen.queryByDisplayValue('こんにちは')).not.toBeInTheDocument()
     expect(deleteSubtitles).not.toHaveBeenCalled()
+  })
+})
+
+describe('SubtitleWorkflow Japanese sent with the script', () => {
+  const INPUTS: ShotCueInput[] = [{ text: 'Hello', duration: 2 }, { text: 'World', duration: 2 }]
+  const JAPANESE: LineJapanese[] = [
+    { en: 'Hello', ja: 'こんにちは' },
+    { en: 'World', ja: '世界' },
+  ]
+
+  beforeEach(() => {
+    vi.mocked(fetchSubtitles).mockReset().mockResolvedValue(null)
+  })
+
+  function renderWith(scriptJapanese: LineJapanese[], shotCueInputs = INPUTS) {
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={shotCueInputs}
+        onBurned={vi.fn()}
+        inboxKey="secret"
+        scriptJapanese={scriptJapanese}
+      />,
+    )
+  }
+
+  it('starts with it in, with no need to ask Claude', async () => {
+    renderWith(JAPANESE)
+
+    expect(await screen.findByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    expect(screen.getByLabelText('日本語字幕 2')).toHaveValue('世界')
+    expect(screen.getByText('台本と一緒に届いた日本語訳を入れました')).toBeInTheDocument()
+    expect(screen.queryByText('📋 Claude用プロンプトをコピー')).not.toBeInTheDocument()
+    expect(fetchSubtitles).not.toHaveBeenCalled()
+  })
+
+  it('leaves a line changed since empty, with the Claude prompt still there', async () => {
+    renderWith(JAPANESE, [{ text: 'Hello', duration: 2 }, { text: 'Whole world', duration: 2 }])
+
+    expect(await screen.findByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    expect(screen.getByLabelText('日本語字幕 2')).toHaveValue('')
+    expect(screen.getByText(/1行は空欄です/)).toBeInTheDocument()
+    expect(screen.getByText('📋 Claude用プロンプトをコピー')).toBeInTheDocument()
+    await waitFor(() => expect(fetchSubtitles).toHaveBeenCalled())
+  })
+
+  it('leaves the subtitles from speech to the Claude prompt', async () => {
+    const transcribed: SubtitleCue[] = [{ id: 's', start: 0, end: 4, en: 'Hello world', ja: null }]
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={INPUTS}
+        onBurned={vi.fn()}
+        scriptJapanese={JAPANESE}
+        transcribe={async () => transcribed}
+      />,
+    )
+    await screen.findByLabelText('日本語字幕 1')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(screen.getByText('話した音声から'))
+
+    expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
+    expect(screen.queryByLabelText('日本語字幕 1')).not.toBeInTheDocument()
+    expect(screen.getByText('📋 Claude用プロンプトをコピー')).toBeInTheDocument()
   })
 })

@@ -788,6 +788,7 @@ export default function FinalizePage() {
                 hookSettings={hookSettings}
                 onHookSettingsChange={updateSettings}
                 inboxKey={settings.inboxKey}
+                scriptJapanese={script?.japanese}
                 oneTake={oneTake}
                 burn={(cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }

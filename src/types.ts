@@ -8,6 +8,13 @@ export interface Shot {
   keepPause?: boolean
 }
 
+/** One script line's Japanese subtitle, as Claude sent it with the script. */
+export interface LineJapanese {
+  /** The English line it was written for. */
+  en: string
+  ja: string
+}
+
 export interface Script {
   id: string
   title: string
@@ -19,6 +26,11 @@ export interface Script {
    * one line of it per subtitle (split where the pauses are).
    */
   oneTake?: boolean
+  /**
+   * The Japanese Claude sent with the script. The subtitle step puts each
+   * on the line whose English is still `en`.
+   */
+  japanese?: LineJapanese[]
   createdAt: string
   updatedAt: string
 }

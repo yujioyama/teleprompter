@@ -1,4 +1,6 @@
 import { stripThemeEmphasis } from './subtitleEmphasis'
+import { JAPANESE_SUBTITLE_RULES } from '../../shared/japaneseSubtitles'
+import type { LineJapanese } from '../types'
 
 export interface SubtitleCue {
   id: string
@@ -20,40 +22,7 @@ export function buildClaudePrompt(cues: SubtitleCue[], requestId?: string): stri
   const lines = cues.map((cue, i) => `${i + 1}. ${stripThemeEmphasis(cue.en)}`).join('\n')
   return `以下は、僕（Yuji）のショート動画の英語セリフです。動画に焼き込む日本語字幕を作ってください。
 
-【話し手】
-日本在住の30代の日本人男性で、ゲイ。英語は第二言語。視聴者には女性が多い。
-落ち着いた淡々とした話し方で、自分を少し観察しすぎるタイプ。ドライなユーモアがあり、最後に静かなオチがある。
-
-【口調】
-- ふだんの行は、軽くオネエ寄りの口語（「〜したの」「〜なの」「〜なんだけど」「〜かも」）。です・ます調は使わない
-- オチ・ツッコミ・本音の行では、オネエ全開で語尾を伸ばして感情を乗せる（「〜のよぉぉぉ」「〜じゃないのぉ」「〜だわぁ」）。淡々とした前振りとの落差で笑わせる
-  例：I spent three hours picking a shirt. / Nobody noticed. → 「シャツ選びに3時間かけたの / 誰も気づかなかったのよぉぉぉ」
-- 語尾を伸ばすのは要所だけにし、全行には付けない
-- 一人称は「私」
-- 「！」や絵文字は使わない
-- 行末の「。」は付けない（文の途中の「。」は可）
-
-【訳し方】
-- 直訳ではなく、日本人が同じ場面で実際に言う言い方にする
-- 読み切れる長さを優先する。英語の情報を全部入れなくていい。目安は1行40字以内
-- オチになる言葉は、その行の最後に来るよう語順を変える
-- 「つまり」「〜というわけです」「〜ということです」などの説明口調や、主語（私は／彼は）の多用を避ける
-- 英語の言葉遊びが訳せない場合は、日本語で同じ笑いになる言い方を優先する
-
-【固有名詞・伝わりにくい言葉】
-優先順位は上から順に適用する。
-1. 動画のテーマになっている英単語・英語フレーズは、訳さず英語のまま残す（例：「drama」を「ドラマ」にしない）
-2. 英語台本の中に出てくる日本語（ローマ字表記）は、日本語表記に戻す（例：bosozoku → 暴走族、kujuu wo nameru → 苦汁をなめる）
-3. 人名・作品名・ブランド名は、日本の視聴者が知っているかどうかで書き方を変える
-   - 日本でも有名なもの：日本で一般的な表記にする。日本語タイトルがある作品はそれを使う（例：Mariah Carey → マライア・キャリー、Gossip Girl → ゴシップガール）
-   - 日本であまり知られていないもの：名前より「それが何か」が伝わる言い方にする（例：無名の番組名 → 「オーストラリアのリアリティ番組」、海外の歌手 → 「オーストラリアの歌手」）
-   - ただし、その名前自体がオチや話の中心になっている場合は、カタカナ表記の名前に短い説明を添える（例：「オーストラリアの歌手の〇〇」）
-4. 日本人に通じにくい英語圏の習慣・スラング・文化的な話は、短い言い換えで意味が伝わるようにする。注釈やカッコ書きの説明は付けない
-
-【{…} で囲まれた語句】
-英語セリフの中で {…} で囲まれた語句は、その回に紹介する日本語の単語です（字幕で色が付きます）。
-- その行の日本語訳でも、対応する日本語の単語を {…} で囲む（日本語表記に戻したうえで。例：In Japanese, we call it {ukon}. → 日本語だと{ウコン}って言うの）
-- 囲むのはその1か所だけ。ほかの行や、ほかの語句には {…} を付けない
+${JAPANESE_SUBTITLE_RULES}
 
 【出力】
 - 「番号. 日本語訳」の形式のみ。番号と行数は英語と完全に一致させる
@@ -132,6 +101,28 @@ export interface ShotCueInput {
    * subtitled line by line instead of with one cue.
    */
   lineStarts?: number[]
+}
+
+/** Each line of a script Claude sent, with the Japanese it sent for that line. */
+export function lineJapaneseOf(body: string, japanese: string[]): LineJapanese[] {
+  return takeLinesOf(body).flatMap((en, i) => (japanese[i] ? [{ en, ja: japanese[i] }] : []))
+}
+
+function lineKey(text: string): string {
+  return text.trim().replace(/\s+/g, ' ')
+}
+
+/**
+ * The cues with the Japanese Claude sent with the script, on each cue whose
+ * English is still the line it was written for. A line edited since (or
+ * split differently) gets an empty one to fill in; when no line matches,
+ * the cues are left untranslated.
+ */
+export function withScriptJapanese(cues: SubtitleCue[], japanese: LineJapanese[]): SubtitleCue[] {
+  const byEnglish = new Map(japanese.map(line => [lineKey(line.en), line.ja]))
+  const found = cues.map(cue => byEnglish.get(lineKey(cue.en)))
+  if (found.every(ja => ja === undefined)) return cues
+  return cues.map((cue, i) => ({ ...cue, ja: found[i] ?? '' }))
 }
 
 /** The lines of a 一発撮り shot's text, one subtitle each. */

@@ -10,7 +10,7 @@ export interface InboxStore {
    * Waiting items with the same title are older versions of this script
    * (Claude resent it after a fix), so they are replaced: `replaced` counts them.
    */
-  add(input: { title: string; body: string; caption: string }): Promise<{ item: InboxItem; replaced: number }>
+  add(input: { title: string; body: string; caption: string; japanese?: string[] }): Promise<{ item: InboxItem; replaced: number }>
   /** Newest first. */
   list(): Promise<InboxItem[]>
   /** Succeeds when the item is already gone. */
@@ -40,9 +40,16 @@ export function createInboxStore(
   }
 
   return {
-    async add({ title, body, caption }) {
+    async add({ title, body, caption, japanese }) {
       const stale = (await list()).filter(old => old.title === title)
-      const item: InboxItem = { id: newId(), title, body, caption, createdAt: now().toISOString() }
+      const item: InboxItem = {
+        id: newId(),
+        title,
+        body,
+        caption,
+        ...(japanese ? { japanese } : {}),
+        createdAt: now().toISOString(),
+      }
       // The new version is saved before the old ones go, so a failure in
       // between leaves a duplicate rather than losing the script.
       await redis.set(PREFIX + item.id, item, { ex: INBOX_TTL_SECONDS })

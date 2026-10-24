@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Script, Shot } from '../types'
+import { LineJapanese, Script, Shot } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
 import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
 
@@ -25,7 +25,13 @@ function saveToStorage(scripts: Script[]): void {
 export function useScripts() {
   const [scripts, setScripts] = useState<Script[]>(loadFromStorage)
 
-  function createScript(title: string, shots: Shot[], caption?: string, oneTake?: boolean): Script {
+  function createScript(
+    title: string,
+    shots: Shot[],
+    caption?: string,
+    oneTake?: boolean,
+    japanese?: LineJapanese[],
+  ): Script {
     const now = new Date().toISOString()
     const script: Script = {
       id: generateId(),
@@ -33,6 +39,7 @@ export function useScripts() {
       shots,
       ...(caption ? { caption } : {}),
       ...(oneTake ? { oneTake } : {}),
+      ...(japanese?.length ? { japanese } : {}),
       createdAt: now,
       updatedAt: now,
     }

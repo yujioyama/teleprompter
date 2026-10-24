@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, takeLinesOf, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, takeLinesOf, lineJapaneseOf, withScriptJapanese, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -328,5 +328,38 @@ describe('shiftCueStart', () => {
     expect(shiftCueStart(cues, 'cue-1', -5)[1].start).toBeCloseTo(0.3, 5)
     expect(shiftCueStart(cues, 'cue-1', 5)[1].start).toBeCloseTo(1.7, 5)
     expect(shiftCueStart(cues, 'cue-0', 0.2)).toBe(cues)
+  })
+})
+
+describe('lineJapaneseOf', () => {
+  it('pairs each non-empty line with its Japanese, in order', () => {
+    expect(lineJapaneseOf(' I *love* it.\n\nNobody noticed.🧴 ', ['大好きなの', '誰も気づかなかったのよぉぉぉ'])).toEqual([
+      { en: 'I *love* it.', ja: '大好きなの' },
+      { en: 'Nobody noticed.🧴', ja: '誰も気づかなかったのよぉぉぉ' },
+    ])
+  })
+})
+
+describe('withScriptJapanese', () => {
+  const japanese = [
+    { en: 'I *love* it.', ja: '大好きなの' },
+    { en: 'Nobody noticed.', ja: '誰も気づかなかったのよぉぉぉ' },
+  ]
+  const cue = (id: string, en: string): SubtitleCue => ({ id, start: 0, end: 1, en, ja: null })
+
+  it('fills each cue whose English is the line the Japanese was written for', () => {
+    const cues = withScriptJapanese([cue('a', 'I *love*  it.'), cue('b', ' Nobody noticed.')], japanese)
+    expect(cues.map(c => c.ja)).toEqual(['大好きなの', '誰も気づかなかったのよぉぉぉ'])
+  })
+
+  it('leaves a line edited since empty, to fill in', () => {
+    const cues = withScriptJapanese([cue('a', 'I *really* love it.'), cue('b', 'Nobody noticed.')], japanese)
+    expect(cues.map(c => c.ja)).toEqual(['', '誰も気づかなかったのよぉぉぉ'])
+  })
+
+  it('leaves the cues untranslated when no line matches', () => {
+    const cues = [cue('a', 'Something else.')]
+    expect(withScriptJapanese(cues, japanese)).toBe(cues)
+    expect(withScriptJapanese(cues, [])).toBe(cues)
   })
 })

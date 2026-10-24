@@ -5,6 +5,7 @@ import { keyMatches } from './auth.js'
 import type { InboxStore } from './inboxStore.js'
 import type { SubtitleStore } from './subtitleStore.js'
 import type { RecordStore } from './recordStore.js'
+import { JAPANESE_SUBTITLE_RULES } from '../shared/japaneseSubtitles.js'
 
 export const TOOL_NAME = 'send_to_teleprompter'
 export const SUBTITLES_TOOL_NAME = 'send_subtitles'
@@ -26,6 +27,8 @@ const DESCRIPTION = [
   '1行目（最初のショット）には、その回の話題のモノや場面を表す絵文字を1つだけ入れます（例: I put *Vaseline*🧴 on my eyebrows every night.）。抽象的な英語フレーズの回は、文字どおりの意味の絵文字にします（例: carry a torch → 🔦）。この絵文字は字幕の文字には出ず、最初のショットの間、顔の横に大きなステッカーとして表示されます。途中の行（1行目と最終行以外）のうち、話の山場（話が転がる行や、オチの直前の盛り上がり）の行に、合計で最大2行まで絵文字を1つずつ入れます。モノの名前が出てくるだけの行には入れません。これも字幕の文字には出ず、そのショットで小さな妖精として一瞬横切り、その行では画面がじわっと寄ります（ただし最後の行の直前の行は寄らず、最後の行でカットの瞬間に寄ります）。最終行には絵文字を入れません（1行目の絵文字が最後のショットで自動的に戻ってきます）。',
   'caption には投稿用のキャプション（ハッシュタグ込み）を入れます。無ければ省略します。',
   '送ったあとに直した版を送り直すときは、前と同じ title で送ってください。受け取り箱でまだ開かれていない同じタイトルの前の版が、新しい版に置き換わります。',
+  'japanese には、script の各行の日本語字幕を、番号なしで1行ずつ、script と同じ順番・同じ行数で入れます。アプリの字幕画面に最初から入ります。*…* と絵文字は日本語には入れません（{…} は下のルールどおりに付けます）。日本語字幕は次のルールで作ります。',
+  JAPANESE_SUBTITLE_RULES,
 ].join('\n')
 
 const SUBTITLES_DESCRIPTION = [
@@ -64,15 +67,34 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
         title: z.string().trim().min(1).max(100).describe('動画のタイトル（スクリプト一覧に出る名前）'),
         script: z.string().trim().min(1).max(10_000).describe('読み上げる本文。1ショット＝1行'),
         caption: z.string().trim().max(4_000).optional().describe('TikTokに投稿するキャプション（ハッシュタグ込み）'),
+        japanese: z
+          .array(z.string().trim().min(1).max(200))
+          .max(300)
+          .optional()
+          .describe('日本語字幕。番号なしで1行ずつ、script と同じ順番・同じ行数'),
       },
     },
-    async ({ title, script, caption }) => {
+    async ({ title, script, caption, japanese }) => {
+      const body = script.replace(/\r\n?/g, '\n')
+      const lines = body.split('\n').filter(line => line.trim()).length
+      if (japanese) {
+        if (japanese.some(line => NUMBERED.test(line))) {
+          return textResult('japanese には番号を付けず、訳だけを1行ずつ入れて送り直してください。', true)
+        }
+        if (japanese.length !== lines) {
+          return textResult(
+            `japanese の行数が合いません。script は${lines}行、japanese は${japanese.length}行です。${lines}行で送り直してください。`,
+            true,
+          )
+        }
+      }
       try {
-        const body = script.replace(/\r\n?/g, '\n')
-        const { item, replaced } = await inbox().add({ title, body, caption: caption ?? '' })
-        const lines = item.body.split('\n').filter(line => line.trim()).length
+        const { item, replaced } = await inbox().add({ title, body, caption: caption ?? '', japanese })
         const note = replaced > 0 ? '受け取り箱にあった同じタイトルの前の版は置き換えました。' : ''
-        return textResult(`『${item.title}』をteleprompterに送りました（${lines}行）。${note}teleprompterのホーム画面に届いています。`)
+        const withJapanese = japanese ? '・日本語訳つき' : ''
+        return textResult(
+          `『${item.title}』をteleprompterに送りました（${lines}行${withJapanese}）。${note}teleprompterのホーム画面に届いています。`,
+        )
       } catch (err) {
         console.error('send_to_teleprompter failed', err)
         return textResult(`受け取り箱に保存できませんでした: ${errorText(err)}`, true)

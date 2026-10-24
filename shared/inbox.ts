@@ -7,6 +7,8 @@ export interface InboxItem {
   body: string
   /** TikTok caption; '' when none was sent. */
   caption: string
+  /** The Japanese subtitles, one per non-empty line of `body`; absent when none were sent. */
+  japanese?: string[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }
