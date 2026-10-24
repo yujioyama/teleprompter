@@ -1,3 +1,4 @@
+import { ReactNode } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
 import styles from './SubtitleEditor.module.css'
 
@@ -10,6 +11,11 @@ interface SubtitleEditorProps {
    * `delta` seconds. Without it, line starts are fixed by the shot cuts.
    */
   onShiftStart?: (id: string, delta: number) => void
+  /** 一発撮り: play where line `id` starts. Without it there's no 確認 button. */
+  onCheck?: (id: string) => void
+  /** The line whose start is being checked, with `checkPlayer` under it. */
+  checkingId?: string | null
+  checkPlayer?: ReactNode
 }
 
 /** How far one press of ◀ / ▶ moves a line's start. */
@@ -21,11 +27,19 @@ function formatTime(seconds: number): string {
   return `${m}:${s.padStart(4, '0')}`
 }
 
-export default function SubtitleEditor({ cues, onEditEn, onEditJa, onShiftStart }: SubtitleEditorProps) {
+export default function SubtitleEditor({
+  cues,
+  onEditEn,
+  onEditJa,
+  onShiftStart,
+  onCheck,
+  checkingId,
+  checkPlayer,
+}: SubtitleEditorProps) {
   return (
     <div className={styles.list}>
       {cues.map((cue, i) => (
-        <div key={cue.id} className={styles.row}>
+        <div key={cue.id} className={`${styles.row} ${cue.id === checkingId ? styles.rowChecking : ''}`}>
           <div className={styles.num}>
             {i + 1}
             <span className={styles.time}>{formatTime(cue.start)} - {formatTime(cue.end)}</span>
@@ -47,6 +61,15 @@ export default function SubtitleEditor({ cues, onEditEn, onEditJa, onShiftStart 
                 </button>
               </span>
             )}
+            {onCheck && i > 0 && (
+              <button
+                className={`${styles.shiftBtn} ${styles.checkBtn}`}
+                onClick={() => onCheck(cue.id)}
+                aria-label={`${i + 1}行目を確認`}
+              >
+                ▶ 確認
+              </button>
+            )}
           </div>
           <input
             className={styles.field}
@@ -62,6 +85,7 @@ export default function SubtitleEditor({ cues, onEditEn, onEditJa, onShiftStart 
               aria-label={`日本語字幕 ${i + 1}`}
             />
           )}
+          {cue.id === checkingId && checkPlayer}
         </div>
       ))}
     </div>

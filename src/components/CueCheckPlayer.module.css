@@ -1,0 +1,46 @@
+.player {
+  width: 60%;
+  margin: 8px auto 0;
+}
+
+.frame {
+  position: relative;
+  /* SubtitleOverlayPreview sizes itself in cqw of this box (= the video's width). */
+  container-type: inline-size;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  background: #000;
+}
+
+.timeline {
+  position: relative;
+  height: 4px;
+  margin: 8px 0 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+/* Where the subtitle switches. */
+.cut {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+
+.head {
+  position: absolute;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--text);
+}
