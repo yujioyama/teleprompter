@@ -11,19 +11,24 @@ describe('coverWordsOf', () => {
       ['Every time an Australian says *reckon*,', 'I see {renkon}. That is lotus root.', 'And *later* {again}'],
       ['オーストラリア人が「reckon」と言うたびに', '{レンコン}が見える。'],
     )
-    expect(words).toEqual({ en: 'reckon', ja: 'renkon レンコン' })
+    expect(words).toEqual({ en: 'reckon', ja: 'renkon レンコン', sticker: '' })
   })
 
   it('leaves out the kana when there are no Japanese lines yet', () => {
-    expect(coverWordsOf(['*turmeric* is {ukon}'])).toEqual({ en: 'turmeric', ja: 'ukon' })
+    expect(coverWordsOf(['*turmeric* is {ukon}'])).toEqual({ en: 'turmeric', ja: 'ukon', sticker: '' })
   })
 
   it('does not repeat the word when the translation kept it in romaji', () => {
-    expect(coverWordsOf(['{ukon}'], ['{ukon}だ'])).toEqual({ en: '', ja: 'ukon' })
+    expect(coverWordsOf(['{ukon}'], ['{ukon}だ'])).toEqual({ en: '', ja: 'ukon', sticker: '' })
   })
 
   it('gives empty strings for a script without markers', () => {
-    expect(coverWordsOf(['5 * 3 * 2', 'plain'])).toEqual({ en: '', ja: '' })
+    expect(coverWordsOf(['5 * 3 * 2', 'plain'])).toEqual({ en: '', ja: '', sticker: '' })
+  })
+
+  it("takes the first line's emoji as the sticker", () => {
+    expect(coverWordsOf(['I put *Vaseline*🧴 on', 'then 🤯']).sticker).toBe('🧴')
+    expect(coverWordsOf(['no emoji here', 'then 🤯']).sticker).toBe('')
   })
 })
 
@@ -46,7 +51,7 @@ describe('fitFontPx', () => {
 
 describe('coverLines', () => {
   it('stacks the English phrase (yellow) over the Japanese word (mint) inside the grid window', () => {
-    const lines = coverLines({ en: 'reckon', ja: 'renkon レンコン' }, measure)
+    const lines = coverLines({ en: 'reckon', ja: 'renkon レンコン', sticker: '' }, measure)
     expect(lines.map(l => [l.text, l.color])).toEqual([
       ['reckon', EMPHASIS_COLOR],
       ['renkon レンコン', WORD_COLOR],
@@ -56,8 +61,24 @@ describe('coverLines', () => {
     expect(lines[1].y).toBeLessThan(GRID_BOTTOM)
   })
 
+  it('moves the block up and down with the position', () => {
+    const words = { en: 'reckon', ja: 'renkon レンコン', sticker: '' }
+    const top = coverLines(words, measure, 20)
+    const bottom = coverLines(words, measure, 80)
+    expect(top[0].y).toBeLessThan(bottom[0].y)
+    expect(coverLines(words, measure)).toEqual(coverLines(words, measure, 68))
+  })
+
+  it('keeps the block inside the grid window at either end of the slider', () => {
+    const words = { en: 'reckon', ja: 'renkon レンコン', sticker: '' }
+    const top = coverLines(words, measure, 0)
+    expect(top[0].y - top[0].px).toBeGreaterThan(GRID_TOP)
+    const bottom = coverLines(words, measure, 100)
+    expect(bottom[1].y).toBeLessThan(GRID_BOTTOM)
+  })
+
   it('skips an empty line', () => {
-    expect(coverLines({ en: '  ', ja: 'ukon' }, measure).map(l => l.text)).toEqual(['ukon'])
-    expect(coverLines({ en: '', ja: '' }, measure)).toEqual([])
+    expect(coverLines({ en: '  ', ja: 'ukon', sticker: '' }, measure).map(l => l.text)).toEqual(['ukon'])
+    expect(coverLines({ en: '', ja: '', sticker: '' }, measure)).toEqual([])
   })
 })

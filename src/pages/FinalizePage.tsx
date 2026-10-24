@@ -907,6 +907,9 @@ export default function FinalizePage() {
                     subtitleCues.map(c => c.ja),
                   )}
                   filenameBase={script.title}
+                  initialPosition={settings.coverTextPosition}
+                  onPositionChange={coverTextPosition => updateSettings({ coverTextPosition })}
+                  stickerPlacement={stickerPlacement}
                 />
               )}
             </div>

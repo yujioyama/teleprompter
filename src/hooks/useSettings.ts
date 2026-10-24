@@ -10,6 +10,7 @@ import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subti
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
+import { COVER_TEXT_POSITION_DEFAULT } from '../utils/coverImage'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -54,6 +55,8 @@ export interface AppSettings {
   firstShotPaddingStart: number
   /** Seconds of silence auto-trim keeps after the last shot's speech. */
   lastShotPaddingEnd: number
+  /** 0-100, where the cover image's words sit in the grid window. */
+  coverTextPosition: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -85,6 +88,7 @@ const DEFAULTS: AppSettings = {
   midZoomEnabled: true,
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
+  coverTextPosition: COVER_TEXT_POSITION_DEFAULT,
   inboxKey: '',
   bgmDefaultRev: 1,
 }

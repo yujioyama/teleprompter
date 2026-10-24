@@ -27,6 +27,7 @@ const DEFAULTS = {
   midZoomEnabled: true,
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
+  coverTextPosition: 68,
   inboxKey: '',
   bgmDefaultRev: 1,
 }
