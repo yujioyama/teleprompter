@@ -281,6 +281,21 @@ describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () =>
     expect(detectSpeech).toHaveBeenCalledTimes(1)
   })
 
+  it('still finds the speech of a 一発撮り take with auto-trim off, leaving it uncut', async () => {
+    const script = seedScript()
+    script.oneTake = true
+    script.shots = [{ id: SHOT_1, text: 'ショット1', trimEnabled: false }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
+    vi.mocked(detectSpeech).mockResolvedValueOnce(SPEECH_1_TO_3)
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    expect(detectSpeech).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('開始 0.0秒')).toBeInTheDocument()
+    expect(screen.getByText('終了 5.0秒')).toBeInTheDocument()
+  })
+
   it('holds 結合 until every shot has been checked for speech', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
     let finish!: (b: null) => void

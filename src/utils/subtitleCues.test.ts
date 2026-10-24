@@ -239,11 +239,13 @@ describe('takeLinesOf', () => {
 
 describe('lineStartsInTake', () => {
   const lines = ['I used sticky notes.', 'To come back later.', 'I never came back.']
+  // Speech filling the whole clip, with these silences inside it.
+  const withPauses = (pauses: { start: number; end: number }[]) => ({ speechStart: 0, speechEnd: 100, pauses })
 
-  it('puts each line break at one of the longest pauses, just before speech resumes', () => {
+  it('puts each line break at a pause, just before speech resumes', () => {
     // Clip [1, 9]: a short breath at 2.0, line breaks at 3.0–3.6 and 6.0–7.0.
     const pauses = [{ start: 2, end: 2.25 }, { start: 3, end: 3.6 }, { start: 6, end: 7 }]
-    const starts = lineStartsInTake(lines, 1, 9, pauses)
+    const starts = lineStartsInTake(lines, 1, 9, withPauses(pauses))
     expect(starts).toHaveLength(2)
     expect(starts[0]).toBeCloseTo(3.6 - 0.15 - 1, 5)
     expect(starts[1]).toBeCloseTo(7 - 0.15 - 1, 5)
@@ -251,21 +253,48 @@ describe('lineStartsInTake', () => {
 
   it('skips a long pause that would leave a line under half a second', () => {
     const pauses = [{ start: 3, end: 4 }, { start: 4.02, end: 4.45 }, { start: 6.6, end: 7 }]
-    const starts = lineStartsInTake(lines, 0, 9, pauses)
+    const starts = lineStartsInTake(lines, 0, 9, withPauses(pauses))
     expect(starts).toHaveLength(2)
     expect(starts[0]).toBeCloseTo(3.85, 5)
     expect(starts[1]).toBeCloseTo(6.85, 5)
   })
 
-  it('shares the clip out by line length when there are too few pauses', () => {
-    const starts = lineStartsInTake(['aa', 'aaaa', 'aa'], 0, 8, [{ start: 4, end: 4.1 }])
+  it('passes over a long breath in the middle of a line for the shorter pauses where the lines end', () => {
+    const even = ['aaaaaaaaaa', 'aaaaaaaaaa', 'aaaaaaaaaa']
+    // Line breaks at 3.0–3.25 and 6.25–6.5; a longer breath mid-line at 4.5–5.0.
+    const pauses = [{ start: 3, end: 3.25 }, { start: 4.5, end: 5 }, { start: 6.25, end: 6.5 }]
+    const starts = lineStartsInTake(even, 0, 9.6, withPauses(pauses))
+    expect(starts[0]).toBeCloseTo(3.125, 5)
+    expect(starts[1]).toBeCloseTo(6.375, 5)
+  })
+
+  it('keeps the pauses it found when a break has none, placing that one by line length', () => {
+    // Speaking time 7.6s shared 1:2:1; the second break has no pause near
+    // it, so it goes 5.7s into the speech — 6.1s with the pause.
+    const starts = lineStartsInTake(['aa', 'aaaa', 'aa'], 0, 8, withPauses([{ start: 2, end: 2.4 }]))
+    expect(starts[0]).toBeCloseTo(2.25, 5)
+    expect(starts[1]).toBeCloseTo(6.1, 5)
+  })
+
+  it('shares the speaking time out by line length when there are no pauses', () => {
+    const starts = lineStartsInTake(['aa', 'aaaa', 'aa'], 0, 8, withPauses([{ start: 4, end: 4.1 }]))
     expect(starts[0]).toBeCloseTo(2, 5)
     expect(starts[1]).toBeCloseTo(6, 5)
     expect(lineStartsInTake(['aa', 'aa'], 0, 4)).toEqual([2])
   })
 
+  it('does not count the silence before the speech as part of the first line', () => {
+    const starts = lineStartsInTake(['aa', 'aa'], 0, 10, { speechStart: 2, speechEnd: 10, pauses: [] })
+    expect(starts[0]).toBeCloseTo(6, 5)
+  })
+
+  it('reads line lengths without the emphasis markers', () => {
+    const starts = lineStartsInTake(['{aa}', '*aa*'], 0, 4, withPauses([]))
+    expect(starts[0]).toBeCloseTo(2, 5)
+  })
+
   it('has no breaks for a single line', () => {
-    expect(lineStartsInTake(['Only line.'], 0, 3, [{ start: 1, end: 2 }])).toEqual([])
+    expect(lineStartsInTake(['Only line.'], 0, 3, withPauses([{ start: 1, end: 2 }]))).toEqual([])
   })
 })
 

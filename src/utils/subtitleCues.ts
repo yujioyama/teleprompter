@@ -140,53 +140,130 @@ export function takeLinesOf(text: string): string[] {
 }
 
 /** A silence shorter than this is a breath inside a line, not a line break. */
-const MIN_LINE_PAUSE_S = 0.2
+const MIN_LINE_PAUSE_S = 0.12
 /** No line is given less than this, however the pauses fall. */
 const MIN_LINE_S = 0.5
 /** The next line's subtitle shows a moment before its first word. */
 const LINE_LEAD_S = 0.15
+// How far a line's spoken time may plausibly stray from what its length
+// predicts: this share of the prediction, but never less than the floor.
+const LINE_TIME_TOLERANCE = 0.35
+const MIN_LINE_TIME_TOLERANCE_S = 0.4
+// How strongly a pause draws a line break to it, per second of silence, up
+// to a cap so one long pause can't outweigh where the lines should fall.
+const PAUSE_WEIGHT_PER_S = 6
+const MAX_PAUSE_WEIGHT_S = 1
+
+/** Where the speech is in a take (see SpeechRegion). */
+export interface TakeSpeech {
+  speechStart: number
+  speechEnd: number
+  pauses?: { start: number; end: number }[]
+}
+
+/** A place a line break can go: `at` in the clip, `spoken` seconds of speech before it. */
+interface BreakOption {
+  at: number
+  spoken: number
+  /** Seconds of silence there; 0 for a break placed by line length alone. */
+  pause: number
+}
 
 /**
  * Where each line after the first starts in a 一発撮り take, in seconds from
  * the clip's first frame (the clip being [clipStart, clipEnd] of the take).
  *
- * The lines are read with a pause between them, so the longest pauses in
- * the speech are taken as the line breaks — skipping any that would leave a
- * line implausibly short. When there aren't enough pauses (or none were
- * found), the clip is shared out by each line's length instead. Either way
- * the subtitle editor can move a break by hand afterwards.
+ * Each line should take about its share of the speaking time (by its length),
+ * and the lines are read with a pause between them. So the breaks are chosen
+ * together: each at a pause that keeps every line near its expected time,
+ * longer pauses winning more easily — a long breath in the middle of a line
+ * still loses to a shorter pause where the line ends. A break with no pause
+ * near it goes where the line lengths put it. Either way the subtitle editor
+ * can move a break by hand afterwards.
  */
 export function lineStartsInTake(
   lines: string[],
   clipStart: number,
   clipEnd: number,
-  pauses?: { start: number; end: number }[],
+  speech?: TakeSpeech | null,
 ): number[] {
   const breaks = lines.length - 1
   const duration = clipEnd - clipStart
   if (breaks <= 0 || duration <= 0) return []
 
-  const inside = (pauses ?? [])
-    .filter(p => p.end - p.start >= MIN_LINE_PAUSE_S && p.start > clipStart && p.end < clipEnd)
-    .sort((a, b) => b.end - b.start - (a.end - a.start))
-  const chosen: number[] = []
-  for (const pause of inside) {
-    if (chosen.length === breaks) break
-    // The next line starts just before speech resumes, never inside the pause's first half.
-    const at = Math.max((pause.start + pause.end) / 2, pause.end - LINE_LEAD_S) - clipStart
-    // Every line keeps at least MIN_LINE_S: far enough from each break so far and both ends.
-    if ([0, ...chosen, duration].every(b => Math.abs(b - at) >= MIN_LINE_S)) chosen.push(at)
+  // Only the time spent speaking is shared out between the lines: not the
+  // silence around the speech, nor the pauses inside it.
+  const inClip = speech && speech.speechStart < clipEnd && speech.speechEnd > clipStart
+  const from = inClip ? Math.max(clipStart, speech.speechStart) : clipStart
+  const to = inClip ? Math.min(clipEnd, speech.speechEnd) : clipEnd
+  const pauses = (speech?.pauses ?? [])
+    .filter(p => p.end - p.start >= MIN_LINE_PAUSE_S && p.start > from && p.end < to)
+    .sort((a, b) => a.start - b.start)
+  const spokenBefore = (t: number) =>
+    Math.max(0, Math.min(t, to) - from) -
+    pauses.reduce((sum, p) => sum + Math.max(0, Math.min(t, p.end) - p.start), 0)
+  const total = spokenBefore(to)
+  // The clip time at which `spoken` seconds have been said.
+  const timeAtSpoken = (spoken: number) => {
+    let t = from + spoken
+    for (const p of pauses) if (p.start < t) t += p.end - p.start
+    return Math.min(t, to)
   }
-  if (chosen.length === breaks) return chosen.sort((a, b) => a - b)
 
-  // By length: each line's share of the clip, from its character count.
-  const weights = lines.map(line => Math.max(1, line.length))
-  const total = weights.reduce((sum, w) => sum + w, 0)
+  const weights = lines.map(line => Math.max(1, line.replace(/[{}*]/g, '').trim().length))
+  const weightTotal = weights.reduce((sum, w) => sum + w, 0)
+  const expected = weights.map(w => (w / weightTotal) * total)
+  const lineCost = (line: number, spoken: number) => {
+    const tolerance = Math.max(MIN_LINE_TIME_TOLERANCE_S, LINE_TIME_TOLERANCE * expected[line])
+    return ((spoken - expected[line]) / tolerance) ** 2
+  }
+
+  // The next line starts just before speech resumes, never inside the pause's first half.
+  const atPauses: BreakOption[] = pauses.map(p => ({
+    at: Math.max((p.start + p.end) / 2, p.end - LINE_LEAD_S) - clipStart,
+    spoken: spokenBefore(p.start),
+    pause: p.end - p.start,
+  }))
+  let byLength = 0
+  const options: BreakOption[][] = expected.slice(0, breaks).map(share => {
+    byLength += share
+    return [...atPauses, { at: timeAtSpoken(byLength) - clipStart, spoken: byLength, pause: 0 }]
+  })
+
+  // Cheapest choice of breaks in order, each line at least MIN_LINE_S long:
+  // for each option of the latest break, the cheapest way to reach it.
+  type Path = { option: BreakOption; cost: number; path: BreakOption[] }
+  const best = options.reduce<Path[]>(
+    (previous, choices, k) => choices.map(option => {
+      const gain = PAUSE_WEIGHT_PER_S * Math.min(option.pause, MAX_PAUSE_WEIGHT_S)
+      let pick = { option, cost: Infinity, path: [] as BreakOption[] }
+      for (const prev of previous) {
+        if (option.at - prev.option.at < MIN_LINE_S) continue
+        const cost = prev.cost + lineCost(k, option.spoken - prev.option.spoken) - gain
+        if (cost < pick.cost) pick = { option, cost, path: [...prev.path, option] }
+      }
+      return pick
+    }),
+    [{ option: { at: 0, spoken: 0, pause: 0 }, cost: 0, path: [] }],
+  )
+  let chosen: BreakOption[] | null = null
+  let chosenCost = Infinity
+  for (const end of best) {
+    if (duration - end.option.at < MIN_LINE_S) continue
+    const cost = end.cost + lineCost(breaks, total - end.option.spoken)
+    if (cost < chosenCost) {
+      chosen = end.path
+      chosenCost = cost
+    }
+  }
+  if (chosen) return chosen.map(option => option.at)
+
+  // Too short a clip for every line to get MIN_LINE_S: share it by length.
   const starts: number[] = []
   let acc = 0
   for (let i = 0; i < breaks; i++) {
     acc += weights[i]
-    starts.push((acc / total) * duration)
+    starts.push((acc / weightTotal) * duration)
   }
   return starts
 }
