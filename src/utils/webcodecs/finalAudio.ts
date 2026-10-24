@@ -6,6 +6,7 @@ import {
   decodeAudioTrack,
   runOutput,
 } from './audioTrack'
+import { PLAYS_TO_END, type BgmEnding } from '../bgmStop'
 import { applyVoicePreset, type VoicePreset } from '../voicePreset'
 import { renderMix } from './mixMusicWebCodecs'
 import { applyTargetLoudness, channelsOf } from './normalizeLoudnessWebCodecs'
@@ -55,7 +56,7 @@ export async function prepareFinalAudio(
   volume: number,
   normalize: boolean,
   voice: VoicePreset,
-  stopAt: number | null = null,
+  ending: BgmEnding = PLAYS_TO_END,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(source), formats: ALL_FORMATS })
   let audio: AudioBuffer
@@ -69,7 +70,7 @@ export async function prepareFinalAudio(
     applyVoicePreset(channelsOf(decoded), decoded.sampleRate, voice)
     // The offline context cuts or pads the decoded audio to this length, so
     // no second full-length copy is held next to it (~23 MB a minute).
-    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate), stopAt)
+    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate), ending)
   } finally {
     input.dispose()
   }
