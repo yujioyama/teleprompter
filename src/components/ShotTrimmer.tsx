@@ -217,6 +217,12 @@ export default function ShotTrimmer({
         </div>
       )}
 
+      {/* Above the bar so a finger dragging a handle doesn't cover it */}
+      <div className={styles.readout}>
+        <span>開始 {trimStart.toFixed(1)}秒</span>
+        <span>終了 {trimEnd.toFixed(1)}秒</span>
+      </div>
+
       <div
         ref={timelineRef}
         className={styles.timeline}
@@ -238,11 +244,6 @@ export default function ShotTrimmer({
           style={{ left: `${endPct}%` }}
           onPointerDown={() => handlePointerDown('end')}
         />
-      </div>
-
-      <div className={styles.readout}>
-        <span>開始 {trimStart.toFixed(1)}秒</span>
-        <span>終了 {trimEnd.toFixed(1)}秒</span>
       </div>
 
       {onResetToAuto && (
