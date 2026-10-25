@@ -18,7 +18,7 @@ import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
-import { shareOrDownload } from '../utils/shareOrDownload'
+import { shareAllOrDownload, shareOrDownload } from '../utils/shareOrDownload'
 import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
 import { bgmEnding, punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
@@ -605,16 +605,31 @@ export default function FinalizePage() {
 
   async function handleSaveFinal() {
     if (!exportBlob || !script) return
-    // Tapping 保存する is "this is the version": record how it was made,
-    // without holding up or failing the save.
-    if (settings.inboxKey) {
-      try {
-        sendVideoRecord(settings.inboxKey)
-      } catch (err) {
-        console.warn('[FinalizePage] could not build the video record:', err)
-      }
-    }
+    recordSavedVideo()
     await shareOrDownload(exportBlob, `${script.title}-final`)
+  }
+
+  // The video, its cover and its caption in one tap: what posting needs.
+  async function handleSaveAll(cover: Promise<Blob>) {
+    if (!exportBlob || !script) return
+    // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
+    if (script.caption) void copyCaption(script.caption)
+    recordSavedVideo()
+    await shareAllOrDownload([
+      { blob: exportBlob, filenameBase: `${script.title}-final` },
+      { blob: await cover, filenameBase: `${script.title}-cover` },
+    ])
+  }
+
+  // Saving the video is "this is the version": record how it was made,
+  // without holding up or failing the save.
+  function recordSavedVideo() {
+    if (!settings.inboxKey) return
+    try {
+      sendVideoRecord(settings.inboxKey)
+    } catch (err) {
+      console.warn('[FinalizePage] could not build the video record:', err)
+    }
   }
 
   // Built from what the burn and the mix actually used (see buildVideoRecord).
@@ -634,10 +649,13 @@ export default function FinalizePage() {
   }
 
   // The caption Claude wrote with the script, ready to paste into TikTok.
-  async function handleCopyCaption() {
-    if (!script?.caption) return
+  function handleCopyCaption() {
+    if (script?.caption) void copyCaption(script.caption)
+  }
+
+  async function copyCaption(caption: string) {
     try {
-      await navigator.clipboard.writeText(script.caption)
+      await navigator.clipboard.writeText(caption)
       setCaptionCopy('copied')
     } catch {
       setCaptionCopy('failed')
@@ -924,6 +942,10 @@ export default function FinalizePage() {
                   stickerPlacement={stickerPlacement}
                   initialStickerSpot={settings.coverStickerSpot}
                   onStickerSpotChange={coverStickerSpot => updateSettings({ coverStickerSpot })}
+                  saveAll={{
+                    label: script.caption ? '動画・カバー・キャプションを一括保存' : '動画とカバーを一括保存',
+                    save: handleSaveAll,
+                  }}
                 />
               )}
             </div>

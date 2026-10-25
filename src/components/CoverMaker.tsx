@@ -30,6 +30,13 @@ interface Props {
   initialStickerSpot: CoverStickerSpot | null
   /** Called when a drag ends or the sticker goes back, so the next cover starts there. */
   onStickerSpotChange: (spot: CoverStickerSpot | null) => void
+  /**
+   * A button above the cover-only save that saves the cover along with
+   * other things in one tap. It gets the cover still being encoded, so the
+   * page can do what must happen inside the tap (copying to the clipboard)
+   * before waiting for it.
+   */
+  saveAll?: { label: string; save: (cover: Promise<Blob>) => Promise<void> }
 }
 
 /**
@@ -48,6 +55,7 @@ export default function CoverMaker({
   stickerPlacement,
   initialStickerSpot,
   onStickerSpotChange,
+  saveAll,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -131,15 +139,14 @@ export default function CoverMaker({
     onStickerSpotChange(null)
   }
 
-  async function handleSave() {
+  async function runSave(save: (cover: Promise<Blob>) => Promise<unknown>) {
     const canvas = canvasRef.current
     if (!canvas) return
     setSaving(true)
     setError(null)
     try {
       redraw()
-      const blob = await canvasToPng(canvas)
-      await shareOrDownload(blob, `${filenameBase}-cover`)
+      await save(canvasToPng(canvas))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -243,8 +250,17 @@ export default function CoverMaker({
       )}
 
       {error && <p className={styles.error}>{error}</p>}
-      <button className={styles.saveBtn} onClick={handleSave} disabled={!ready || saving}>
-        {saving ? '書き出し中...' : 'カバー画像を保存'}
+      {saveAll && (
+        <button className={styles.saveBtn} onClick={() => runSave(saveAll.save)} disabled={!ready || saving}>
+          {saving ? '書き出し中...' : saveAll.label}
+        </button>
+      )}
+      <button
+        className={saveAll ? styles.coverOnlyBtn : styles.saveBtn}
+        onClick={() => runSave(async cover => shareOrDownload(await cover, `${filenameBase}-cover`))}
+        disabled={!ready || saving}
+      >
+        {saving ? '書き出し中...' : saveAll ? 'カバー画像だけ保存' : 'カバー画像を保存'}
       </button>
     </div>
   )

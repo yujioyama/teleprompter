@@ -8,6 +8,7 @@ import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import type { LineJapanese } from '../types'
+import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/subtitleRequest', async importOriginal => ({
@@ -51,6 +52,7 @@ function ControlledSubtitleWorkflow({
   inboxKey,
   initialHookSettings,
   scriptJapanese,
+  oneTake,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -60,6 +62,7 @@ function ControlledSubtitleWorkflow({
   inboxKey?: string
   initialHookSettings?: Partial<HookSettings>
   scriptJapanese?: LineJapanese[]
+  oneTake?: boolean
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -85,6 +88,7 @@ function ControlledSubtitleWorkflow({
       transcribe={transcribe}
       inboxKey={inboxKey}
       scriptJapanese={scriptJapanese}
+      oneTake={oneTake}
     />
   )
 }
@@ -895,82 +899,103 @@ describe('SubtitleWorkflow Japanese sent with the script', () => {
   })
 })
 
-describe('一発撮り line timing', () => {
-  function OneTakeWorkflow() {
-    const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
-    return (
-      <SubtitleWorkflow
-        combinedBlob={BLOB}
-        shotCueInputs={[{ text: 'One.\nTwo.', duration: 4, lineStarts: [2] }]}
-        state={state}
-        onStateChange={setState}
-        hookSettings={DEFAULT_HOOK_SETTINGS}
-        onHookSettingsChange={() => {}}
-        oneTake
-        burn={vi.fn()}
-      />
-    )
+describe('SubtitleWorkflow 一発撮り: checking where a line starts', () => {
+  const TAKE: ShotCueInput[] = [{ text: 'Line one.\nLine two.\nLine three.', duration: 6, lineStarts: [2, 4] }]
+  let play: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
+  })
+
+  afterEach(() => {
+    play.mockRestore()
+    vi.useRealTimers()
+  })
+
+  async function renderTake() {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={TAKE} onBurned={vi.fn()} oneTake />)
+    await screen.findByDisplayValue('Line two.')
   }
 
-  async function renderTranslated() {
-    render(<OneTakeWorkflow />)
-    await screen.findByDisplayValue('Two.')
+  // The preview below the subtitles, which appears with the first translation.
+  async function renderTranslatedTake() {
+    await renderTake()
     fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
-      target: { value: '1. 一\n2. 二' },
+      target: { value: '1. 一\n2. 二\n3. 三' },
     })
     fireEvent.click(screen.getByRole('button', { name: '日本語を反映' }))
     await screen.findByDisplayValue('二')
     return document.querySelector('video')!
   }
 
-  afterEach(() => {
-    vi.restoreAllMocks()
+  it('plays a line\'s switch under that line, before any translation', async () => {
+    await renderTake()
+    expect(screen.queryByLabelText('1行目を確認')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('2行目を確認'))
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByLabelText('3行目を確認'))
+    expect(screen.queryByLabelText('2行目の切り替わり')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('3行目の切り替わり')).toBeInTheDocument()
   })
 
-  it('moves a line start per tap and replays the preview from just before it', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
-    const video = await renderTranslated()
-    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 400 } as DOMRect)
+  it('moves a line start per tap, the line before ending there, and plays the switch again', async () => {
+    await renderTake()
 
-    const later = screen.getByRole('button', { name: '2行目の開始を0.1秒遅らせる' })
-    fireEvent.click(later)
-    fireEvent.click(later)
-    expect(screen.getByText('0:02.2')).toBeInTheDocument()
-    expect(screen.getByText('終了 0:02.2')).toBeInTheDocument()
-    expect(video.currentTime).toBeCloseTo(1.2, 5)
+    fireEvent.click(screen.getByLabelText('2行目の開始を0.1秒遅らせる'))
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
+    expect(screen.getByText('0:02.1')).toBeInTheDocument()
+    expect(screen.getByText('終了 0:02.1')).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByLabelText('2行目の開始を0.1秒早める'))
+    expect(screen.getByText('0:02.0')).toBeInTheDocument()
     expect(play).toHaveBeenCalledTimes(2)
   })
 
-  it('only cues the preview up when it is off screen', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
-    const video = await renderTranslated()
-    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({ top: 5000, bottom: 5300 } as DOMRect)
+  it('keeps moving while held, and plays the switch once when let go', async () => {
+    await renderTake()
+    vi.useFakeTimers()
+    const later = screen.getByLabelText('2行目の開始を0.1秒遅らせる')
 
-    fireEvent.click(screen.getByRole('button', { name: '2行目の開始を0.1秒早める' }))
-    expect(video.currentTime).toBeCloseTo(0.9, 5)
+    fireEvent.pointerDown(later, { button: 0 })
+    act(() => vi.advanceTimersByTime(HOLD_DELAY_MS + HOLD_REPEAT_MS * 2))
+    expect(screen.getByText('0:02.3')).toBeInTheDocument()
     expect(play).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(later)
+    fireEvent.click(later)
+    expect(screen.getByText('0:02.3')).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
   })
 
   it('starts a line where the preview is paused, when that is within reach', async () => {
-    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
-    const video = await renderTranslated()
-    const atPlayhead = screen.getByRole('button', { name: '2行目を今の位置から開始' })
+    const preview = await renderTranslatedTake()
+    const atPlayhead = screen.getByLabelText('2行目を今の位置から開始')
 
-    video.currentTime = 3.9
-    fireEvent.timeUpdate(video)
+    preview.currentTime = 3.9
+    fireEvent.timeUpdate(preview)
     expect(atPlayhead).toBeDisabled()
 
-    video.currentTime = 1.5
-    fireEvent.timeUpdate(video)
+    preview.currentTime = 1.5
+    fireEvent.timeUpdate(preview)
     fireEvent.click(atPlayhead)
     expect(screen.getByText('0:01.5')).toBeInTheDocument()
     expect(screen.getByText('終了 0:01.5')).toBeInTheDocument()
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
   })
 
   it('has no 今の位置から開始 before there is a preview', async () => {
-    render(<OneTakeWorkflow />)
-    await screen.findByDisplayValue('Two.')
-    expect(screen.getByRole('button', { name: '2行目の開始を0.1秒遅らせる' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '2行目を今の位置から開始' })).not.toBeInTheDocument()
+    await renderTake()
+    expect(screen.getByLabelText('2行目の開始を0.1秒遅らせる')).toBeInTheDocument()
+    expect(screen.queryByLabelText('2行目を今の位置から開始')).not.toBeInTheDocument()
+  })
+
+  it('has no check buttons outside 一発撮り', async () => {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
+    await screen.findByDisplayValue('Hello')
+    expect(screen.queryByText('▶ 確認')).not.toBeInTheDocument()
   })
 })

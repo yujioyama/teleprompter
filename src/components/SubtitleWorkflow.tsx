@@ -26,6 +26,7 @@ import { reapplyStickers, type StickerPlacement } from '../utils/subtitleSticker
 import type { StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
+import CueCheckPlayer from './CueCheckPlayer'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import CancelProcessing from './CancelProcessing'
 import { reapplyEmphasis } from '../utils/subtitleEmphasis'
@@ -135,9 +136,6 @@ const STICKER_MOTION_OPTIONS: { label: string; value: StickerMotion }[] = [
   { label: '動かさない', value: 'none' },
 ]
 
-/** How far before an adjusted line's start the preview replays from. */
-const REPLAY_LEAD_S = 1
-
 const SOURCES: { label: string; value: SubtitleSource }[] = [
   { label: '台本から', value: 'script' },
   { label: '話した音声から', value: 'speech' },
@@ -182,6 +180,9 @@ export default function SubtitleWorkflow({
   // The same element as previewRef, as state, so the frame-time hook
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
+  // 一発撮り: the line whose start is being played under it, and a count
+  // bumped to play it again.
+  const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(
     () => hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
@@ -195,6 +196,7 @@ export default function SubtitleWorkflow({
     () => fairiesFromSubtitles(cues, shotCueInputs.map(s => s.duration), hook, position),
     [cues, shotCueInputs, hook, position],
   )
+  const checkingCue = stage === 'reviewing' && check ? cues.find(c => c.id === check.id) : undefined
   // Likewise the peaks and the punchline the picture zooms in on.
   const midZoom = useMemo(
     () => planMidZoom(cues, shotCueInputs.map(s => s.duration), hook),
@@ -299,8 +301,8 @@ export default function SubtitleWorkflow({
     patch({ cues: cues.map(c => (c.id === id ? { ...c, en: text } : c)) })
   }
 
-  // Each timing step builds on the last before React re-renders, and the
-  // replay right after it reads the result.
+  // Each timing step builds on the last even before React re-renders: a
+  // held button steps on its own timer.
   function applyTiming(next: typeof cues) {
     latestCuesRef.current = next
     patch({ cues: next })
@@ -314,19 +316,12 @@ export default function SubtitleWorkflow({
     const video = previewRef.current
     if (!video) return
     applyTiming(setCueStart(latestCuesRef.current, id, video.currentTime))
-    handleStartAdjusted(id)
+    handleCheck(id)
   }
 
-  // Play the adjusted line in from just before it, so the change can be
-  // checked at once. Off screen it would only be heard, so there the
-  // preview is just left waiting at that point.
-  function handleStartAdjusted(id: string) {
-    const video = previewRef.current
-    const cue = latestCuesRef.current.find(c => c.id === id)
-    if (!video || !cue || stage === 'burning') return
-    video.currentTime = Math.max(0, cue.start - REPLAY_LEAD_S)
-    const { top, bottom } = video.getBoundingClientRect()
-    if (top < window.innerHeight && bottom > 0) video.play().catch(() => {})
+  function handleCheck(id: string) {
+    previewRef.current?.pause()
+    setCheck(prev => ({ id, replay: (prev?.replay ?? 0) + 1 }))
   }
 
   function handleEditJa(id: string, text: string) {
@@ -386,6 +381,7 @@ export default function SubtitleWorkflow({
     // needs it too; on iOS that could fail the hardware encode over to the
     // far slower ffmpeg.wasm path, leaving the button near 0% (issue #33).
     previewRef.current?.pause()
+    setCheck(null)
     const controller = new AbortController()
     burnAbortRef.current = controller
     const { signal } = controller
@@ -476,9 +472,29 @@ export default function SubtitleWorkflow({
               onEditEn={handleEditEn}
               onEditJa={handleEditJa}
               onShiftStart={oneTake ? handleShiftStart : undefined}
+              onStartAdjusted={previewUrl ? handleCheck : undefined}
               onStartAtPlayhead={oneTake && hasAnyJapanese ? handleStartAtPlayhead : undefined}
-              onStartAdjusted={handleStartAdjusted}
               playheadTime={hasAnyJapanese ? previewTime : null}
+              onCheck={oneTake && previewUrl ? handleCheck : undefined}
+              checkingId={checkingCue?.id}
+              checkPlayer={checkingCue && previewUrl && (
+                <CueCheckPlayer
+                  src={previewUrl}
+                  at={checkingCue.start}
+                  replay={check!.replay}
+                  label={`${cues.indexOf(checkingCue) + 1}行目の切り替わり`}
+                  renderOverlay={time => (
+                    <SubtitleOverlayPreview
+                      cues={cues}
+                      position={position}
+                      currentTime={time}
+                      hook={hook}
+                      firstShotDuration={firstShotDuration}
+                      fairies={fairies}
+                    />
+                  )}
+                />
+              )}
             />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
             <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>

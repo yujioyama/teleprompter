@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import { CancelledError, onAbort, raceAbort, throwIfCancelled } from './cancellation'
+import {
+  CancelledError,
+  forgetOnCancel,
+  forgetUnfinishedSetup,
+  onAbort,
+  raceAbort,
+  throwIfCancelled,
+} from './cancellation'
 
 describe('throwIfCancelled', () => {
   it('does nothing without a signal or before it aborts', () => {
@@ -73,5 +80,35 @@ describe('raceAbort', () => {
   it('returns the promise as-is without a signal', () => {
     const promise = Promise.resolve(1)
     expect(raceAbort(promise)).toBe(promise)
+  })
+})
+
+describe('forgetOnCancel', () => {
+  it('forgets a setup step that is still running when 中断する comes', () => {
+    const forget = vi.fn()
+    forgetOnCancel(new Promise(() => {}), forget)
+    forgetUnfinishedSetup()
+    expect(forget).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a setup step that already settled', async () => {
+    const forget = vi.fn()
+    const step = forgetOnCancel(Promise.resolve(true), forget)
+    await step
+    forgetUnfinishedSetup()
+    expect(forget).not.toHaveBeenCalled()
+  })
+
+  it('forgets each step once', () => {
+    const forget = vi.fn()
+    forgetOnCancel(new Promise(() => {}), forget)
+    forgetUnfinishedSetup()
+    forgetUnfinishedSetup()
+    expect(forget).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns the promise as-is', () => {
+    const promise = Promise.resolve(1)
+    expect(forgetOnCancel(promise, () => undefined)).toBe(promise)
   })
 })

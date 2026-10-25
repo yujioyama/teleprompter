@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { HOLD_DELAY_MS, HOLD_FAST_AFTER_STEPS, HOLD_FAST_REPEAT_MS, HOLD_REPEAT_MS, useHoldRepeat } from './useHoldRepeat'
 
 beforeEach(() => {
@@ -12,6 +12,13 @@ afterEach(() => {
 
 function StepButton({ onStep, onDone }: { onStep: () => void; onDone?: () => void }) {
   return <button {...useHoldRepeat(onStep, onDone)}>step</button>
+}
+
+function touch(el: Element, type: 'touchStart' | 'touchEnd', x: number, y: number) {
+  const point = { clientX: x, clientY: y }
+  const event = createEvent[type](el, { touches: type === 'touchStart' ? [point] : [], changedTouches: [point] })
+  fireEvent(el, event)
+  return event
 }
 
 function setup() {
@@ -74,5 +81,35 @@ describe('useHoldRepeat', () => {
     act(() => vi.advanceTimersByTime(HOLD_REPEAT_MS))
     expect(first).toHaveBeenCalledTimes(1)
     expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('steps on a tap and cancels the touchend, so iOS cannot double-tap zoom', () => {
+    const { onStep, onDone, button } = setup()
+    for (let n = 0; n < 2; n++) {
+      fireEvent.pointerDown(button, { button: 0 })
+      fireEvent.pointerUp(button)
+      touch(button, 'touchStart', 10, 10)
+      expect(touch(button, 'touchEnd', 12, 11).defaultPrevented).toBe(true)
+    }
+    expect(onStep).toHaveBeenCalledTimes(2)
+    expect(onDone).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not step when the finger moved, since that was a scroll', () => {
+    const { onStep, button } = setup()
+    touch(button, 'touchStart', 10, 10)
+    expect(touch(button, 'touchEnd', 10, 60).defaultPrevented).toBe(false)
+    expect(onStep).not.toHaveBeenCalled()
+  })
+
+  it('does not step again when a held touch is let go', () => {
+    const { onStep, onDone, button } = setup()
+    fireEvent.pointerDown(button, { button: 0 })
+    touch(button, 'touchStart', 10, 10)
+    act(() => vi.advanceTimersByTime(HOLD_DELAY_MS + HOLD_REPEAT_MS))
+    fireEvent.pointerUp(button)
+    touch(button, 'touchEnd', 10, 10)
+    expect(onStep).toHaveBeenCalledTimes(2)
+    expect(onDone).toHaveBeenCalledTimes(1)
   })
 })

@@ -12,15 +12,20 @@ interface SubtitleEditorProps {
    * `delta` seconds. Without it, line starts are fixed by the shot cuts.
    */
   onShiftStart?: (id: string, delta: number) => void
-  /** 一発撮り with a preview: start a line where the preview is paused. */
-  onStartAtPlayhead?: (id: string) => void
   /** A line's start was just adjusted (a tap or hold has ended). */
   onStartAdjusted?: (id: string) => void
+  /** 一発撮り with a preview: start a line where the preview is paused. */
+  onStartAtPlayhead?: (id: string) => void
   /** The preview's time, or null while there is no preview. */
   playheadTime?: number | null
+  /** 一発撮り: play where line `id` starts. Without it there's no 確認 button. */
+  onCheck?: (id: string) => void
+  /** The line whose start is being checked, with `checkPlayer` under it. */
+  checkingId?: string | null
+  checkPlayer?: ReactNode
 }
 
-/** How far one press of − / + moves a line's start. */
+/** How far one press of − / ＋ moves a line's start. */
 export const SHIFT_STEP_S = 0.1
 
 function formatTime(seconds: number): string {
@@ -29,7 +34,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s.padStart(4, '0')}`
 }
 
-function RepeatButton({ onStep, onDone, label, children }: {
+function ShiftButton({ onStep, onDone, label, children }: {
   onStep: () => void
   onDone: () => void
   label: string
@@ -47,9 +52,12 @@ export default function SubtitleEditor({
   onEditEn,
   onEditJa,
   onShiftStart,
-  onStartAtPlayhead,
   onStartAdjusted,
+  onStartAtPlayhead,
   playheadTime = null,
+  onCheck,
+  checkingId,
+  checkPlayer,
 }: SubtitleEditorProps) {
   const playingIndex = playheadTime === null ? -1 : cues.findIndex(c => playheadTime >= c.start && playheadTime < c.end)
   return (
@@ -57,6 +65,7 @@ export default function SubtitleEditor({
       {onShiftStart && (
         <p className={styles.hint}>
           字幕が声より遅れて出る行は −、早く出すぎる行は ＋ で開始を0.1秒ずつ動かせます（長押しで連続）。
+          {onCheck && '動かすたびに、その行の切り替わりを行の下で再生します。'}
           {onStartAtPlayhead && 'プレビューを止めて「今の位置から開始」を押すと、その行がそこから始まります。'}
         </p>
       )}
@@ -64,8 +73,13 @@ export default function SubtitleEditor({
         const bounds = startBoundsOf(cues, i)
         const canStartAtPlayhead = bounds !== null && playheadTime !== null
           && playheadTime >= bounds[0] && playheadTime <= bounds[1]
+        const rowClass = [
+          styles.row,
+          i === playingIndex ? styles.rowPlaying : '',
+          cue.id === checkingId ? styles.rowChecking : '',
+        ].join(' ')
         return (
-          <div key={cue.id} className={`${styles.row} ${i === playingIndex ? styles.rowPlaying : ''}`}>
+          <div key={cue.id} className={rowClass}>
             <div className={styles.num}>
               {i + 1}
               {!onShiftStart && (
@@ -76,34 +90,47 @@ export default function SubtitleEditor({
               <div className={styles.timing}>
                 <span className={styles.timingLabel}>開始</span>
                 {bounds && (
-                  <RepeatButton
+                  <ShiftButton
                     onStep={() => onShiftStart(cue.id, -SHIFT_STEP_S)}
                     onDone={() => onStartAdjusted?.(cue.id)}
                     label={`${i + 1}行目の開始を0.1秒早める`}
                   >
                     −0.1秒
-                  </RepeatButton>
+                  </ShiftButton>
                 )}
                 <span className={styles.timeValue}>{formatTime(cue.start)}</span>
                 {bounds && (
-                  <RepeatButton
+                  <ShiftButton
                     onStep={() => onShiftStart(cue.id, SHIFT_STEP_S)}
                     onDone={() => onStartAdjusted?.(cue.id)}
                     label={`${i + 1}行目の開始を0.1秒遅らせる`}
                   >
                     ＋0.1秒
-                  </RepeatButton>
+                  </ShiftButton>
                 )}
                 <span className={styles.timingLabel}>終了 {formatTime(cue.end)}</span>
-                {onStartAtPlayhead && bounds && (
-                  <button
-                    className={styles.playheadBtn}
-                    onClick={() => onStartAtPlayhead(cue.id)}
-                    disabled={!canStartAtPlayhead}
-                    aria-label={`${i + 1}行目を今の位置から開始`}
-                  >
-                    今の位置から開始
-                  </button>
+                {bounds && (onCheck || onStartAtPlayhead) && (
+                  <span className={styles.timingActions}>
+                    {onCheck && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.checkBtn}`}
+                        onClick={() => onCheck(cue.id)}
+                        aria-label={`${i + 1}行目を確認`}
+                      >
+                        ▶ 確認
+                      </button>
+                    )}
+                    {onStartAtPlayhead && (
+                      <button
+                        className={styles.actionBtn}
+                        onClick={() => onStartAtPlayhead(cue.id)}
+                        disabled={!canStartAtPlayhead}
+                        aria-label={`${i + 1}行目を今の位置から開始`}
+                      >
+                        今の位置から開始
+                      </button>
+                    )}
+                  </span>
                 )}
               </div>
             )}
@@ -121,6 +148,7 @@ export default function SubtitleEditor({
                 aria-label={`日本語字幕 ${i + 1}`}
               />
             )}
+            {cue.id === checkingId && checkPlayer}
           </div>
         )
       })}

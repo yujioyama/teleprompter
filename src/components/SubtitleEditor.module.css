@@ -6,14 +6,21 @@
 
 .row {
   background: var(--surface2);
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 8px 10px;
+}
+
+.rowChecking {
+  border-color: var(--accent);
 }
 
 .num {
   color: var(--text-muted);
   font-size: 0.75rem;
   margin-bottom: 4px;
+  /* A quick tap that misses ◀ / ▶ lands here; don't let it double-tap zoom. */
+  touch-action: manipulation;
 }
 
 .time {
@@ -49,6 +56,8 @@
 }
 
 .timing {
+  /* A quick tap that misses − / ＋ lands here; don't let it double-tap zoom. */
+  touch-action: manipulation;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -68,7 +77,7 @@
 }
 
 .shiftBtn,
-.playheadBtn {
+.actionBtn {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -83,10 +92,18 @@
   touch-action: manipulation;
 }
 
-.playheadBtn {
+.timingActions {
+  display: flex;
+  gap: 6px;
   margin-left: auto;
 }
 
-.playheadBtn:disabled {
+.actionBtn:disabled {
   opacity: 0.4;
+}
+
+.checkBtn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
