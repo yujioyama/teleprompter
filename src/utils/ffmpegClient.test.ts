@@ -58,6 +58,47 @@ describe('ffmpegClient', () => {
     await expect(getFFmpeg()).resolves.toBe(instances[1])
   })
 
+  it('gives up on a load that never finishes, so the next call starts a fresh one', async () => {
+    vi.useFakeTimers()
+    try {
+      const { getFFmpeg, FFMPEG_LOAD_TIMEOUT_MS } = await import('./ffmpegClient')
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+      vi.mocked(FFmpeg).mockImplementationOnce(function (this: (typeof instances)[number]) {
+        this.load = vi.fn(() => new Promise(() => {}))
+        this.terminate = vi.fn()
+        instances.push(this)
+      } as never)
+
+      const hung = expect(getFFmpeg()).rejects.toThrow(/no progress/)
+      await vi.advanceTimersByTimeAsync(FFMPEG_LOAD_TIMEOUT_MS)
+      await hung
+      expect(instances[0].terminate).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+
+    const { getFFmpeg } = await import('./ffmpegClient')
+    await expect(getFFmpeg()).resolves.toBe(instances[1])
+  })
+
+  it('中断する drops a load still running, so trying again does not wait on it', async () => {
+    const { getFFmpeg } = await import('./ffmpegClient')
+    const { forgetUnfinishedSetup } = await import('./cancellation')
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+    vi.mocked(FFmpeg).mockImplementationOnce(function (this: (typeof instances)[number]) {
+      this.load = vi.fn(() => new Promise(() => {}))
+      this.terminate = vi.fn()
+      instances.push(this)
+    } as never)
+
+    void getFFmpeg()
+    await Promise.resolve()
+    forgetUnfinishedSetup()
+    expect(instances[0].terminate).toHaveBeenCalledTimes(1)
+
+    await expect(getFFmpeg()).resolves.toBe(instances[1])
+  })
+
   it('says why WebCodecs was given up when the fallback cannot load either', async () => {
     const { getFFmpeg } = await import('./ffmpegClient')
     const { disableWebCodecs } = await import('./webcodecs/support')
