@@ -14,6 +14,8 @@
   color: var(--text-muted);
   font-size: 0.75rem;
   margin-bottom: 4px;
+  /* A quick tap that misses ◀ / ▶ lands here; don't let it double-tap zoom. */
+  touch-action: manipulation;
 }
 
 .time {
@@ -50,5 +52,6 @@
   border-radius: 6px;
   color: var(--text);
   font-size: 0.7rem;
-  padding: 2px 8px;
+  padding: 4px 10px;
+  touch-action: manipulation;
 }
