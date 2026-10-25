@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart } from '../utils/subtitleCues'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart, setCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -171,6 +171,12 @@ export default function SubtitleWorkflow({
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewRef = useRef<HTMLVideoElement | null>(null)
+  // The cues as they are now, not as some earlier callback saw them: when a
+  // Claude answer arrives, and between the steps of a held timing button.
+  const latestCuesRef = useRef(cues)
+  useLayoutEffect(() => {
+    latestCuesRef.current = cues
+  })
   // The same element as previewRef, as state, so the frame-time hook
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
@@ -295,8 +301,21 @@ export default function SubtitleWorkflow({
     patch({ cues: cues.map(c => (c.id === id ? { ...c, en: text } : c)) })
   }
 
+  // Each timing step builds on the last even before React re-renders: a
+  // held button steps on its own timer.
+  function applyTiming(next: typeof cues) {
+    latestCuesRef.current = next
+    patch({ cues: next })
+  }
+
   function handleShiftStart(id: string, delta: number) {
-    patch({ cues: shiftCueStart(cues, id, delta) })
+    applyTiming(shiftCueStart(latestCuesRef.current, id, delta))
+  }
+
+  function handleStartAtPlayhead(id: string) {
+    const video = previewRef.current
+    if (!video) return
+    applyTiming(setCueStart(latestCuesRef.current, id, video.currentTime))
     handleCheck(id)
   }
 
@@ -326,11 +345,6 @@ export default function SubtitleWorkflow({
   const requestId = subtitleRequestId(cues)
   const settledRequestId = useDebouncedValue(requestId, 500)
   const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !allTranslated
-  // The cues as they are when an answer arrives, not when the check began.
-  const latestCuesRef = useRef(cues)
-  useLayoutEffect(() => {
-    latestCuesRef.current = cues
-  })
   useForegroundCheck(awaitingClaude ? settledRequestId : null, (id, isStale) => {
     fetchSubtitles(inboxKey, id)
       .then(lines => {
@@ -458,6 +472,9 @@ export default function SubtitleWorkflow({
               onEditEn={handleEditEn}
               onEditJa={handleEditJa}
               onShiftStart={oneTake ? handleShiftStart : undefined}
+              onStartAdjusted={previewUrl ? handleCheck : undefined}
+              onStartAtPlayhead={oneTake && hasAnyJapanese ? handleStartAtPlayhead : undefined}
+              playheadTime={hasAnyJapanese ? previewTime : null}
               onCheck={oneTake && previewUrl ? handleCheck : undefined}
               checkingId={checkingCue?.id}
               checkPlayer={checkingCue && previewUrl && (

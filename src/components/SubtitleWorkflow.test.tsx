@@ -8,6 +8,7 @@ import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import type { LineJapanese } from '../types'
+import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
 
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/subtitleRequest', async importOriginal => ({
@@ -908,11 +909,27 @@ describe('SubtitleWorkflow 一発撮り: checking where a line starts', () => {
 
   afterEach(() => {
     play.mockRestore()
+    vi.useRealTimers()
   })
 
-  it('plays a line\'s switch under that line, before any translation', async () => {
+  async function renderTake() {
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={TAKE} onBurned={vi.fn()} oneTake />)
     await screen.findByDisplayValue('Line two.')
+  }
+
+  // The preview below the subtitles, which appears with the first translation.
+  async function renderTranslatedTake() {
+    await renderTake()
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. 一\n2. 二\n3. 三' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '日本語を反映' }))
+    await screen.findByDisplayValue('二')
+    return document.querySelector('video')!
+  }
+
+  it('plays a line\'s switch under that line, before any translation', async () => {
+    await renderTake()
     expect(screen.queryByLabelText('1行目を確認')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('2行目を確認'))
@@ -924,17 +941,56 @@ describe('SubtitleWorkflow 一発撮り: checking where a line starts', () => {
     expect(screen.getByLabelText('3行目の切り替わり')).toBeInTheDocument()
   })
 
-  it('plays the switch again after each ◀ / ▶ press', async () => {
-    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={TAKE} onBurned={vi.fn()} oneTake />)
-    await screen.findByDisplayValue('Line two.')
+  it('moves a line start per tap, the line before ending there, and plays the switch again', async () => {
+    await renderTake()
 
-    fireEvent.click(screen.getByLabelText('2行目を遅く'))
+    fireEvent.click(screen.getByLabelText('2行目の開始を0.1秒遅らせる'))
     expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
-    expect(screen.getByText(/0:02\.1 -/)).toBeInTheDocument()
+    expect(screen.getByText('0:02.1')).toBeInTheDocument()
+    expect(screen.getByText('終了 0:02.1')).toBeInTheDocument()
     expect(play).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByLabelText('2行目を早める'))
+    fireEvent.click(screen.getByLabelText('2行目の開始を0.1秒早める'))
+    expect(screen.getByText('0:02.0')).toBeInTheDocument()
     expect(play).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps moving while held, and plays the switch once when let go', async () => {
+    await renderTake()
+    vi.useFakeTimers()
+    const later = screen.getByLabelText('2行目の開始を0.1秒遅らせる')
+
+    fireEvent.pointerDown(later, { button: 0 })
+    act(() => vi.advanceTimersByTime(HOLD_DELAY_MS + HOLD_REPEAT_MS * 2))
+    expect(screen.getByText('0:02.3')).toBeInTheDocument()
+    expect(play).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(later)
+    fireEvent.click(later)
+    expect(screen.getByText('0:02.3')).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a line where the preview is paused, when that is within reach', async () => {
+    const preview = await renderTranslatedTake()
+    const atPlayhead = screen.getByLabelText('2行目を今の位置から開始')
+
+    preview.currentTime = 3.9
+    fireEvent.timeUpdate(preview)
+    expect(atPlayhead).toBeDisabled()
+
+    preview.currentTime = 1.5
+    fireEvent.timeUpdate(preview)
+    fireEvent.click(atPlayhead)
+    expect(screen.getByText('0:01.5')).toBeInTheDocument()
+    expect(screen.getByText('終了 0:01.5')).toBeInTheDocument()
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
+  })
+
+  it('has no 今の位置から開始 before there is a preview', async () => {
+    await renderTake()
+    expect(screen.getByLabelText('2行目の開始を0.1秒遅らせる')).toBeInTheDocument()
+    expect(screen.queryByLabelText('2行目を今の位置から開始')).not.toBeInTheDocument()
   })
 
   it('has no check buttons outside 一発撮り', async () => {

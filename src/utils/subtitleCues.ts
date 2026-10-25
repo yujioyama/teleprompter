@@ -327,16 +327,30 @@ export function shotTextsOf(cues: { start: number; en: string }[], durations: nu
 const MIN_SHIFTED_LINE_S = 0.3
 
 /**
- * Move where cue `id` starts by `delta` seconds, the cue before it ending
- * there too, so the lines stay back to back. Neither line is squeezed
- * below MIN_SHIFTED_LINE_S; the first cue (nothing before it) can't move.
+ * Where cue `i` may start without squeezing it or the cue before it below
+ * MIN_SHIFTED_LINE_S, as [earliest, latest]; null for the first cue,
+ * which has nothing before it to give way.
  */
-export function shiftCueStart<T extends SubtitleCue>(cues: T[], id: string, delta: number): T[] {
+export function startBoundsOf(cues: SubtitleCue[], i: number): [number, number] | null {
+  if (i <= 0 || i >= cues.length) return null
+  return [cues[i - 1].start + MIN_SHIFTED_LINE_S, cues[i].end - MIN_SHIFTED_LINE_S]
+}
+
+/**
+ * Start cue `id` at `at` seconds (kept within startBoundsOf), the cue
+ * before it ending there too, so the lines stay back to back.
+ */
+export function setCueStart<T extends SubtitleCue>(cues: T[], id: string, at: number): T[] {
   const i = cues.findIndex(c => c.id === id)
-  if (i <= 0) return cues
-  const prev = cues[i - 1]
-  const cue = cues[i]
-  const at = Math.min(Math.max(cue.start + delta, prev.start + MIN_SHIFTED_LINE_S), cue.end - MIN_SHIFTED_LINE_S)
-  if (Math.abs(at - cue.start) < 1e-9) return cues
-  return cues.map((c, j) => (j === i - 1 ? { ...c, end: at } : j === i ? { ...c, start: at } : c))
+  const bounds = startBoundsOf(cues, i)
+  if (!bounds) return cues
+  const start = Math.min(Math.max(at, bounds[0]), bounds[1])
+  if (Math.abs(start - cues[i].start) < 1e-9) return cues
+  return cues.map((c, j) => (j === i - 1 ? { ...c, end: start } : j === i ? { ...c, start } : c))
+}
+
+/** Move where cue `id` starts by `delta` seconds, as setCueStart. */
+export function shiftCueStart<T extends SubtitleCue>(cues: T[], id: string, delta: number): T[] {
+  const cue = cues.find(c => c.id === id)
+  return cue ? setCueStart(cues, id, cue.start + delta) : cues
 }

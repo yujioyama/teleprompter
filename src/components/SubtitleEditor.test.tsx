@@ -13,7 +13,7 @@ function renderEditor() {
   render(
     <SubtitleEditor cues={cues} onEditEn={() => undefined} onEditJa={() => undefined} onShiftStart={onShiftStart} />,
   )
-  return { onShiftStart, later: screen.getByLabelText('2行目を遅く') }
+  return { onShiftStart, later: screen.getByLabelText('2行目の開始を0.1秒遅らせる') }
 }
 
 function touch(el: Element, type: 'touchStart' | 'touchEnd', x: number, y: number) {
@@ -45,7 +45,7 @@ describe('SubtitleEditor shift buttons', () => {
 
   it('still shifts on a mouse or keyboard click', () => {
     const { onShiftStart } = renderEditor()
-    fireEvent.click(screen.getByLabelText('2行目を早める'))
+    fireEvent.click(screen.getByLabelText('2行目の開始を0.1秒早める'))
     expect(onShiftStart).toHaveBeenCalledWith('b', -SHIFT_STEP_S)
   })
 })
