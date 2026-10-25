@@ -894,3 +894,83 @@ describe('SubtitleWorkflow Japanese sent with the script', () => {
     expect(screen.getByText('📋 Claude用プロンプトをコピー')).toBeInTheDocument()
   })
 })
+
+describe('一発撮り line timing', () => {
+  function OneTakeWorkflow() {
+    const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
+    return (
+      <SubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={[{ text: 'One.\nTwo.', duration: 4, lineStarts: [2] }]}
+        state={state}
+        onStateChange={setState}
+        hookSettings={DEFAULT_HOOK_SETTINGS}
+        onHookSettingsChange={() => {}}
+        oneTake
+        burn={vi.fn()}
+      />
+    )
+  }
+
+  async function renderTranslated() {
+    render(<OneTakeWorkflow />)
+    await screen.findByDisplayValue('Two.')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. 一\n2. 二' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '日本語を反映' }))
+    await screen.findByDisplayValue('二')
+    return document.querySelector('video')!
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('moves a line start per tap and replays the preview from just before it', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    const video = await renderTranslated()
+    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 400 } as DOMRect)
+
+    const later = screen.getByRole('button', { name: '2行目の開始を0.1秒遅らせる' })
+    fireEvent.click(later)
+    fireEvent.click(later)
+    expect(screen.getByText('0:02.2')).toBeInTheDocument()
+    expect(screen.getByText('終了 0:02.2')).toBeInTheDocument()
+    expect(video.currentTime).toBeCloseTo(1.2, 5)
+    expect(play).toHaveBeenCalledTimes(2)
+  })
+
+  it('only cues the preview up when it is off screen', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    const video = await renderTranslated()
+    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({ top: 5000, bottom: 5300 } as DOMRect)
+
+    fireEvent.click(screen.getByRole('button', { name: '2行目の開始を0.1秒早める' }))
+    expect(video.currentTime).toBeCloseTo(0.9, 5)
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('starts a line where the preview is paused, when that is within reach', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    const video = await renderTranslated()
+    const atPlayhead = screen.getByRole('button', { name: '2行目を今の位置から開始' })
+
+    video.currentTime = 3.9
+    fireEvent.timeUpdate(video)
+    expect(atPlayhead).toBeDisabled()
+
+    video.currentTime = 1.5
+    fireEvent.timeUpdate(video)
+    fireEvent.click(atPlayhead)
+    expect(screen.getByText('0:01.5')).toBeInTheDocument()
+    expect(screen.getByText('終了 0:01.5')).toBeInTheDocument()
+  })
+
+  it('has no 今の位置から開始 before there is a preview', async () => {
+    render(<OneTakeWorkflow />)
+    await screen.findByDisplayValue('Two.')
+    expect(screen.getByRole('button', { name: '2行目の開始を0.1秒遅らせる' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '2行目を今の位置から開始' })).not.toBeInTheDocument()
+  })
+})

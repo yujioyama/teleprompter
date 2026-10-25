@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, takeLinesOf, lineJapaneseOf, withScriptJapanese, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, setCueStart, startBoundsOf, takeLinesOf, lineJapaneseOf, withScriptJapanese, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -328,6 +328,33 @@ describe('shiftCueStart', () => {
     expect(shiftCueStart(cues, 'cue-1', -5)[1].start).toBeCloseTo(0.3, 5)
     expect(shiftCueStart(cues, 'cue-1', 5)[1].start).toBeCloseTo(1.7, 5)
     expect(shiftCueStart(cues, 'cue-0', 0.2)).toBe(cues)
+  })
+})
+
+describe('setCueStart', () => {
+  const cues = makeCues(['a', 'b', 'c'])
+
+  it('starts a line at the given time, the previous line ending there', () => {
+    const moved = setCueStart(cues, 'cue-1', 1.6)
+    expect(moved[0].end).toBeCloseTo(1.6, 5)
+    expect(moved[1].start).toBeCloseTo(1.6, 5)
+  })
+
+  it('keeps to the same limits as shifting', () => {
+    expect(setCueStart(cues, 'cue-1', 0)[1].start).toBeCloseTo(0.3, 5)
+    expect(setCueStart(cues, 'cue-0', 0.5)).toBe(cues)
+  })
+})
+
+describe('startBoundsOf', () => {
+  it('spans from just after the previous start to just before the line end', () => {
+    const [min, max] = startBoundsOf(makeCues(['a', 'b', 'c']), 1)!
+    expect(min).toBeCloseTo(0.3, 5)
+    expect(max).toBeCloseTo(1.7, 5)
+  })
+
+  it('has none for the first line', () => {
+    expect(startBoundsOf(makeCues(['a', 'b']), 0)).toBeNull()
   })
 })
 

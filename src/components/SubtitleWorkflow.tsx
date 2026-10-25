@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart } from '../utils/subtitleCues'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart, setCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -135,6 +135,9 @@ const STICKER_MOTION_OPTIONS: { label: string; value: StickerMotion }[] = [
   { label: '動かさない', value: 'none' },
 ]
 
+/** How far before an adjusted line's start the preview replays from. */
+const REPLAY_LEAD_S = 1
+
 const SOURCES: { label: string; value: SubtitleSource }[] = [
   { label: '台本から', value: 'script' },
   { label: '話した音声から', value: 'speech' },
@@ -170,6 +173,12 @@ export default function SubtitleWorkflow({
   const [copyToastVisible, setCopyToastVisible] = useState(false)
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewRef = useRef<HTMLVideoElement | null>(null)
+  // The cues as they are now, not as some earlier callback saw them: when a
+  // Claude answer arrives, and between the steps of a held timing button.
+  const latestCuesRef = useRef(cues)
+  useLayoutEffect(() => {
+    latestCuesRef.current = cues
+  })
   // The same element as previewRef, as state, so the frame-time hook
   // re-subscribes when the player mounts (it appears with the first translation).
   const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null)
@@ -290,8 +299,34 @@ export default function SubtitleWorkflow({
     patch({ cues: cues.map(c => (c.id === id ? { ...c, en: text } : c)) })
   }
 
+  // Each timing step builds on the last before React re-renders, and the
+  // replay right after it reads the result.
+  function applyTiming(next: typeof cues) {
+    latestCuesRef.current = next
+    patch({ cues: next })
+  }
+
   function handleShiftStart(id: string, delta: number) {
-    patch({ cues: shiftCueStart(cues, id, delta) })
+    applyTiming(shiftCueStart(latestCuesRef.current, id, delta))
+  }
+
+  function handleStartAtPlayhead(id: string) {
+    const video = previewRef.current
+    if (!video) return
+    applyTiming(setCueStart(latestCuesRef.current, id, video.currentTime))
+    handleStartAdjusted(id)
+  }
+
+  // Play the adjusted line in from just before it, so the change can be
+  // checked at once. Off screen it would only be heard, so there the
+  // preview is just left waiting at that point.
+  function handleStartAdjusted(id: string) {
+    const video = previewRef.current
+    const cue = latestCuesRef.current.find(c => c.id === id)
+    if (!video || !cue || stage === 'burning') return
+    video.currentTime = Math.max(0, cue.start - REPLAY_LEAD_S)
+    const { top, bottom } = video.getBoundingClientRect()
+    if (top < window.innerHeight && bottom > 0) video.play().catch(() => {})
   }
 
   function handleEditJa(id: string, text: string) {
@@ -315,11 +350,6 @@ export default function SubtitleWorkflow({
   const requestId = subtitleRequestId(cues)
   const settledRequestId = useDebouncedValue(requestId, 500)
   const awaitingClaude = Boolean(inboxKey) && stage === 'reviewing' && cues.length > 0 && !allTranslated
-  // The cues as they are when an answer arrives, not when the check began.
-  const latestCuesRef = useRef(cues)
-  useLayoutEffect(() => {
-    latestCuesRef.current = cues
-  })
   useForegroundCheck(awaitingClaude ? settledRequestId : null, (id, isStale) => {
     fetchSubtitles(inboxKey, id)
       .then(lines => {
@@ -446,6 +476,9 @@ export default function SubtitleWorkflow({
               onEditEn={handleEditEn}
               onEditJa={handleEditJa}
               onShiftStart={oneTake ? handleShiftStart : undefined}
+              onStartAtPlayhead={oneTake && hasAnyJapanese ? handleStartAtPlayhead : undefined}
+              onStartAdjusted={handleStartAdjusted}
+              playheadTime={hasAnyJapanese ? previewTime : null}
             />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
             <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
