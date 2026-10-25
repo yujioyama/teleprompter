@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import CancelProcessing from './CancelProcessing'
 import { STALL_HINT_MS } from '../hooks/useStallHint'
+import { forgetOnCancel } from '../utils/cancellation'
 
 const HINT = '処理が止まっているようです。中断してやり直してください'
 
@@ -19,6 +20,14 @@ describe('CancelProcessing', () => {
     render(<CancelProcessing progress={0} onCancel={onCancel} />)
     fireEvent.click(screen.getByText('中断する'))
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('also forgets setup steps still running, so trying again starts them afresh', () => {
+    const forget = vi.fn()
+    forgetOnCancel(new Promise(() => {}), forget)
+    render(<CancelProcessing progress={0} onCancel={() => undefined} />)
+    fireEvent.click(screen.getByText('中断する'))
+    expect(forget).toHaveBeenCalledTimes(1)
   })
 
   it('suggests cancelling only after progress has stopped for 30 s', () => {

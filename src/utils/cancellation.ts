@@ -54,3 +54,28 @@ export function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise
     )
   })
 }
+
+// How to drop each session-wide setup step still running (see forgetOnCancel).
+const unfinishedSetup = new Set<() => void>()
+
+/**
+ * Note a setup step that runs once and is kept for the rest of the session
+ * (the WebCodecs support check, the AAC delay measurement, loading
+ * ffmpeg.wasm). One that never settles would make every later attempt wait
+ * on it too, so 中断する and trying again stopped at the same place, at 0%.
+ * If forgetUnfinishedSetup() comes before `promise` settles, `forget` drops
+ * it so the next attempt starts afresh.
+ */
+export function forgetOnCancel<T>(promise: Promise<T>, forget: () => void): Promise<T> {
+  unfinishedSetup.add(forget)
+  const settled = () => unfinishedSetup.delete(forget)
+  promise.then(settled, settled)
+  return promise
+}
+
+/** 中断する: drop every setup step still running (see forgetOnCancel). */
+export function forgetUnfinishedSetup(): void {
+  const forgets = [...unfinishedSetup]
+  unfinishedSetup.clear()
+  for (const forget of forgets) forget()
+}

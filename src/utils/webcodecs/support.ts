@@ -11,12 +11,21 @@ import {
   canEncodeAudio,
   canEncodeVideo,
 } from 'mediabunny'
+import { forgetOnCancel } from '../cancellation'
+import { guardAgainstStall } from './stallGuard'
 
 export const OUTPUT_WIDTH = 1080
 export const OUTPUT_HEIGHT = 1920
 export const OUTPUT_FRAME_RATE = 30
 export const OUTPUT_SAMPLE_RATE = 48000
 export const OUTPUT_CHANNELS = 2
+
+/**
+ * How long a one-time setup step (the support check, the AAC delay
+ * measurement) may take before it's given up on. Each is a single tiny
+ * encode or query, so this is far beyond any legitimate wait.
+ */
+export const SETUP_TIMEOUT_MS = 15_000
 
 let support: Promise<boolean> | null = null
 let disabled = false
@@ -32,7 +41,18 @@ let disabledReason: string | null = null
  */
 export function canUseWebCodecs(): Promise<boolean> {
   if (disabled) return Promise.resolve(false)
-  if (!support) support = detect()
+  if (!support) {
+    // detect() never rejects, so this only catches a check that never finished.
+    const attempt: Promise<boolean> = guardAgainstStall(() => detect(), { timeoutMs: SETUP_TIMEOUT_MS }).catch(err => {
+      // Given up on like a runtime failure — unless 中断する already dropped
+      // this check and a fresh one is under way.
+      if (support === attempt) disableWebCodecs(new Error(`support check: ${err.message}`))
+      return false
+    })
+    support = forgetOnCancel(attempt, () => {
+      if (support === attempt) support = null
+    })
+  }
   return support
 }
 
@@ -93,13 +113,16 @@ let aacDelay: Promise<number> | null = null
  * Measured rather than hard-coded because the delay is up to the platform
  * encoder (or the WASM fallback). Found by encoding a single click and
  * locating it in the decoded output; 0 (the old, unshifted behavior) if the
- * measurement fails or looks implausible.
+ * measurement fails, looks implausible or never finishes.
  */
 export function aacEncoderDelay(): Promise<number> {
   if (!aacDelay) {
-    aacDelay = measureAacDelay().catch(err => {
+    const attempt = guardAgainstStall(() => measureAacDelay(), { timeoutMs: SETUP_TIMEOUT_MS }).catch(err => {
       console.warn('[webcodecs] AAC delay measurement failed:', err)
       return 0
+    })
+    aacDelay = forgetOnCancel(attempt, () => {
+      if (aacDelay === attempt) aacDelay = null
     })
   }
   return aacDelay

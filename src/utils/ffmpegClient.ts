@@ -1,5 +1,13 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { forgetOnCancel } from './cancellation'
+import { guardAgainstStall } from './webcodecs/stallGuard'
 import { webCodecsDisabledReason } from './webcodecs/support'
+
+/**
+ * How long loading the 32 MB core may take before it's given up on, so a
+ * load that never finishes can't hold every ffmpeg caller at 0%.
+ */
+export const FFMPEG_LOAD_TIMEOUT_MS = 120_000
 
 let ffmpeg: FFmpeg | null = null
 let loaded: Promise<void> | null = null
@@ -20,10 +28,12 @@ export async function getFFmpeg(): Promise<FFmpeg> {
   if (!loaded) {
     const origin = window.location.origin
     const instance = ffmpeg
-    loaded = instance.load({
-      coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-      wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
-    }).then(
+    const load = () =>
+      instance.load({
+        coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
+        wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
+      })
+    const attempt = guardAgainstStall(load, { timeoutMs: FFMPEG_LOAD_TIMEOUT_MS }).then(
       () => undefined,
       err => {
         // Kept, a failed load would fail every later call the same way
@@ -35,6 +45,11 @@ export async function getFFmpeg(): Promise<FFmpeg> {
         throw new Error(`${err instanceof Error ? err.message : String(err)}\n(WebCodecs: ${reason})`)
       },
     )
+    // 中断する while loading: terminate this instance so trying again loads
+    // a fresh one instead of waiting on it.
+    loaded = forgetOnCancel(attempt, () => {
+      if (ffmpeg === instance) releaseFFmpeg()
+    })
   }
   await loaded
   return ffmpeg
