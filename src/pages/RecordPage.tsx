@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
-import { useRecorder } from '../hooks/useRecorder'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
@@ -11,7 +10,6 @@ import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
-import VideoReviewModal from '../components/VideoReviewModal'
 import styles from './RecordPage.module.css'
 
 export default function RecordPage() {
@@ -22,44 +20,19 @@ export default function RecordPage() {
   const script = id ? getScript(id) : undefined
 
   const [shotIndex, setShotIndex] = useState(0)
-  const { state, importFile, reset, blobRef } = useRecorder()
   const importInputRef = useRef<HTMLInputElement>(null)
   const mainScrollRef = useRef<HTMLDivElement>(null)
 
-  const [isReviewing, setIsReviewing] = useState(false)
-  const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
-  const [persistError, setPersistError] = useState<string | null>(null)
   const [bulkImportError, setBulkImportError] = useState<string | null>(null)
   const [bulkImportProgress, setBulkImportProgress] = useState<{ done: number; total: number } | null>(null)
 
-  // Scroll the prompt text back to the top whenever we return to the idle
-  // (reading) screen — after a retry, skip, save, or jumping to another shot.
+  // Scroll the prompt text back to the top whenever another shot comes up —
+  // after an import or jumping to another shot.
   useEffect(() => {
-    if (state === 'idle') {
-      mainScrollRef.current?.scrollTo({ top: 0 })
-    }
-  }, [state, shotIndex])
-
-  // Persist every processed take to IndexedDB as soon as it's ready, independent
-  // of whether the user later exports it to the camera roll or skips that export.
-  // A retake resets state to 'idle' then back to 'stopped' for the same shotIndex,
-  // so this naturally re-persists (and overwrites) on each new take.
-  useEffect(() => {
-    if (state !== 'stopped') {
-      setPersistError(null)
-      return
-    }
-    if (!blobRef.current || !script) return
-    const shot = script.shots[shotIndex]
-    if (!shot) return
-    saveShotVideo(script.id, shot.id, blobRef.current).catch(err => {
-      console.error('Failed to persist shot video to IndexedDB', err)
-      setPersistError('この動画を保存できませんでした。ストレージの空き容量を確認してください。')
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, shotIndex])
+    mainScrollRef.current?.scrollTo({ top: 0 })
+  }, [shotIndex])
 
   if (!script || script.shots.length === 0) {
     return (
@@ -72,7 +45,6 @@ export default function RecordPage() {
   const safeScript = script
   const isComplete = shotIndex >= safeScript.shots.length
   const currentShot = safeScript.shots[shotIndex] as (typeof safeScript.shots)[0] | undefined
-  const isLast = shotIndex === safeScript.shots.length - 1
 
   // Effective settings: shot override ?? global
   const effectiveTrimEnabled = currentShot?.trimEnabled ?? globalSettings.trimEnabled
@@ -83,47 +55,10 @@ export default function RecordPage() {
     currentShot?.trimPaddingStart !== undefined ||
     currentShot?.trimPaddingEnd !== undefined
 
-  // The take is already stored (see the effect above) and came from Files
-  // or the camera roll, so there is nothing to save — just move on.
-  function handleNext() {
-    closeModal()
-    reset()
-    setShotSettingsOpen(false)
-    setShotIndex(i => i + 1)
-  }
-
   function handleJumpToShot(index: number) {
-    closeModal()
-    reset()
     setShotSettingsOpen(false)
     setShotIndex(index)
     setShotListOpen(false)
-  }
-
-  function openModal() {
-    if (isReviewing) return
-    if (!blobRef.current) return
-    try {
-      const url = URL.createObjectURL(blobRef.current)
-      setReviewUrl(url)
-      setIsReviewing(true)
-    } catch (err) {
-      console.error('createObjectURL failed', err)
-    }
-  }
-
-  function closeModal() {
-    if (reviewUrl) {
-      URL.revokeObjectURL(reviewUrl)
-    }
-    setReviewUrl(null)
-    setIsReviewing(false)
-  }
-
-  function handleRetry() {
-    closeModal()
-    reset()
-    setShotSettingsOpen(false)
   }
 
   // Hands the remaining shots (from the current one onward) to the native
@@ -142,25 +77,25 @@ export default function RecordPage() {
 
     const resolution = resolveImportTargets(files, safeScript.shots)
 
-    if (resolution.kind === 'legacy') {
-      setBulkImportError(null)
-      importFile(resolution.file, { normalizeAudio: globalSettings.normalizeAudio })
-      return
-    }
-
     if (resolution.kind === 'error') {
       setBulkImportError(`一致しないファイルがあります: ${resolution.unmatchedFilenames.join(', ')}`)
       return
     }
 
-    runBulkImport(resolution.targets).catch(err => {
+    // A take whose name doesn't say its shot (one renamed by the camera
+    // roll, say) is the one on screen, and the next shot comes up after it.
+    const run = resolution.kind === 'legacy'
+      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1)
+      : runBulkImport(resolution.targets)
+    run?.catch(err => {
       console.error('Bulk import failed unexpectedly', err)
       setBulkImportProgress(null)
       setBulkImportError('インポート中に予期しないエラーが発生しました。')
     })
   }
 
-  async function runBulkImport(targets: { shot: Shot; file: File }[]) {
+  // Lands on `nextIndex` when given, else on the first shot still missing a video.
+  async function runBulkImport(targets: { shot: Shot; file: File }[], nextIndex?: number) {
     setBulkImportError(null)
     setBulkImportProgress({ done: 0, total: targets.length })
     const failedShotTexts: string[] = []
@@ -199,10 +134,16 @@ export default function RecordPage() {
       setBulkImportError(messages.join(' / '))
     }
 
+    setShotSettingsOpen(false)
+    if (nextIndex !== undefined) {
+      // Stay on the shot when its take couldn't be saved, so it can be tried again.
+      if (failedShotTexts.length === 0) setShotIndex(nextIndex)
+      return
+    }
     const stored = await listShotVideos(safeScript.id)
     const savedIds = new Set(stored.map(v => v.shotId))
-    const nextIndex = safeScript.shots.findIndex(s => !savedIds.has(s.id))
-    setShotIndex(nextIndex === -1 ? safeScript.shots.length : nextIndex)
+    const firstMissing = safeScript.shots.findIndex(s => !savedIds.has(s.id))
+    setShotIndex(firstMissing === -1 ? safeScript.shots.length : firstMissing)
   }
 
   function handleToggleOverride(enabled: boolean) {
@@ -289,7 +230,7 @@ export default function RecordPage() {
         </div>
 
         {/* Per-shot trim settings */}
-        {state === 'idle' && (
+        {!bulkImportProgress && (
           <div className={styles.shotSettings}>
             <button
               className={styles.shotSettingsToggle}
@@ -378,7 +319,7 @@ export default function RecordPage() {
       {/* Controls — bottom (fixed dock) */}
       <div className={styles.controls}>
         <div className={styles.buttons}>
-          {state === 'idle' && !bulkImportProgress && (
+          {!bulkImportProgress && (
             <>
               <button
                 className={styles.recordBtn}
@@ -410,31 +351,8 @@ export default function RecordPage() {
             </div>
           )}
 
-          {state === 'idle' && bulkImportError && (
+          {!bulkImportProgress && bulkImportError && (
             <p className={styles.persistError}>{bulkImportError}</p>
-          )}
-
-          {state === 'remuxing' && (
-            <div className={styles.remuxing}>
-              🔄 変換中...
-            </div>
-          )}
-
-          {state === 'stopped' && (
-            <div className={styles.stoppedActions}>
-              <button className={styles.playBtn} onClick={openModal} aria-label="録画を再生">
-                ▶ 再生
-              </button>
-              <button className={styles.retryBtn} onClick={handleRetry}>
-                もう一度
-              </button>
-              <button className={styles.nextBtn} onClick={handleNext}>
-                {isLast ? '完了 ✓' : '次へ →'}
-              </button>
-              {persistError && (
-                <p className={styles.persistError}>{persistError}</p>
-              )}
-            </div>
           )}
         </div>
       </div>
@@ -442,10 +360,7 @@ export default function RecordPage() {
       {/* Back navigation */}
       <button
         className={styles.backBtn}
-        onClick={() => {
-          closeModal()
-          navigate(`/scripts/${safeScript.id}/shots`)
-        }}
+        onClick={() => navigate(`/scripts/${safeScript.id}/shots`)}
       >
         ‹ 編集に戻る
       </button>
@@ -472,10 +387,6 @@ export default function RecordPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {isReviewing && reviewUrl && (
-        <VideoReviewModal url={reviewUrl} onClose={closeModal} />
       )}
     </div>
   )

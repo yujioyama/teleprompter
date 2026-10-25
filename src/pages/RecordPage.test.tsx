@@ -66,7 +66,7 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   // jsdom doesn't implement Element.scrollTo; RecordPage calls it on an
-  // effect-scroll ref whenever `state` is 'idle'.
+  // effect-scroll ref whenever another shot comes up.
   Element.prototype.scrollTo = vi.fn()
 })
 
@@ -178,29 +178,39 @@ describe('RecordPage bulk import from teleprompter-cam', () => {
 })
 
 describe('RecordPage single import', () => {
-  it('moves on with 次へ, without saving the take to the camera roll again', async () => {
+  it('saves a take its name does not match to the shot on screen and brings up the next one', async () => {
     const script = seedScript()
     renderRecordPage(script.id)
 
     selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [videoFile('IMG_0001.MOV')])
-    fireEvent.click(await screen.findByRole('button', { name: '次へ →' }))
 
-    expect(await screen.findByText('ショット2')).toBeInTheDocument()
+    expect(await screen.findByText('2 / 3 ≡')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '録画を再生' })).not.toBeInTheDocument()
     expect(shareOrDownload).not.toHaveBeenCalled()
-    expect(screen.queryByText(/保存して/)).not.toBeInTheDocument()
-    await waitFor(async () => expect((await listShotVideos(script.id)).map(v => v.shotId)).toEqual([SHOT_1]))
+    expect((await listShotVideos(script.id)).map(v => v.shotId)).toEqual([SHOT_1])
+    expect(releaseFFmpeg).toHaveBeenCalledTimes(1)
   })
 
-  it('offers 完了 on the last shot and shows the finish screen', async () => {
+  it('shows the finish screen after the last shot', async () => {
     const script = seedScript()
     renderRecordPage(script.id)
     fireEvent.click(screen.getByRole('button', { name: /≡/ }))
     fireEvent.click(screen.getByText('ショット3'))
 
     selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [videoFile('IMG_0003.MOV')])
-    fireEvent.click(await screen.findByRole('button', { name: '完了 ✓' }))
 
     expect(await screen.findByText('撮影完了！')).toBeInTheDocument()
+  })
+
+  it('stays on the shot when its take cannot be processed', async () => {
+    const script = seedScript()
+    vi.mocked(processRecordedVideo).mockRejectedValueOnce(new Error('boom'))
+    renderRecordPage(script.id)
+
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [videoFile('IMG_0001.MOV')])
+
+    expect(await screen.findByText(/保存できなかったショットがあります: ショット1/)).toBeInTheDocument()
+    expect(screen.getByText('1 / 3 ≡')).toBeInTheDocument()
   })
 })
 
