@@ -6,8 +6,13 @@
 
 .row {
   background: var(--surface2);
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 8px 10px;
+}
+
+.rowChecking {
+  border-color: var(--accent);
 }
 
 .num {
@@ -54,4 +59,11 @@
   font-size: 0.7rem;
   padding: 4px 10px;
   touch-action: manipulation;
+}
+
+.checkBtn {
+  margin-left: 6px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }

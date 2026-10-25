@@ -51,6 +51,7 @@ function ControlledSubtitleWorkflow({
   inboxKey,
   initialHookSettings,
   scriptJapanese,
+  oneTake,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -60,6 +61,7 @@ function ControlledSubtitleWorkflow({
   inboxKey?: string
   initialHookSettings?: Partial<HookSettings>
   scriptJapanese?: LineJapanese[]
+  oneTake?: boolean
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -85,6 +87,7 @@ function ControlledSubtitleWorkflow({
       transcribe={transcribe}
       inboxKey={inboxKey}
       scriptJapanese={scriptJapanese}
+      oneTake={oneTake}
     />
   )
 }
@@ -892,5 +895,51 @@ describe('SubtitleWorkflow Japanese sent with the script', () => {
     expect(await screen.findByDisplayValue('Hello world')).toBeInTheDocument()
     expect(screen.queryByLabelText('日本語字幕 1')).not.toBeInTheDocument()
     expect(screen.getByText('📋 Claude用プロンプトをコピー')).toBeInTheDocument()
+  })
+})
+
+describe('SubtitleWorkflow 一発撮り: checking where a line starts', () => {
+  const TAKE: ShotCueInput[] = [{ text: 'Line one.\nLine two.\nLine three.', duration: 6, lineStarts: [2, 4] }]
+  let play: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
+  })
+
+  afterEach(() => {
+    play.mockRestore()
+  })
+
+  it('plays a line\'s switch under that line, before any translation', async () => {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={TAKE} onBurned={vi.fn()} oneTake />)
+    await screen.findByDisplayValue('Line two.')
+    expect(screen.queryByLabelText('1行目を確認')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('2行目を確認'))
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByLabelText('3行目を確認'))
+    expect(screen.queryByLabelText('2行目の切り替わり')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('3行目の切り替わり')).toBeInTheDocument()
+  })
+
+  it('plays the switch again after each ◀ / ▶ press', async () => {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={TAKE} onBurned={vi.fn()} oneTake />)
+    await screen.findByDisplayValue('Line two.')
+
+    fireEvent.click(screen.getByLabelText('2行目を遅く'))
+    expect(screen.getByLabelText('2行目の切り替わり')).toBeInTheDocument()
+    expect(screen.getByText(/0:02\.1 -/)).toBeInTheDocument()
+    expect(play).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByLabelText('2行目を早める'))
+    expect(play).toHaveBeenCalledTimes(2)
+  })
+
+  it('has no check buttons outside 一発撮り', async () => {
+    render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={vi.fn()} />)
+    await screen.findByDisplayValue('Hello')
+    expect(screen.queryByText('▶ 確認')).not.toBeInTheDocument()
   })
 })

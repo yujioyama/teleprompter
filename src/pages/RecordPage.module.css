@@ -84,34 +84,6 @@
   gap: 2px;
 }
 
-.stoppedActions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-}
-
-.playBtn {
-  background: var(--surface2);
-  color: var(--text);
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  border: 2px solid var(--accent);
-}
-
-
-.retryBtn {
-  background: var(--surface2);
-  color: var(--text-muted);
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  border: 1px solid var(--border);
-}
-
 .importBtn {
   background: transparent;
   color: var(--accent);
@@ -124,15 +96,6 @@
 
 .hiddenFileInput {
   display: none;
-}
-
-.nextBtn {
-  background: var(--accent);
-  color: #fff;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  font-weight: 700;
 }
 
 .remuxing {
