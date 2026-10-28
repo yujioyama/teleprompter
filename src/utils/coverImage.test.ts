@@ -92,6 +92,48 @@ describe('coverLines', () => {
     expect(coverLines({ en: '  ', ja: 'ukon', sticker: '' }, measure).map(l => l.text)).toEqual(['ukon'])
     expect(coverLines({ en: '', ja: '', sticker: '' }, measure)).toEqual([])
   })
+
+  const fits = (l: { text: string; px: number }) => measure(l.text, `800 ${l.px}px x`) <= COVER_TEXT_WIDTH
+
+  it('keeps a phrase on one line while it fits at the smallest size', () => {
+    const lines = coverLines({ en: 'happy as a clam', ja: '', sticker: '' }, measure)
+    expect(lines.map(l => l.text)).toEqual(['happy as a clam'])
+  })
+
+  it('breaks a phrase too long for one line into two even halves of one size', () => {
+    const lines = coverLines({ en: 'as happy as a clam at high tide', ja: '', sticker: '' }, measure)
+    expect(lines.map(l => l.text)).toEqual(['as happy as a', 'clam at high tide'])
+    expect(lines.every(l => l.color === EMPHASIS_COLOR && l.px === lines[0].px)).toBe(true)
+    expect(lines.every(fits)).toBe(true)
+    expect(lines[1].y - lines[0].y).toBeGreaterThan(lines[0].px)
+  })
+
+  it('puts the romaji over the kana when the Japanese word is too long for one line', () => {
+    const lines = coverLines({ en: 'thanks', ja: 'gochisousamadeshita ごちそうさまでした', sticker: '' }, measure)
+    expect(lines.map(l => [l.text, l.color])).toEqual([
+      ['thanks', EMPHASIS_COLOR],
+      ['gochisousamadeshita', WORD_COLOR],
+      ['ごちそうさまでした', WORD_COLOR],
+    ])
+    expect(lines.every(fits)).toBe(true)
+  })
+
+  it('shrinks past the smallest size when even two lines would not fit', () => {
+    const word = coverLines({ en: 'a'.repeat(40), ja: '', sticker: '' }, measure)
+    expect(word).toHaveLength(1)
+    expect(word.every(fits)).toBe(true)
+    const halves = coverLines({ en: '', ja: `${'a'.repeat(30)} ${'b'.repeat(30)}`, sticker: '' }, measure)
+    expect(halves).toHaveLength(2)
+    expect(halves.every(fits)).toBe(true)
+  })
+
+  it('keeps wrapped lines inside the grid window at either end of the slider', () => {
+    const words = { en: 'as happy as a clam at high tide', ja: 'gochisousamadeshita ごちそうさまでした', sticker: '' }
+    const top = coverLines(words, measure, 0)
+    expect(top[0].y - top[0].px).toBeGreaterThan(GRID_TOP)
+    const bottom = coverLines(words, measure, 100)
+    expect(bottom[bottom.length - 1].y).toBeLessThan(GRID_BOTTOM)
+  })
 })
 
 describe('coverStickerSpot', () => {

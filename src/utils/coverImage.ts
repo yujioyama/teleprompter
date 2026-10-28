@@ -61,12 +61,57 @@ export function coverFont(px: number, weight = '800'): string {
   return `${weight} ${px}px ${SUBTITLE_FONT_FAMILY}`
 }
 
+/** The largest size from maxPx down to minPx at which every row fits COVER_TEXT_WIDTH, or null if none does. */
+function fitRowsPx(rows: string[], maxPx: number, minPx: number, measure: MeasureWidth, weight = '800'): number | null {
+  const fit = (px: number) => rows.every(row => measure(row, coverFont(px, weight)) <= COVER_TEXT_WIDTH)
+  for (let px = maxPx; px > minPx; px -= 4) {
+    if (fit(px)) return px
+  }
+  return fit(minPx) ? minPx : null
+}
+
 /** The largest size from maxPx down to minPx at which `text` fits COVER_TEXT_WIDTH (minPx if none does). */
 export function fitFontPx(text: string, maxPx: number, minPx: number, measure: MeasureWidth, weight = '800'): number {
-  for (let px = maxPx; px > minPx; px -= 4) {
-    if (measure(text, coverFont(px, weight)) <= COVER_TEXT_WIDTH) return px
+  return fitRowsPx([text], maxPx, minPx, measure, weight) ?? minPx
+}
+
+const isAscii = (ch: string) => ch.charCodeAt(0) < 0x80
+
+/**
+ * `text` broken in two at a space: where the romaji meets the kana when
+ * there is such a space, else where the halves come out most even. Null
+ * for a single word.
+ */
+function splitInTwo(text: string, measure: MeasureWidth, font: string): [string, string] | null {
+  const words = text.split(/\s+/)
+  const splits: [string, string][] = []
+  const atScript: [string, string][] = []
+  for (let i = 1; i < words.length; i++) {
+    const split: [string, string] = [words.slice(0, i).join(' '), words.slice(i).join(' ')]
+    splits.push(split)
+    if (isAscii(words[i - 1].slice(-1)) !== isAscii(words[i][0])) atScript.push(split)
   }
-  return minPx
+  const candidates = atScript.length > 0 ? atScript : splits
+  const widest = ([a, b]: [string, string]) => Math.max(measure(a, font), measure(b, font))
+  return candidates.reduce<[string, string] | null>((best, s) => (best && widest(best) <= widest(s) ? best : s), null)
+}
+
+/**
+ * `text` as rows of one size: one row while it fits at minPx or more, else
+ * two, and smaller than minPx only when even two don't fit.
+ */
+function wrapText(text: string, maxPx: number, minPx: number, measure: MeasureWidth): { rows: string[]; px: number } {
+  const one = fitRowsPx([text], maxPx, minPx, measure)
+  if (one !== null) return { rows: [text], px: one }
+  const rows = splitInTwo(text, measure, coverFont(minPx)) ?? [text]
+  const px = fitRowsPx(rows, maxPx, minPx, measure)
+  if (px !== null) return { rows, px }
+  // Width grows about in step with the size, so scale minPx down by how far
+  // the widest row overflows, then go on down the last pixels a real font's
+  // rounding can leave over.
+  const widest = Math.max(...rows.map(row => measure(row, coverFont(minPx))))
+  const scaled = Math.floor((minPx * COVER_TEXT_WIDTH) / widest)
+  return { rows, px: fitRowsPx(rows, scaled, 1, measure) ?? 1 }
 }
 
 export interface CoverLine {
@@ -82,6 +127,8 @@ const EN_MIN_PX = 72
 const JA_MAX_PX = 150
 const JA_MIN_PX = 60
 const LINE_GAP = 40
+/** Between the two rows of a wrapped phrase, as a fraction of its size: enough that the outlines don't touch. */
+const WRAP_GAP_RATIO = 0.2
 /** Room kept between the words and the grid window's edges. */
 const GRID_MARGIN = 40
 /** 0-100, where the block sits by default: in the lower half of the grid window, under the face. */
@@ -89,27 +136,28 @@ export const COVER_TEXT_POSITION_DEFAULT = 68
 
 /**
  * The lines, centered at `position` (0 = the top of the grid window, 100 =
- * its bottom) but kept inside the window so neither line gets cropped.
+ * its bottom) but kept inside the window so no line gets cropped. A phrase
+ * too long for one line takes two.
  */
 export function coverLines(words: CoverWords, measure: MeasureWidth, position = COVER_TEXT_POSITION_DEFAULT): CoverLine[] {
-  const parts: { text: string; color: string; px: number }[] = []
-  if (words.en.trim()) {
-    const text = words.en.trim()
-    parts.push({ text, color: EMPHASIS_COLOR, px: fitFontPx(text, EN_MAX_PX, EN_MIN_PX, measure) })
+  const rows: { text: string; color: string; px: number; gapAfter: number }[] = []
+  const add = (text: string, color: string, maxPx: number, minPx: number) => {
+    if (rows.length > 0) rows[rows.length - 1].gapAfter = LINE_GAP
+    const wrapped = wrapText(text, maxPx, minPx, measure)
+    const wrapGap = Math.round(wrapped.px * WRAP_GAP_RATIO)
+    for (const row of wrapped.rows) rows.push({ text: row, color, px: wrapped.px, gapAfter: wrapGap })
   }
-  if (words.ja.trim()) {
-    const text = words.ja.trim()
-    parts.push({ text, color: WORD_COLOR, px: fitFontPx(text, JA_MAX_PX, JA_MIN_PX, measure) })
-  }
-  const height = parts.reduce((h, p) => h + p.px, 0) + LINE_GAP * Math.max(0, parts.length - 1)
+  if (words.en.trim()) add(words.en.trim(), EMPHASIS_COLOR, EN_MAX_PX, EN_MIN_PX)
+  if (words.ja.trim()) add(words.ja.trim(), WORD_COLOR, JA_MAX_PX, JA_MIN_PX)
+  const height = rows.reduce((h, r, i) => h + r.px + (i < rows.length - 1 ? r.gapAfter : 0), 0)
   const center = GRID_TOP + ((GRID_BOTTOM - GRID_TOP) * position) / 100
   const minTop = GRID_TOP + GRID_MARGIN
   const maxTop = GRID_BOTTOM - GRID_MARGIN - height
   let top = Math.max(minTop, Math.min(maxTop, center - height / 2))
-  return parts.map(p => {
+  return rows.map(({ gapAfter, ...r }) => {
     // Cap height is close to 0.75em; put the baseline there so the block centers on the glyphs.
-    const line = { ...p, y: Math.round(top + p.px * 0.85) }
-    top += p.px + LINE_GAP
+    const line = { ...r, y: Math.round(top + r.px * 0.85) }
+    top += r.px + gapAfter
     return line
   })
 }
