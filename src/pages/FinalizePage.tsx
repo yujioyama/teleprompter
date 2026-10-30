@@ -26,6 +26,7 @@ import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { useExport } from '../hooks/useExport'
+import { useCoverFrames } from '../hooks/useCoverFrames'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -35,6 +36,7 @@ import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../comp
 import { ShotCueInput, lineStartsInTake, takeLinesOf } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
+import CoverFrameSettings from '../components/CoverFrameSettings'
 import { coverWordsOf } from '../utils/coverImage'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
@@ -187,6 +189,8 @@ export default function FinalizePage() {
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
   // The export step's cover maker; while open, the final preview is hidden so only one video decodes.
   const [coverOpen, setCoverOpen] = useState(false)
+  // The image the export puts in as frames of its own; picked per video.
+  const [coverFrameImage, setCoverFrameImage] = useState<File | null>(null)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
@@ -557,9 +561,17 @@ export default function FinalizePage() {
   // final audio can be brought to the level Instagram/TikTok play back at.
   // The voice preset goes on the voice before any BGM under it, so this pass
   // applies it only when no mix did.
-  const { blob: exportBlob, url: finalUrl, loudness: loudnessState } = useExport(
+  const { blob: finishedBlob, loudness: loudnessState } = useExport(
     step === 'export' ? finalBlob : null,
     { voice: mixed ? 'none' : voicePreset, normalize: normalizeAudio },
+  )
+  // Last, the cover image as frames of their own, on the finished video:
+  // the voice, the BGM and the subtitles move with it as one.
+  const { blob: exportBlob, url: finalUrl, state: coverFrameState } = useCoverFrames(
+    finishedBlob,
+    coverFrameImage,
+    settings.coverFramePlacement,
+    settings.coverFrameCount,
   )
 
   // A 一発撮り take skips the 結合 result: 次へ cuts it (unless already
@@ -895,10 +907,14 @@ export default function FinalizePage() {
             </div>
           )}
 
-          {step === 'export' && exportBlob && finalUrl && (
+          {step === 'export' && finishedBlob && (
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
-              {!coverOpen && <video className={styles.preview} src={finalUrl} controls playsInline />}
+              {coverFrameState === 'inserting' && <p className={styles.shotEntryText}>カバー画像を入れています...</p>}
+              {!coverOpen && finalUrl && <video className={styles.preview} src={finalUrl} controls playsInline />}
+              {coverFrameState === 'failed' && (
+                <p className={styles.missing}>カバー画像を入れられなかったため、カバーなしで保存されます</p>
+              )}
               {loudnessState === 'failed' && (
                 <p className={styles.missing}>音声の自動調整に失敗したため、元の音声のまま保存されます</p>
               )}
@@ -912,7 +928,14 @@ export default function FinalizePage() {
                   </button>
                 </div>
               )}
-              <button className={styles.finalizeBtn} onClick={handleSaveFinal}>
+              <CoverFrameSettings
+                image={coverFrameImage}
+                onImageChange={setCoverFrameImage}
+                placement={settings.coverFramePlacement}
+                count={settings.coverFrameCount}
+                onChange={updateSettings}
+              />
+              <button className={styles.finalizeBtn} onClick={handleSaveFinal} disabled={!exportBlob}>
                 保存する
               </button>
               {script.caption && (
@@ -945,6 +968,7 @@ export default function FinalizePage() {
                   saveAll={{
                     label: script.caption ? '動画・カバー・キャプションを一括保存' : '動画とカバーを一括保存',
                     save: handleSaveAll,
+                    disabled: !exportBlob,
                   }}
                 />
               )}

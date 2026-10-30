@@ -56,6 +56,8 @@ describe('resolveShotTrimSettings', () => {
     lastShotPaddingEnd: 0.1,
     coverTextPosition: 68,
     coverStickerSpot: null,
+    coverFramePlacement: 'none',
+    coverFrameCount: 1,
     inboxKey: '',
     bgmDefaultRev: 1,
   }

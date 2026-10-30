@@ -11,6 +11,7 @@ import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
 import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
+import type { CoverFramePlacement } from '../utils/coverFrames'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -59,6 +60,10 @@ export interface AppSettings {
   coverTextPosition: number
   /** Where the cover's sticker was dragged to; null = where the video has it. */
   coverStickerSpot: CoverStickerSpot | null
+  /** Where the export puts the chosen cover image in the video as frames of its own. */
+  coverFramePlacement: CoverFramePlacement
+  /** How many frames of it, 1-5. */
+  coverFrameCount: number
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -92,6 +97,8 @@ const DEFAULTS: AppSettings = {
   lastShotPaddingEnd: 0.1,
   coverTextPosition: COVER_TEXT_POSITION_DEFAULT,
   coverStickerSpot: null,
+  coverFramePlacement: 'none',
+  coverFrameCount: 1,
   inboxKey: '',
   bgmDefaultRev: 1,
 }

@@ -189,6 +189,23 @@ export function coverStickerSpot(placement: StickerPlacement, moved: CoverSticke
   return { ...(moved ? clampStickerSpot(moved) : home), rotation: home.rotation }
 }
 
+/**
+ * Where to draw a `sourceWidth`x`sourceHeight` picture so it fills a
+ * `width`x`height` frame without distortion: scaled to cover it, centered,
+ * with what overflows left outside the frame.
+ */
+export function coverFitRect(
+  sourceWidth: number,
+  sourceHeight: number,
+  width: number,
+  height: number,
+): { x: number; y: number; width: number; height: number } {
+  const scale = Math.max(width / sourceWidth, height / sourceHeight)
+  const w = sourceWidth * scale
+  const h = sourceHeight * scale
+  return { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h }
+}
+
 /** Draw `source` filling the cover (cropping what overflows), then the sticker and the words. */
 export function drawCover(
   ctx: CanvasRenderingContext2D,
@@ -203,10 +220,8 @@ export function drawCover(
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, COVER_WIDTH, COVER_HEIGHT)
   if (sourceWidth > 0 && sourceHeight > 0) {
-    const scale = Math.max(COVER_WIDTH / sourceWidth, COVER_HEIGHT / sourceHeight)
-    const w = sourceWidth * scale
-    const h = sourceHeight * scale
-    ctx.drawImage(source, (COVER_WIDTH - w) / 2, (COVER_HEIGHT - h) / 2, w, h)
+    const { x, y, width, height } = coverFitRect(sourceWidth, sourceHeight, COVER_WIDTH, COVER_HEIGHT)
+    ctx.drawImage(source, x, y, width, height)
   }
 
   const measure: MeasureWidth = (text, font) => {

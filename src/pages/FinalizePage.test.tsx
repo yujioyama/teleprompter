@@ -21,6 +21,7 @@ import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
 import { buildVideoRecord } from '../utils/videoRecord'
+import { insertCoverFrames } from '../utils/coverFrames'
 
 vi.mock('../utils/videoRecord', async importOriginal => {
   const actual = await importOriginal<typeof import('../utils/videoRecord')>()
@@ -51,6 +52,11 @@ const COVER_PNG = new Blob(['cover'], { type: 'image/png' })
 vi.mock('../utils/coverImage', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/coverImage')>()),
   canvasToPng: vi.fn(async () => COVER_PNG),
+}))
+const COVERED = new Blob(['covered'], { type: 'video/mp4' })
+vi.mock('../utils/coverFrames', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/coverFrames')>()),
+  insertCoverFrames: vi.fn(async () => COVERED),
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
   finishAudio: vi.fn(),
@@ -128,6 +134,7 @@ beforeEach(async () => {
   vi.mocked(burnModule.burnSubtitles).mockResolvedValue(new Blob(['burned'], { type: 'video/mp4' }))
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
   vi.mocked(finishAudio).mockResolvedValue(LOUDNESS_NORMALIZED)
+  vi.mocked(insertCoverFrames).mockResolvedValue(COVERED)
   vi.mocked(canUseWebCodecs).mockResolvedValue(false)
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -1184,6 +1191,47 @@ describe('FinalizePage export step: loudness normalization', () => {
     fireEvent.click(await screen.findByText('保存する'))
     expect(screen.getByText(/音声の自動調整に失敗したため/)).toBeInTheDocument()
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(BURNED, 'テスト動画-final'))
+  })
+
+  it('leaves the video as it is while カバー画像 is なし', async () => {
+    await walkToExport()
+    const image = new File(['png'], 'cover.png', { type: 'image/png' })
+    fireEvent.change(await screen.findByLabelText('カバー画像'), { target: { files: [image] } })
+
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+    expect(insertCoverFrames).not.toHaveBeenCalled()
+  })
+
+  it('puts the picked cover in as frames, saves that version and remembers where and how many', async () => {
+    await walkToExport()
+    const image = new File(['png'], 'cover.png', { type: 'image/png' })
+    fireEvent.change(await screen.findByLabelText('カバー画像'), { target: { files: [image] } })
+    fireEvent.click(screen.getByRole('button', { name: '最後' }))
+    fireEvent.change(screen.getByLabelText('コマ数'), { target: { value: '3' } })
+
+    await waitFor(() => expect(insertCoverFrames).toHaveBeenLastCalledWith(LOUDNESS_NORMALIZED, image, 'last', 3))
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(COVERED, 'テスト動画-final'))
+    expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({
+      coverFramePlacement: 'last',
+      coverFrameCount: 3,
+    })
+  })
+
+  it('saves the video without the cover, with a note, when it cannot go in', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(insertCoverFrames).mockRejectedValueOnce(new Error('encode failed'))
+    await walkToExport()
+    fireEvent.change(await screen.findByLabelText('カバー画像'), {
+      target: { files: [new File(['png'], 'cover.png', { type: 'image/png' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '最初' }))
+
+    expect(await screen.findByText(/カバー画像を入れられなかったため/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
   })
 
   it('shows no BGM row when the video has no BGM', async () => {

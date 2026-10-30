@@ -36,7 +36,12 @@ interface Props {
    * page can do what must happen inside the tap (copying to the clipboard)
    * before waiting for it.
    */
-  saveAll?: { label: string; save: (cover: Promise<Blob>) => Promise<void> }
+  saveAll?: {
+    label: string
+    save: (cover: Promise<Blob>) => Promise<void>
+    /** While the video it saves isn't ready (e.g. the cover frames going in). */
+    disabled?: boolean
+  }
 }
 
 /**
@@ -251,7 +256,7 @@ export default function CoverMaker({
 
       {error && <p className={styles.error}>{error}</p>}
       {saveAll && (
-        <button className={styles.saveBtn} onClick={() => runSave(saveAll.save)} disabled={!ready || saving}>
+        <button className={styles.saveBtn} onClick={() => runSave(saveAll.save)} disabled={!ready || saving || saveAll.disabled}>
           {saving ? '書き出し中...' : saveAll.label}
         </button>
       )}
