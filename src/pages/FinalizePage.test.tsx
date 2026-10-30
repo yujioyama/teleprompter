@@ -1195,8 +1195,9 @@ describe('FinalizePage export step: loudness normalization', () => {
 
   it('leaves the video as it is while カバー画像 is なし', async () => {
     await walkToExport()
+    fireEvent.click(await screen.findByRole('button', { name: '選んだ画像' }))
     const image = new File(['png'], 'cover.png', { type: 'image/png' })
-    fireEvent.change(await screen.findByLabelText('カバー画像'), { target: { files: [image] } })
+    fireEvent.change(screen.getByLabelText('カバー画像'), { target: { files: [image] } })
 
     fireEvent.click(screen.getByText('保存する'))
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
@@ -1205,18 +1206,20 @@ describe('FinalizePage export step: loudness normalization', () => {
 
   it('puts the picked cover in as frames, saves that version and remembers where and how many', async () => {
     await walkToExport()
+    fireEvent.click(await screen.findByRole('button', { name: '選んだ画像' }))
     const image = new File(['png'], 'cover.png', { type: 'image/png' })
-    fireEvent.change(await screen.findByLabelText('カバー画像'), { target: { files: [image] } })
+    fireEvent.change(screen.getByLabelText('カバー画像'), { target: { files: [image] } })
     fireEvent.click(screen.getByRole('button', { name: '最後' }))
     fireEvent.change(screen.getByLabelText('コマ数'), { target: { value: '3' } })
 
-    await waitFor(() => expect(insertCoverFrames).toHaveBeenLastCalledWith(LOUDNESS_NORMALIZED, image, 'last', 3))
+    await waitFor(() => expect(insertCoverFrames).toHaveBeenLastCalledWith(LOUDNESS_NORMALIZED, image, 'last', 3, expect.any(Function)))
     await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
     fireEvent.click(screen.getByText('保存する'))
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(COVERED, 'テスト動画-final'))
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({
       coverFramePlacement: 'last',
       coverFrameCount: 3,
+      coverFrameSource: 'picked',
     })
   })
 
@@ -1224,7 +1227,8 @@ describe('FinalizePage export step: loudness normalization', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(insertCoverFrames).mockRejectedValueOnce(new Error('encode failed'))
     await walkToExport()
-    fireEvent.change(await screen.findByLabelText('カバー画像'), {
+    fireEvent.click(await screen.findByRole('button', { name: '選んだ画像' }))
+    fireEvent.change(screen.getByLabelText('カバー画像'), {
       target: { files: [new File(['png'], 'cover.png', { type: 'image/png' })] },
     })
     fireEvent.click(screen.getByRole('button', { name: '最初' }))
@@ -1302,6 +1306,18 @@ describe('FinalizePage export step: loudness normalization', () => {
     }
   })
 
+  it('copies the caption along with 保存する', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: '#朝活 おはよう' }]))
+    await walkToExport()
+
+    fireEvent.click(await screen.findByText('保存する'))
+    expect(writeText).toHaveBeenCalledWith('#朝活 おはよう')
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+    expect(await screen.findByText('コピーしました')).toBeInTheDocument()
+  })
+
   it('says so when the caption cannot be copied', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn(async () => { throw new Error('denied') }) },
@@ -1352,6 +1368,26 @@ describe('FinalizePage export step: loudness normalization', () => {
     await waitFor(() =>
       expect(shareAllOrDownload).toHaveBeenCalledWith([
         { blob: LOUDNESS_NORMALIZED, filenameBase: 'テスト動画-final' },
+        { blob: COVER_PNG, filenameBase: 'テスト動画-cover' },
+      ]),
+    )
+  })
+
+  it('puts the cover made here in as frames once it settles, and saves that video with it', async () => {
+    await walkToExport()
+    fireEvent.click(await screen.findByRole('button', { name: '最初' }))
+    await openCover()
+
+    // Until the cover is in the frames, nothing goes out with the old one.
+    expect(screen.getByText('動画とカバーを一括保存')).toBeDisabled()
+    expect(screen.getByText('保存する')).toBeDisabled()
+    await waitFor(() => expect(insertCoverFrames).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, COVER_PNG, 'first', 1, expect.any(Function)))
+    await waitFor(() => expect(screen.getByText('動画とカバーを一括保存')).toBeEnabled())
+
+    fireEvent.click(screen.getByText('動画とカバーを一括保存'))
+    await waitFor(() =>
+      expect(shareAllOrDownload).toHaveBeenCalledWith([
+        { blob: COVERED, filenameBase: 'テスト動画-final' },
         { blob: COVER_PNG, filenameBase: 'テスト動画-cover' },
       ]),
     )

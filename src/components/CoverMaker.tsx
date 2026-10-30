@@ -14,6 +14,9 @@ import { shareOrDownload } from '../utils/shareOrDownload'
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import styles from './CoverMaker.module.css'
 
+/** How long the cover has to stay put before it is sent to onCoverDrawn. */
+export const COVER_SETTLE_MS = 600
+
 interface Props {
   /** The combined video before subtitles, so the cover has no burned-in lines. */
   videoUrl: string
@@ -36,6 +39,14 @@ interface Props {
    * page can do what must happen inside the tap (copying to the clipboard)
    * before waiting for it.
    */
+  /**
+   * Called as soon as the cover changes, then with its PNG once it has
+   * stayed put for a moment (null if it couldn't be encoded), so the page
+   * can put it in the video as frames of its own and hold the saves until
+   * it has. Closing the maker sends what is still pending.
+   */
+  onCoverDrawing?: () => void
+  onCoverDrawn?: (cover: Blob | null) => void
   saveAll?: {
     label: string
     save: (cover: Promise<Blob>) => Promise<void>
@@ -60,6 +71,8 @@ export default function CoverMaker({
   stickerPlacement,
   initialStickerSpot,
   onStickerSpotChange,
+  onCoverDrawing,
+  onCoverDrawn,
   saveAll,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -76,6 +89,12 @@ export default function CoverMaker({
   const sticker = coverStickerSpot(stickerPlacement, movedSticker)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Bumped when a newly picked frame is drawn. */
+  const [frameDrawn, setFrameDrawn] = useState(0)
+  /** Whether a change hasn't been sent to onCoverDrawn yet. */
+  const coverPendingRef = useRef(false)
+  const onCoverDrawnRef = useRef(onCoverDrawn)
+  onCoverDrawnRef.current = onCoverDrawn
 
   function redraw() {
     const video = videoRef.current
@@ -89,6 +108,35 @@ export default function CoverMaker({
     if (ready) redraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [words, position, movedSticker, ready])
+
+  // Tell the page the cover changed, and send it once it settles.
+  useEffect(() => {
+    if (!ready || !onCoverDrawn) return
+    onCoverDrawing?.()
+    coverPendingRef.current = true
+    const timer = setTimeout(() => sendCover(canvasRef.current), COVER_SETTLE_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [words, position, movedSticker, ready, frameDrawn])
+
+  // Closing the maker sends a change still waiting to settle. The canvas is
+  // taken now: its ref is cleared before this cleanup runs.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    return () => sendCover(canvas)
+  }, [])
+
+  function sendCover(canvas: HTMLCanvasElement | null) {
+    if (!coverPendingRef.current || !canvas) return
+    coverPendingRef.current = false
+    canvasToPng(canvas).then(
+      png => onCoverDrawnRef.current?.(png),
+      err => {
+        console.warn('[CoverMaker] could not encode the cover:', err)
+        onCoverDrawnRef.current?.(null)
+      },
+    )
+  }
 
   function handleLoaded() {
     const video = videoRef.current
@@ -104,6 +152,7 @@ export default function CoverMaker({
   function handleSeeked() {
     setReady(true)
     redraw()
+    setFrameDrawn(n => n + 1)
   }
 
   function handleSlide(value: number) {
