@@ -5,12 +5,14 @@ import {
   COVER_WIDTH,
   canvasToPng,
   clampStickerSpot,
+  coverStartTime,
   coverStickerSpot,
   drawCover,
   type CoverStickerSpot,
   type CoverWords,
 } from '../utils/coverImage'
 import { shareOrDownload } from '../utils/shareOrDownload'
+import { openVideoStills, type VideoStills } from '../utils/videoStills'
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import styles from './CoverMaker.module.css'
 
@@ -19,7 +21,7 @@ export const COVER_SETTLE_MS = 600
 
 interface Props {
   /** The combined video before subtitles, so the cover has no burned-in lines. */
-  videoUrl: string
+  video: Blob
   /** The words found in the script, editable here before saving. */
   initialWords: CoverWords
   filenameBase: string
@@ -59,11 +61,11 @@ interface Props {
  * Pick a frame with the slider and save it as a 1080×1920 PNG with the
  * episode's English phrase and Japanese word on it, and the first shot's
  * sticker, for the profile grid.
- * Its one <video> only feeds the canvas; the page hides its own preview
- * while this is open, so only one video decoder is live.
+ * Frames are decoded one at a time (openVideoStills) rather than by a
+ * <video> player, so the page's own preview stays up beside it.
  */
 export default function CoverMaker({
-  videoUrl,
+  video,
   initialWords,
   filenameBase,
   initialPosition,
@@ -75,7 +77,7 @@ export default function CoverMaker({
   onCoverDrawn,
   saveAll,
 }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const stillsRef = useRef<VideoStills | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   /** While dragging: how far the finger is from the sticker's center, so it doesn't jump under it. */
@@ -97,11 +99,17 @@ export default function CoverMaker({
   onCoverDrawnRef.current = onCoverDrawn
 
   function redraw() {
-    const video = videoRef.current
+    const frame = stillsRef.current?.canvas
     const ctx = canvasRef.current?.getContext('2d')
-    if (!video || !ctx) return
-    drawCover(ctx, video, video.videoWidth, video.videoHeight, words, position, sticker)
+    if (!frame || !ctx) return
+    drawCover(ctx, frame, frame.width, frame.height, words, position, sticker)
   }
+  // A frame decoded after a later render draws with that render's words.
+  const redrawRef = useRef(redraw)
+  redrawRef.current = redraw
+  /** The frame the slider asked for while another was still being decoded; only the latest counts. */
+  const wantedRef = useRef<number | null>(null)
+  const showingRef = useRef(false)
 
   // Draw again whenever the words or where they and the sticker sit change; frame changes redraw on 'seeked'.
   useEffect(() => {
@@ -138,27 +146,55 @@ export default function CoverMaker({
     )
   }
 
-  function handleLoaded() {
-    const video = videoRef.current
-    if (!video) return
-    const d = Number.isFinite(video.duration) ? video.duration : 0
-    setDuration(d)
-    // The very first frame is often mid-blink or mid-movement; start a little in.
-    const start = Math.min(0.5, d / 2)
-    setTime(start)
-    video.currentTime = start
-  }
+  useEffect(() => {
+    let cancelled = false
+    openVideoStills(video).then(
+      stills => {
+        if (cancelled) {
+          stills.dispose()
+          return
+        }
+        stillsRef.current = stills
+        setDuration(stills.duration)
+        const start = coverStartTime(stills.duration)
+        setTime(start)
+        void showFrame(start)
+      },
+      err => {
+        if (!cancelled) setError(`カバー用のコマを読み込めませんでした: ${err instanceof Error ? err.message : String(err)}`)
+      },
+    )
+    return () => {
+      cancelled = true
+      stillsRef.current?.dispose()
+      stillsRef.current = null
+    }
+  }, [video])
 
-  function handleSeeked() {
-    setReady(true)
-    redraw()
-    setFrameDrawn(n => n + 1)
+  async function showFrame(time: number) {
+    wantedRef.current = time
+    if (showingRef.current) return
+    showingRef.current = true
+    try {
+      while (wantedRef.current !== null) {
+        const next = wantedRef.current
+        wantedRef.current = null
+        const stills = stillsRef.current
+        if (!stills || !(await stills.show(next))) continue
+        setReady(true)
+        redrawRef.current()
+        setFrameDrawn(n => n + 1)
+      }
+    } catch (err) {
+      console.warn('[CoverMaker] could not decode the frame:', err)
+    } finally {
+      showingRef.current = false
+    }
   }
 
   function handleSlide(value: number) {
     setTime(value)
-    const video = videoRef.current
-    if (video) video.currentTime = value
+    void showFrame(value)
   }
 
   /** The pointer's spot on the cover, in the same units as the sticker's. */
@@ -211,16 +247,6 @@ export default function CoverMaker({
   return (
     <div className={styles.maker}>
       <div className={styles.frame} ref={frameRef}>
-        <video
-          ref={videoRef}
-          className={styles.source}
-          src={videoUrl}
-          muted
-          playsInline
-          preload="auto"
-          onLoadedData={handleLoaded}
-          onSeeked={handleSeeked}
-        />
         <canvas ref={canvasRef} className={styles.canvas} width={COVER_WIDTH} height={COVER_HEIGHT} />
         {/* Where the profile grid crops the cover. */}
         <div className={styles.gridGuide} aria-hidden="true" />

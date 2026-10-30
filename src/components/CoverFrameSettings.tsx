@@ -78,8 +78,10 @@ export default function CoverFrameSettings({
           {thumbUrl && <img className={styles.thumb} src={thumbUrl} alt="作ったカバー" />}
           <p className={styles.sub}>
             {madeCover
-              ? '「カバー画像を作る」のカバーが入ります。直すと入れ直します'
-              : '下の「カバー画像を作る」を開くと、そのカバーが入ります'}
+              ? '台本のワードで作ったカバーが入ります。下の「カバー画像を作る」で直すと入れ直します'
+              : off
+                ? '入れる位置を選ぶと、台本のワードでカバーを作って入れます'
+                : 'カバーを作っています...'}
           </p>
         </div>
       ) : (
