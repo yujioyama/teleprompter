@@ -22,6 +22,7 @@ import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
 import { buildVideoRecord } from '../utils/videoRecord'
 import { insertCoverFrames } from '../utils/coverFrames'
+import { makeCover } from '../utils/autoCover'
 
 vi.mock('../utils/videoRecord', async importOriginal => {
   const actual = await importOriginal<typeof import('../utils/videoRecord')>()
@@ -54,6 +55,17 @@ vi.mock('../utils/coverImage', async importOriginal => ({
   canvasToPng: vi.fn(async () => COVER_PNG),
 }))
 const COVERED = new Blob(['covered'], { type: 'video/mp4' })
+// jsdom has no WebCodecs: the cover maker's frames and the auto-made cover are stand-ins.
+const AUTO_COVER = new Blob(['auto cover'], { type: 'image/png' })
+vi.mock('../utils/autoCover', () => ({ makeCover: vi.fn(async () => AUTO_COVER) }))
+vi.mock('../utils/videoStills', () => ({
+  openVideoStills: vi.fn(async () => ({
+    duration: 3,
+    canvas: document.createElement('canvas'),
+    show: vi.fn(async () => true),
+    dispose: vi.fn(),
+  })),
+}))
 vi.mock('../utils/coverFrames', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/coverFrames')>()),
   insertCoverFrames: vi.fn(async () => COVERED),
@@ -135,6 +147,7 @@ beforeEach(async () => {
   vi.mocked(mixModule.mixMusic).mockResolvedValue(new Blob(['mixed'], { type: 'video/mp4' }))
   vi.mocked(finishAudio).mockResolvedValue(LOUDNESS_NORMALIZED)
   vi.mocked(insertCoverFrames).mockResolvedValue(COVERED)
+  vi.mocked(makeCover).mockResolvedValue(AUTO_COVER)
   vi.mocked(canUseWebCodecs).mockResolvedValue(false)
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -1330,12 +1343,10 @@ describe('FinalizePage export step: loudness normalization', () => {
     expect(await screen.findByText('コピーできませんでした')).toBeInTheDocument()
   })
 
-  // Opens the cover maker and lets its frame "load", so its saves are enabled.
+  // Opens the cover maker and waits for its frame, so its saves are enabled.
   async function openCover() {
     fireEvent.click(await screen.findByText('カバー画像を作る'))
-    const coverVideo = document.querySelector('video') as HTMLVideoElement
-    fireEvent(coverVideo, new Event('loadeddata'))
-    fireEvent(coverVideo, new Event('seeked'))
+    await waitFor(() => expect(screen.getByText('カバー画像だけ保存')).toBeEnabled())
   }
 
   it('saves the video and the cover together and copies the caption in one tap', async () => {
@@ -1371,6 +1382,43 @@ describe('FinalizePage export step: loudness normalization', () => {
         { blob: COVER_PNG, filenameBase: 'テスト動画-cover' },
       ]),
     )
+  })
+
+  it('makes the cover itself when the frames want it, without opening カバー画像を作る', async () => {
+    await walkToExport()
+    fireEvent.click(await screen.findByRole('button', { name: '最初' }))
+
+    expect(screen.getByText('保存する')).toBeDisabled()
+    await waitFor(() => expect(makeCover).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(makeCover).mock.calls[0][1]).toMatchObject({ en: expect.any(String) })
+    await waitFor(() => expect(insertCoverFrames).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, AUTO_COVER, 'first', 1, expect.any(Function)))
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(COVERED, 'テスト動画-final'))
+  })
+
+  it('makes no cover while the frames are なし', async () => {
+    await walkToExport()
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    expect(makeCover).not.toHaveBeenCalled()
+  })
+
+  it('says so, and still saves, when the cover cannot be made', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(makeCover).mockRejectedValueOnce(new Error('no WebCodecs'))
+    await walkToExport()
+    fireEvent.click(await screen.findByRole('button', { name: '最初' }))
+
+    expect(await screen.findByText(/カバーを自動で作れなかったため/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(LOUDNESS_NORMALIZED, 'テスト動画-final'))
+  })
+
+  it('keeps the preview playing while the cover is being made', async () => {
+    await walkToExport()
+    await openCover()
+    expect(document.querySelectorAll('video')).toHaveLength(1)
   })
 
   it('puts the cover made here in as frames once it settles, and saves that video with it', async () => {

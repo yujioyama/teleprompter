@@ -38,10 +38,10 @@ describe('CoverFrameSettings', () => {
     expect(onChange).toHaveBeenLastCalledWith({ coverFrameSource: 'picked' })
   })
 
-  it('points to カバー画像を作る until the cover has been made, then shows it', () => {
+  it('says the cover is being made until it has been, then shows it', () => {
     const props = { source: 'made' as const, image: null, onImageChange: vi.fn(), placement: 'first' as const, count: 1, onChange: vi.fn() }
     const { rerender } = render(<CoverFrameSettings {...props} madeCover={null} />)
-    expect(screen.getByText(/を開くと、そのカバーが入ります/)).toBeInTheDocument()
+    expect(screen.getByText('カバーを作っています...')).toBeInTheDocument()
     expect(screen.queryByLabelText('カバー画像')).not.toBeInTheDocument()
 
     rerender(<CoverFrameSettings {...props} madeCover={new Blob(['png'], { type: 'image/png' })} />)

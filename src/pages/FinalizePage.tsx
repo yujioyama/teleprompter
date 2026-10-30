@@ -40,7 +40,8 @@ import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
-import { coverWordsOf } from '../utils/coverImage'
+import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
+import { makeCover } from '../utils/autoCover'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
 import { buildVideoRecord, type BurnInputs, type MixInputs } from '../utils/videoRecord'
@@ -193,12 +194,15 @@ export default function FinalizePage() {
   const [preparedAudio] = useState(() => new PreparedAudio())
   const urlsRef = useRef<string[]>([])
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
-  // The export step's cover maker; while open, the final preview is hidden so only one video decodes.
+  // The export step's cover maker, open below the final preview.
   const [coverOpen, setCoverOpen] = useState(false)
   // The image picked for the export to put in as frames of its own; picked per video.
   const [pickedCover, setPickedCover] = useState<File | null>(null)
   // The cover カバー画像を作る drew last, and whether a change to it is still being drawn.
   const [madeCover, setMadeCover] = useState<{ png: Blob | null; drawing: boolean }>({ png: null, drawing: false })
+  // The made cover's starting point, drawn without opening カバー画像を作る (see makeCover).
+  const [autoCover, setAutoCover] = useState<'idle' | 'making' | 'failed'>('idle')
+  const autoCoverForRef = useRef<Blob | null>(null)
   // Which of the two versions the export step's preview plays.
   const [previewYoutube, setPreviewYoutube] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -584,10 +588,45 @@ export default function FinalizePage() {
     settings.coverFramePlacement,
     settings.coverFrameCount,
   )
-  // The made cover changed but isn't in the frames yet: the saves wait, so
-  // the video never goes out with the cover as it was before.
+  const madeCoverWanted = madeCoverFrames && settings.coverFramePlacement !== 'none'
+  // The made cover is still being made, or changed and isn't in the frames
+  // yet: the saves wait, so the video never goes out without it or with the
+  // cover as it was before.
   const savable =
-    exportBlob !== null && !(madeCoverFrames && settings.coverFramePlacement !== 'none' && madeCover.drawing)
+    exportBlob !== null && !(madeCoverWanted && (madeCover.drawing || (!madeCover.png && autoCover !== 'failed')))
+
+  // A cover made for another 結合 shows another video.
+  useEffect(() => {
+    setMadeCover(c => (c.png || c.drawing ? { png: null, drawing: false } : c))
+    setAutoCover('idle')
+  }, [combinedBlob])
+
+  // The cover frames want the made cover but none has been drawn: make the
+  // one カバー画像を作る would start with, so it goes in without opening it.
+  // Once per 結合; the maker's own cover, when it comes, takes its place.
+  useEffect(() => {
+    if (step !== 'export' || !combinedBlob || !script || !madeCoverWanted) return
+    if (madeCover.png || coverOpen || autoCoverForRef.current === combinedBlob) return
+    autoCoverForRef.current = combinedBlob
+    setAutoCover('making')
+    makeCover(
+      combinedBlob,
+      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja)),
+      settings.coverTextPosition,
+      coverStickerSpot(stickerPlacement, settings.coverStickerSpot),
+    ).then(
+      png => {
+        setMadeCover(c => (c.png ? c : { ...c, png }))
+        setAutoCover('idle')
+      },
+      err => {
+        console.warn('[FinalizePage] could not make the cover:', err)
+        setAutoCover('failed')
+      },
+    )
+    // The words and spots are read once, as the maker reads them on opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, combinedBlob, madeCoverWanted, madeCover.png, coverOpen])
   // YouTube用も書き出す: the same video with the YouTube BGM in place of
   // the usual one, mixed the same way, and no cover frames. Made once the
   // normal version is ready, not alongside it.
@@ -989,7 +1028,12 @@ export default function FinalizePage() {
                   </button>
                 </div>
               )}
-              {!coverOpen && previewUrl && <video className={styles.preview} src={previewUrl} controls playsInline />}
+              {previewUrl && <video className={styles.preview} src={previewUrl} controls playsInline />}
+              {madeCoverWanted && !madeCover.png && autoCover === 'failed' && (
+                <p className={styles.missing}>
+                  カバーを自動で作れなかったため、このままではカバーなしで保存されます。「カバー画像を作る」から作ってください
+                </p>
+              )}
               {coverFrameState === 'failed' && (
                 <p className={styles.missing}>カバー画像を入れられなかったため、カバーなしで保存されます</p>
               )}
@@ -1039,9 +1083,9 @@ export default function FinalizePage() {
                   {coverOpen ? 'カバー画像を閉じる' : 'カバー画像を作る'}
                 </button>
               )}
-              {coverOpen && combinedUrl && (
+              {coverOpen && combinedBlob && (
                 <CoverMaker
-                  videoUrl={combinedUrl}
+                  video={combinedBlob}
                   initialWords={coverWordsOf(
                     script.shots.map(s => s.text),
                     subtitleCues.map(c => c.ja),

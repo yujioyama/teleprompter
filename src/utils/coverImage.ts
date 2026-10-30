@@ -190,6 +190,14 @@ export function coverStickerSpot(placement: StickerPlacement, moved: CoverSticke
 }
 
 /**
+ * Where in the video a cover starts: a little in, since the very first
+ * frame is often mid-blink or mid-movement.
+ */
+export function coverStartTime(duration: number): number {
+  return Math.min(0.5, duration / 2)
+}
+
+/**
  * Where to draw a `sourceWidth`x`sourceHeight` picture so it fills a
  * `width`x`height` frame without distortion: scaled to cover it, centered,
  * with what overflows left outside the frame.
