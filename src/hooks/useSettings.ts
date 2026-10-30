@@ -11,7 +11,7 @@ import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
 import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
-import type { CoverFramePlacement } from '../utils/coverFrames'
+import type { CoverFramePlacement, CoverFrameSource } from '../utils/coverFrames'
 
 export interface AppSettings {
   trimEnabled: boolean
@@ -64,6 +64,8 @@ export interface AppSettings {
   coverFramePlacement: CoverFramePlacement
   /** How many frames of it, 1-5. */
   coverFrameCount: number
+  /** Whether those frames show the cover made in the app or a picked image. */
+  coverFrameSource: CoverFrameSource
   /** Also export a YouTube version: the YouTube BGM in place of the usual one, no cover frames. */
   youtubeExportEnabled: boolean
   /** The BGM the YouTube version has in place of the video's own. */
@@ -103,6 +105,7 @@ const DEFAULTS: AppSettings = {
   coverStickerSpot: null,
   coverFramePlacement: 'none',
   coverFrameCount: 1,
+  coverFrameSource: 'made',
   youtubeExportEnabled: false,
   youtubeBgmId: 'youtube-touching-moment',
   inboxKey: '',

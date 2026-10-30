@@ -195,8 +195,10 @@ export default function FinalizePage() {
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
   // The export step's cover maker; while open, the final preview is hidden so only one video decodes.
   const [coverOpen, setCoverOpen] = useState(false)
-  // The image the export puts in as frames of its own; picked per video.
-  const [coverFrameImage, setCoverFrameImage] = useState<File | null>(null)
+  // The image picked for the export to put in as frames of its own; picked per video.
+  const [pickedCover, setPickedCover] = useState<File | null>(null)
+  // The cover カバー画像を作る drew last, and whether a change to it is still being drawn.
+  const [madeCover, setMadeCover] = useState<{ png: Blob | null; drawing: boolean }>({ png: null, drawing: false })
   // Which of the two versions the export step's preview plays.
   const [previewYoutube, setPreviewYoutube] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -575,12 +577,17 @@ export default function FinalizePage() {
   )
   // Last, the cover image as frames of their own, on the finished video:
   // the voice, the BGM and the subtitles move with it as one.
-  const { blob: exportBlob, url: finalUrl, state: coverFrameState } = useCoverFrames(
+  const madeCoverFrames = settings.coverFrameSource === 'made'
+  const { blob: exportBlob, url: finalUrl, state: coverFrameState, progress: coverFrameProgress } = useCoverFrames(
     finishedBlob,
-    coverFrameImage,
+    madeCoverFrames ? madeCover.png : pickedCover,
     settings.coverFramePlacement,
     settings.coverFrameCount,
   )
+  // The made cover changed but isn't in the frames yet: the saves wait, so
+  // the video never goes out with the cover as it was before.
+  const savable =
+    exportBlob !== null && !(madeCoverFrames && settings.coverFramePlacement !== 'none' && madeCover.drawing)
   // YouTube用も書き出す: the same video with the YouTube BGM in place of
   // the usual one, mixed the same way, and no cover frames. Made once the
   // normal version is ready, not alongside it.
@@ -598,7 +605,7 @@ export default function FinalizePage() {
     youtubeSwap,
   )
   // Both versions go in one save; one that couldn't be made is left out.
-  const saveReady = exportBlob !== null && (!youtubeEnabled || youtubeBlob !== null || youtubeState === 'failed')
+  const saveReady = savable && (!youtubeEnabled || youtubeBlob !== null || youtubeState === 'failed')
   const previewUrl = youtubeEnabled && previewYoutube ? youtubeUrl : finalUrl
 
   // A 一発撮り take skips the 結合 result: 次へ cuts it (unless already
@@ -643,7 +650,9 @@ export default function FinalizePage() {
   }
 
   async function handleSaveFinal() {
-    if (!exportBlob || !script) return
+    if (!exportBlob || !savable || !script) return
+    // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
+    if (script.caption) void copyCaption(script.caption)
     recordSavedVideo()
     const videos = videosToSave(exportBlob, script.title)
     if (videos.length === 1) await shareOrDownload(exportBlob, `${script.title}-final`)
@@ -660,7 +669,7 @@ export default function FinalizePage() {
 
   // The video, its cover and its caption in one tap: what posting needs.
   async function handleSaveAll(cover: Promise<Blob>) {
-    if (!exportBlob || !script) return
+    if (!exportBlob || !savable || !script) return
     // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
     if (script.caption) void copyCaption(script.caption)
     recordSavedVideo()
@@ -950,7 +959,16 @@ export default function FinalizePage() {
           {step === 'export' && finishedBlob && (
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
-              {coverFrameState === 'inserting' && <p className={styles.shotEntryText}>カバー画像を入れています...</p>}
+              {coverFrameState === 'inserting' && (
+                <p className={styles.shotEntryText}>
+                  {coverFrameProgress
+                    ? `カバー画像を入れています（動画を作り直し中）... ${Math.round(coverFrameProgress.ratio * 100)}%`
+                    : 'カバー画像を入れています...'}
+                </p>
+              )}
+              {coverFrameState === 'inserting' && coverFrameProgress && (
+                <p className={styles.missing}>そのままつなげなかった理由: {coverFrameProgress.why}</p>
+              )}
               {youtubeEnabled && (
                 <div className={styles.versionSwitch} role="group" aria-label="プレビューする版">
                   <button
@@ -989,8 +1007,10 @@ export default function FinalizePage() {
                 </div>
               )}
               <CoverFrameSettings
-                image={coverFrameImage}
-                onImageChange={setCoverFrameImage}
+                source={settings.coverFrameSource}
+                madeCover={madeCover.png}
+                image={pickedCover}
+                onImageChange={setPickedCover}
                 placement={settings.coverFramePlacement}
                 count={settings.coverFrameCount}
                 onChange={updateSettings}
@@ -1032,6 +1052,8 @@ export default function FinalizePage() {
                   stickerPlacement={stickerPlacement}
                   initialStickerSpot={settings.coverStickerSpot}
                   onStickerSpotChange={coverStickerSpot => updateSettings({ coverStickerSpot })}
+                  onCoverDrawing={() => setMadeCover(c => (c.drawing ? c : { ...c, drawing: true }))}
+                  onCoverDrawn={png => setMadeCover(c => ({ png: png ?? c.png, drawing: false }))}
                   saveAll={{
                     label: script.caption ? '動画・カバー・キャプションを一括保存' : '動画とカバーを一括保存',
                     save: handleSaveAll,
