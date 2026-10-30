@@ -6,6 +6,7 @@ import {
   clampStickerSpot,
   coverLines,
   coverStickerSpot,
+  coverFitRect,
   coverWordsOf,
   fitFontPx,
   type MeasureWidth,
@@ -149,5 +150,23 @@ describe('coverStickerSpot', () => {
   it('keeps a dragged sticker on the cover', () => {
     expect(clampStickerSpot({ x: -0.2, y: 130 })).toEqual({ x: 0, y: 100 })
     expect(coverStickerSpot('right', { x: 1.5, y: -10 })).toMatchObject({ x: 1, y: 0 })
+  })
+})
+
+describe('coverFitRect', () => {
+  it('fills a tall frame from a wide picture, cropping its sides', () => {
+    const rect = coverFitRect(1920, 1080, 1080, 1920)
+    expect(rect.height).toBe(1920)
+    expect(rect.y).toBe(0)
+    expect(rect.width).toBeCloseTo(3413.33, 2)
+    expect(rect.x).toBeCloseTo((1080 - rect.width) / 2, 6)
+  })
+
+  it('fills the frame from a taller picture, cropping top and bottom', () => {
+    expect(coverFitRect(1000, 2000, 1080, 1920)).toEqual({ x: 0, y: -120, width: 1080, height: 2160 })
+  })
+
+  it('scales a picture of the same shape to fit exactly', () => {
+    expect(coverFitRect(540, 960, 1080, 1920)).toEqual({ x: 0, y: 0, width: 1080, height: 1920 })
   })
 })

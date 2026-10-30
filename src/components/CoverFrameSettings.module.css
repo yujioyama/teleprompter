@@ -1,0 +1,95 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.imageRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.thumb {
+  width: 54px;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+}
+
+.pickBtn,
+.clearBtn {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.fileInput {
+  display: none;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fieldLabel {
+  font-size: 0.9rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.presets {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  max-width: 240px;
+}
+
+.presetBtn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.presetBtnActive {
+  outline: 2px solid var(--accent);
+}
+
+.select {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.disabled {
+  opacity: 0.5;
+}
