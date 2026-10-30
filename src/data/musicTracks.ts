@@ -1,4 +1,4 @@
-export type MusicGenre = 'warmpiano' | 'musicbox' | 'lofi' | 'pop' | 'cinematic' | 'corporate'
+export type MusicGenre = 'warmpiano' | 'musicbox' | 'lofi' | 'pop' | 'cinematic' | 'corporate' | 'youtube'
 
 export interface MusicTrack {
   id: string
@@ -16,10 +16,11 @@ export const GENRE_LABELS: Record<MusicGenre, string> = {
   pop: 'ポップ / アップビート',
   cinematic: '感動 / シネマチック',
   corporate: 'コーポレート / モチベーション',
+  youtube: 'YouTube オーディオライブラリ',
 }
 
 /** Order genres are offered in. */
-export const GENRE_ORDER: MusicGenre[] = ['warmpiano', 'musicbox', 'lofi', 'pop', 'cinematic', 'corporate']
+export const GENRE_ORDER: MusicGenre[] = ['warmpiano', 'musicbox', 'lofi', 'pop', 'cinematic', 'corporate', 'youtube']
 
 // Sourced from Pixabay Music (pixabay.com/music), used under the Pixabay
 // Content License (free to use, no attribution required, modification
@@ -210,5 +211,14 @@ export const MUSIC_TRACKS: MusicTrack[] = [
     genre: 'corporate',
     credit: 'echoes_of_lumen (Pixabay)',
     file: 'music/corporate-05-vlog-theme.mp3',
+  },
+  // From the YouTube Audio Library (added 2026-10-30), for the YouTube
+  // version: the Pixabay tracks above get Content ID claims on Shorts.
+  {
+    id: 'youtube-touching-moment',
+    title: 'Touching Moment',
+    genre: 'youtube',
+    credit: 'Wayne Jones (YouTube Audio Library)',
+    file: 'music/youtube-01-touching-moment.mp3',
   },
 ]

@@ -18,15 +18,17 @@ import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
-import { shareAllOrDownload, shareOrDownload } from '../utils/shareOrDownload'
-import { PreparedAudio, mixForExport } from '../utils/preparedAudio'
+import { shareAllOrDownload, shareOrDownload, type ShareItem } from '../utils/shareOrDownload'
+import { PreparedAudio, mixForExport, type FinalAudioKey } from '../utils/preparedAudio'
 import { bgmEnding, punchlineStart } from '../utils/bgmStop'
 import { transcribeSpeech } from '../utils/transcribeSpeech'
 import { fetchTrack } from '../utils/fetchTrack'
-import { defaultBgmTrack, useSettings } from '../hooks/useSettings'
+import { defaultBgmTrack, useSettings, youtubeBgmTrack } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { useExport } from '../hooks/useExport'
 import { useCoverFrames } from '../hooks/useCoverFrames'
+import { useYoutubeExport } from '../hooks/useYoutubeExport'
+import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -37,6 +39,7 @@ import { ShotCueInput, lineStartsInTake, takeLinesOf } from '../utils/subtitleCu
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
+import YoutubeExportSettings from '../components/YoutubeExportSettings'
 import { coverWordsOf } from '../utils/coverImage'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
@@ -174,6 +177,9 @@ export default function FinalizePage() {
   const [mixInputs, setMixInputs] = useState<MixInputs | null>(null)
   const burnInputsRef = useRef<BurnInputs | null>(null)
   const mixInputsRef = useRef<MixInputs | null>(null)
+  // What `mixed`'s BGM was mixed with, for the YouTube version to mix its own the same way.
+  const [mixKey, setMixKey] = useState<FinalAudioKey | null>(null)
+  const mixKeyRef = useRef<FinalAudioKey | null>(null)
   // Lifted up from SubtitleWorkflow so its cues/position/stage/paste-text
   // survive the component unmounting when the wizard leaves the subtitle
   // step and remounting when it comes back (e.g. via goToStep) — otherwise
@@ -191,6 +197,8 @@ export default function FinalizePage() {
   const [coverOpen, setCoverOpen] = useState(false)
   // The image the export puts in as frames of its own; picked per video.
   const [coverFrameImage, setCoverFrameImage] = useState<File | null>(null)
+  // Which of the two versions the export step's preview plays.
+  const [previewYoutube, setPreviewYoutube] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
@@ -573,6 +581,25 @@ export default function FinalizePage() {
     settings.coverFramePlacement,
     settings.coverFrameCount,
   )
+  // YouTube用も書き出す: the same video with the YouTube BGM in place of
+  // the usual one, mixed the same way, and no cover frames. Made once the
+  // normal version is ready, not alongside it.
+  const youtubeEnabled = settings.youtubeExportEnabled
+  const youtubeTrack = youtubeBgmTrack(settings)
+  const youtubeSwap = useMemo<YoutubeBgmSwap | null>(
+    () =>
+      mixed && mixKey && combinedBlob
+        ? { source: combinedBlob, video: burnedBlob ?? combinedBlob, key: mixKey, track: youtubeTrack }
+        : null,
+    [mixed, mixKey, combinedBlob, burnedBlob, youtubeTrack],
+  )
+  const { blob: youtubeBlob, url: youtubeUrl, state: youtubeState } = useYoutubeExport(
+    youtubeEnabled && exportBlob ? finishedBlob : null,
+    youtubeSwap,
+  )
+  // Both versions go in one save; one that couldn't be made is left out.
+  const saveReady = exportBlob !== null && (!youtubeEnabled || youtubeBlob !== null || youtubeState === 'failed')
+  const previewUrl = youtubeEnabled && previewYoutube ? youtubeUrl : finalUrl
 
   // A 一発撮り take skips the 結合 result: 次へ cuts it (unless already
   // cut so) and goes straight on to the subtitles.
@@ -618,7 +645,17 @@ export default function FinalizePage() {
   async function handleSaveFinal() {
     if (!exportBlob || !script) return
     recordSavedVideo()
-    await shareOrDownload(exportBlob, `${script.title}-final`)
+    const videos = videosToSave(exportBlob, script.title)
+    if (videos.length === 1) await shareOrDownload(exportBlob, `${script.title}-final`)
+    else await shareAllOrDownload(videos)
+  }
+
+  // The normal version, and the YouTube one when it's wanted and made. The
+  // -youtube in its name is what tells the two apart once saved.
+  function videosToSave(normal: Blob, title: string): ShareItem[] {
+    const videos = [{ blob: normal, filenameBase: `${title}-final` }]
+    if (youtubeEnabled && youtubeBlob) videos.push({ blob: youtubeBlob, filenameBase: `${title}-youtube` })
+    return videos
   }
 
   // The video, its cover and its caption in one tap: what posting needs.
@@ -628,7 +665,7 @@ export default function FinalizePage() {
     if (script.caption) void copyCaption(script.caption)
     recordSavedVideo()
     await shareAllOrDownload([
-      { blob: exportBlob, filenameBase: `${script.title}-final` },
+      ...videosToSave(exportBlob, script.title),
       { blob: await cover, filenameBase: `${script.title}-cover` },
     ])
   }
@@ -875,13 +912,15 @@ export default function FinalizePage() {
                 autoMix={bgmAutoPending}
                 mix={(track, trackBlob, volume) => {
                   mixInputsRef.current = { trackId: track.id, title: track.title, volume }
-                  return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, {
+                  const key: FinalAudioKey = {
                     trackId: track.id,
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
                     ending: bgmEnding(track.genre, bgmStopAt),
-                  })
+                  }
+                  mixKeyRef.current = key
+                  return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, key)
                 }}
                 onLeaveAuto={() => {
                   // The auto mix may be waiting on a prepared-audio job that
@@ -892,6 +931,7 @@ export default function FinalizePage() {
                 onMixed={mix => {
                   setMixed(mix)
                   setMixInputs(mix ? mixInputsRef.current : null)
+                  setMixKey(mix ? mixKeyRef.current : null)
                 }}
                 onNext={() => {
                   setBgmAutoPending(false)
@@ -911,7 +951,27 @@ export default function FinalizePage() {
             <div className={styles.stepBody}>
               <p className={styles.shotEntryText}>完成した動画</p>
               {coverFrameState === 'inserting' && <p className={styles.shotEntryText}>カバー画像を入れています...</p>}
-              {!coverOpen && finalUrl && <video className={styles.preview} src={finalUrl} controls playsInline />}
+              {youtubeEnabled && (
+                <div className={styles.versionSwitch} role="group" aria-label="プレビューする版">
+                  <button
+                    type="button"
+                    className={`${styles.versionBtn} ${!previewYoutube ? styles.versionBtnActive : ''}`}
+                    aria-pressed={!previewYoutube}
+                    onClick={() => setPreviewYoutube(false)}
+                  >
+                    SNS用
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.versionBtn} ${previewYoutube ? styles.versionBtnActive : ''}`}
+                    aria-pressed={previewYoutube}
+                    onClick={() => setPreviewYoutube(true)}
+                  >
+                    YouTube用
+                  </button>
+                </div>
+              )}
+              {!coverOpen && previewUrl && <video className={styles.preview} src={previewUrl} controls playsInline />}
               {coverFrameState === 'failed' && (
                 <p className={styles.missing}>カバー画像を入れられなかったため、カバーなしで保存されます</p>
               )}
@@ -935,8 +995,15 @@ export default function FinalizePage() {
                 count={settings.coverFrameCount}
                 onChange={updateSettings}
               />
-              <button className={styles.finalizeBtn} onClick={handleSaveFinal} disabled={!exportBlob}>
-                保存する
+              <YoutubeExportSettings
+                enabled={youtubeEnabled}
+                trackTitle={youtubeTrack.title}
+                hasBgm={mixed !== null}
+                state={youtubeState}
+                onChange={updateSettings}
+              />
+              <button className={styles.finalizeBtn} onClick={handleSaveFinal} disabled={!saveReady}>
+                {youtubeEnabled && youtubeBlob ? '2本とも保存する' : '保存する'}
               </button>
               {script.caption && (
                 <button className={styles.copyCaptionBtn} onClick={handleCopyCaption}>
@@ -968,7 +1035,7 @@ export default function FinalizePage() {
                   saveAll={{
                     label: script.caption ? '動画・カバー・キャプションを一括保存' : '動画とカバーを一括保存',
                     save: handleSaveAll,
-                    disabled: !exportBlob,
+                    disabled: !saveReady,
                   }}
                 />
               )}

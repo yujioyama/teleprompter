@@ -64,6 +64,10 @@ export interface AppSettings {
   coverFramePlacement: CoverFramePlacement
   /** How many frames of it, 1-5. */
   coverFrameCount: number
+  /** Also export a YouTube version: the YouTube BGM in place of the usual one, no cover frames. */
+  youtubeExportEnabled: boolean
+  /** The BGM the YouTube version has in place of the video's own. */
+  youtubeBgmId: string
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -99,6 +103,8 @@ const DEFAULTS: AppSettings = {
   coverStickerSpot: null,
   coverFramePlacement: 'none',
   coverFrameCount: 1,
+  youtubeExportEnabled: false,
+  youtubeBgmId: 'youtube-touching-moment',
   inboxKey: '',
   bgmDefaultRev: 1,
 }
@@ -159,6 +165,14 @@ export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => vo
   }
 
   return [settings, updateSettings]
+}
+
+/** The YouTube version's BGM; the default one when the chosen track has since been removed. */
+export function youtubeBgmTrack(settings: Pick<AppSettings, 'youtubeBgmId'>): MusicTrack {
+  return (
+    MUSIC_TRACKS.find(t => t.id === settings.youtubeBgmId) ??
+    MUSIC_TRACKS.find(t => t.id === DEFAULTS.youtubeBgmId)!
+  )
 }
 
 /** The usual BGM's track, or null when there is none or it has since been removed. */

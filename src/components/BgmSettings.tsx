@@ -1,19 +1,37 @@
 import { GENRE_LABELS, GENRE_ORDER, MUSIC_TRACKS } from '../data/musicTracks'
 import { useTrackPreview } from '../hooks/useTrackPreview'
-import type { AppSettings } from '../hooks/useSettings'
+import { youtubeBgmTrack, type AppSettings } from '../hooks/useSettings'
 import styles from './BgmSettings.module.css'
 
 interface BgmSettingsProps {
   trackId: string | null
   volume: number
   stopBeforePunchline: boolean
-  onChange: (patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'bgmVolume' | 'bgmStopBeforePunchline'>>) => void
+  /** The YouTube version's BGM (see youtubeBgmTrack). */
+  youtubeTrackId: string
+  onChange: (
+    patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'bgmVolume' | 'bgmStopBeforePunchline' | 'youtubeBgmId'>>,
+  ) => void
 }
 
-export default function BgmSettings({ trackId, volume, stopBeforePunchline, onChange }: BgmSettingsProps) {
+function TrackOptions() {
+  return GENRE_ORDER.map(genre => (
+    <optgroup key={genre} label={GENRE_LABELS[genre]}>
+      {MUSIC_TRACKS.filter(t => t.genre === genre).map(t => (
+        <option key={t.id} value={t.id}>
+          {t.title}
+        </option>
+      ))}
+    </optgroup>
+  ))
+}
+
+export default function BgmSettings({ trackId, volume, stopBeforePunchline, youtubeTrackId, onChange }: BgmSettingsProps) {
   const track = MUSIC_TRACKS.find(t => t.id === trackId) ?? null
+  const youtubeTrack = youtubeBgmTrack({ youtubeBgmId: youtubeTrackId })
   const { previewingId, toggle, stop } = useTrackPreview()
   const previewing = previewingId !== null && previewingId === track?.id
+  const previewingYoutube = previewingId === youtubeTrack.id
 
   return (
     <div className={styles.wrapper}>
@@ -31,15 +49,7 @@ export default function BgmSettings({ trackId, volume, stopBeforePunchline, onCh
             }}
           >
             <option value="">なし</option>
-            {GENRE_ORDER.map(genre => (
-              <optgroup key={genre} label={GENRE_LABELS[genre]}>
-                {MUSIC_TRACKS.filter(t => t.genre === genre).map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
+            <TrackOptions />
           </select>
           <button type="button" className={styles.previewBtn} onClick={() => track && toggle(track)} disabled={!track}>
             {previewing ? '■ 停止' : '▶ 試聴'}
@@ -77,6 +87,34 @@ export default function BgmSettings({ trackId, volume, stopBeforePunchline, onCh
           />
         </label>
         <div className={styles.sub}>最後のショットの手前でBGMがふっと消え、最後の一言は無音になります</div>
+      </div>
+
+      <div className={styles.field}>
+        <div className={styles.label}>YouTube用のBGM</div>
+        <div className={styles.sub}>
+          仕上げで「YouTube用も書き出す」をオンにしたとき、BGMをこの曲に差し替えます（音量と終わり方はいつもと同じ）
+        </div>
+        <div className={styles.trackRow}>
+          <select
+            aria-label="YouTube用のBGM"
+            className={styles.select}
+            value={youtubeTrack.id}
+            onChange={e => {
+              stop()
+              onChange({ youtubeBgmId: e.target.value })
+            }}
+          >
+            <TrackOptions />
+          </select>
+          <button
+            type="button"
+            aria-label={previewingYoutube ? 'YouTube用のBGMの試聴を止める' : 'YouTube用のBGMを試聴'}
+            className={styles.previewBtn}
+            onClick={() => toggle(youtubeTrack)}
+          >
+            {previewingYoutube ? '■ 停止' : '▶ 試聴'}
+          </button>
+        </div>
       </div>
     </div>
   )
