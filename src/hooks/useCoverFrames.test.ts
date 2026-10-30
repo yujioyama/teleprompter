@@ -26,7 +26,7 @@ function render(video: Blob | null, image: Blob | null, placement: CoverFramePla
 describe('useCoverFrames', () => {
   it('has nothing without a video', () => {
     const { result } = render(null, IMAGE, 'first')
-    expect(result.current).toEqual({ blob: null, url: null, state: 'idle' })
+    expect(result.current).toEqual({ blob: null, url: null, state: 'idle', progress: null })
   })
 
   it('hands the very same video on for なし, even with an image picked', () => {
@@ -45,11 +45,27 @@ describe('useCoverFrames', () => {
     let done!: (blob: Blob) => void
     vi.mocked(insertCoverFrames).mockReturnValueOnce(new Promise(r => (done = r)))
     const { result } = render(VIDEO, IMAGE, 'last', 3)
-    expect(result.current).toEqual({ blob: null, url: null, state: 'inserting' })
-    await waitFor(() => expect(insertCoverFrames).toHaveBeenCalledWith(VIDEO, IMAGE, 'last', 3))
+    expect(result.current).toEqual({ blob: null, url: null, state: 'inserting', progress: null })
+    await waitFor(() => expect(insertCoverFrames).toHaveBeenCalledWith(VIDEO, IMAGE, 'last', 3, expect.any(Function)))
 
     await act(async () => done(COVERED))
-    expect(result.current).toEqual({ blob: COVERED, url: 'blob:1', state: 'idle' })
+    expect(result.current).toEqual({ blob: COVERED, url: 'blob:1', state: 'idle', progress: null })
+  })
+
+  it('passes on how far a slow insert is, and why it is slow', async () => {
+    let done!: (blob: Blob) => void
+    vi.mocked(insertCoverFrames).mockImplementationOnce(async (_v, _i, _p, _c, onProgress) => {
+      onProgress?.({ ratio: 0.4, why: 'clip 1 was encoded with different parameters than clip 0' })
+      return new Promise(r => (done = r))
+    })
+    const { result } = render(VIDEO, IMAGE, 'first')
+    await waitFor(() =>
+      expect(result.current.progress).toEqual({ ratio: 0.4, why: 'clip 1 was encoded with different parameters than clip 0' }),
+    )
+    expect(result.current.blob).toBeNull()
+
+    await act(async () => done(COVERED))
+    expect(result.current).toMatchObject({ blob: COVERED, state: 'idle', progress: null })
   })
 
   it('still lets the video be saved when the frames cannot go in', async () => {

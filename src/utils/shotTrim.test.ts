@@ -58,6 +58,7 @@ describe('resolveShotTrimSettings', () => {
     coverStickerSpot: null,
     coverFramePlacement: 'none',
     coverFrameCount: 1,
+    coverFrameSource: 'made',
     inboxKey: '',
     bgmDefaultRev: 1,
   }
