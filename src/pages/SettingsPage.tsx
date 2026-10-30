@@ -62,6 +62,7 @@ export default function SettingsPage() {
           trackId={settings.defaultBgmId}
           volume={settings.bgmVolume}
           stopBeforePunchline={settings.bgmStopBeforePunchline}
+          youtubeTrackId={settings.youtubeBgmId}
           onChange={updateSettings}
         />
       </div>

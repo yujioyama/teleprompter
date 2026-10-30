@@ -32,6 +32,8 @@ const DEFAULTS = {
   coverFramePlacement: 'none',
   coverFrameCount: 1,
   coverFrameSource: 'made',
+  youtubeExportEnabled: false,
+  youtubeBgmId: 'youtube-touching-moment',
   inboxKey: '',
   bgmDefaultRev: 1,
 }

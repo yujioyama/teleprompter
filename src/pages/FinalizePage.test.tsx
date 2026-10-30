@@ -1552,6 +1552,163 @@ describe('FinalizePage with a usual BGM', () => {
   })
 })
 
+describe('FinalizePage export step: YouTube version', () => {
+  // A new one per test: the YouTube mix is kept per burned video.
+  let BURNED: Blob
+  const USUAL_MIX = new Blob(['mixed-usual'], { type: 'video/mp4' })
+  const YOUTUBE_MIX = new Blob(['mixed-youtube'], { type: 'video/mp4' })
+  const YOUTUBE_TRACK = new Blob(['youtube-track'], { type: 'audio/mpeg' })
+
+  function useSettingsOf(settings: object) {
+    localStorage.setItem(
+      'teleprompter_settings',
+      JSON.stringify({ bgmStopBeforePunchline: true, defaultBgmId: 'lofi-tokyo', bgmVolume: 0.45, ...settings }),
+    )
+  }
+
+  // Trim/combine → subtitle (translated) → 次へ → the usual BGM → export.
+  async function walkToExport() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByLabelText('YouTube用も書き出す')
+  }
+
+  // What was handed to the share sheet; toHaveBeenCalledWith would take any Blob for any other.
+  async function savedTogether(): Promise<[Blob, string][]> {
+    await waitFor(() => expect(shareAllOrDownload).toHaveBeenCalledTimes(1))
+    return vi.mocked(shareAllOrDownload).mock.calls[0][0].map(({ blob, filenameBase }) => [blob, filenameBase])
+  }
+
+  function expectSaved(saved: [Blob, string][], expected: [Blob, string][]) {
+    expect(saved.map(([, name]) => name)).toEqual(expected.map(([, name]) => name))
+    saved.forEach(([blob], i) => expect(blob).toBe(expected[i][0]))
+  }
+
+  function pickCover() {
+    fireEvent.click(screen.getByRole('button', { name: '選んだ画像' }))
+    fireEvent.change(screen.getByLabelText('カバー画像'), {
+      target: { files: [new File(['png'], 'cover.png', { type: 'image/png' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '最初' }))
+  }
+
+  beforeEach(() => {
+    BURNED = new Blob(['burned'], { type: 'video/mp4' })
+    vi.mocked(burnModule.burnSubtitles).mockResolvedValue(BURNED)
+    vi.mocked(mixModule.mixMusic).mockImplementation(async (_video, track) =>
+      track === YOUTUBE_TRACK ? YOUTUBE_MIX : USUAL_MIX,
+    )
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
+    global.fetch = vi.fn(async (url: string) => ({
+      ok: true,
+      blob: async () =>
+        url.includes('youtube-01-touching-moment') ? YOUTUBE_TRACK : new Blob(['track'], { type: 'audio/mpeg' }),
+    })) as unknown as typeof fetch
+  })
+
+  it('saves just the one video, cover frames and all, while switched off', async () => {
+    useSettingsOf({})
+    await walkToExport()
+    pickCover()
+
+    expect(screen.getByLabelText('YouTube用も書き出す')).not.toBeChecked()
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(COVERED, 'テスト動画-final'))
+    expect(vi.mocked(shareOrDownload).mock.calls[0][0]).toBe(COVERED)
+    expect(shareAllOrDownload).not.toHaveBeenCalled()
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves a second video with the YouTube BGM mixed the same way and no cover frames', async () => {
+    useSettingsOf({})
+    await walkToExport()
+    pickCover()
+    fireEvent.click(screen.getByLabelText('YouTube用も書き出す'))
+
+    fireEvent.click(await screen.findByText('2本とも保存する'))
+    expectSaved(await savedTogether(), [
+      [COVERED, 'テスト動画-final'],
+      [YOUTUBE_MIX, 'テスト動画-youtube'],
+    ])
+    const [usual, youtube] = vi.mocked(mixModule.mixMusic).mock.calls
+    expect(youtube[0]).toBe(BURNED)
+    expect(youtube[1]).toBe(YOUTUBE_TRACK)
+    // Same volume, voice and ending as the usual BGM.
+    expect(youtube.slice(2)).toEqual(usual.slice(2))
+    expect(insertCoverFrames).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(insertCoverFrames).mock.calls[0][0]).toBe(USUAL_MIX)
+    expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({ youtubeExportEnabled: true })
+  })
+
+  it('mixes the BGM chosen in the settings', async () => {
+    useSettingsOf({ youtubeExportEnabled: true, youtubeBgmId: 'lofi-sunny-cafe' })
+    await walkToExport()
+    expect(await screen.findByText('2本とも保存する')).toBeInTheDocument()
+    expect(vi.mocked(global.fetch).mock.calls.map(([url]) => url)).toContain('/music/lofi-01-sunny-cafe.mp3')
+    expect(screen.getByText(/BGMを「Lofi Sunny Cafe」に差し替え/)).toBeInTheDocument()
+  })
+
+  it('previews either version in the one player', async () => {
+    const urls = new Map<Blob, string>()
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      if (!urls.has(blob)) urls.set(blob, `blob:${urls.size + 1}`)
+      return urls.get(blob)!
+    }) as typeof URL.createObjectURL
+    useSettingsOf({ youtubeExportEnabled: true })
+    await walkToExport()
+    await screen.findByText('2本とも保存する')
+
+    fireEvent.click(screen.getByRole('button', { name: 'YouTube用' }))
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+    expect(document.querySelector('video')!.getAttribute('src')).toBe(urls.get(YOUTUBE_MIX))
+    fireEvent.click(screen.getByRole('button', { name: 'SNS用' }))
+    expect(document.querySelector('video')!.getAttribute('src')).toBe(urls.get(USUAL_MIX))
+  })
+
+  it('saves the video without its cover frames as the YouTube version when it has no BGM', async () => {
+    useSettingsOf({ youtubeExportEnabled: true })
+    await walkToExport()
+    pickCover()
+    fireEvent.click(screen.getByText('BGMを外す'))
+
+    expect(await screen.findByText(/BGMなしの動画なので/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByText('2本とも保存する'))
+    expectSaved(await savedTogether(), [
+      [COVERED, 'テスト動画-final'],
+      [BURNED, 'テスト動画-youtube'],
+    ])
+  })
+
+  it('saves the normal version alone, with a note, when the YouTube one cannot be made', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(mixModule.mixMusic).mockImplementation(async (_video, track) => {
+      if (track === YOUTUBE_TRACK) throw new Error('mix failed')
+      return USUAL_MIX
+    })
+    useSettingsOf({ youtubeExportEnabled: true })
+    await walkToExport()
+
+    expect(await screen.findByText(/YouTube用を作れなかったため/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(shareOrDownload).mock.calls[0][0]).toBe(USUAL_MIX)
+    expect(shareAllOrDownload).not.toHaveBeenCalled()
+  })
+})
+
 describe('FinalizePage subtitle step: hook on the first shot', () => {
   it('burns the first shot in hook style, and remembers switching it off', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
