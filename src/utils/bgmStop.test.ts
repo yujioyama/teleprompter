@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bgmEnding,
   bgmEnvelope,
+  delayEnding,
   DUCK_FADE_SECONDS,
   DUCK_LEVEL,
   punchlineStart,
@@ -27,6 +28,18 @@ describe('bgmEnding', () => {
     expect(bgmEnding('musicbox', null)).toEqual({ stopAt: null, soft: true })
     expect(bgmEnding('pop', 65)).toEqual({ stopAt: 65, soft: false })
     expect(bgmEnding('lofi', 65).soft).toBe(false)
+  })
+})
+
+describe('delayEnding', () => {
+  it('moves the punchline later by the cover frames ahead of it', () => {
+    expect(delayEnding({ stopAt: 10, soft: true }, 0.1)).toEqual({ stopAt: 10.1, soft: true })
+  })
+  it('leaves an ending with no stop, or no delay, as it was', () => {
+    const plays = { stopAt: null, soft: false }
+    expect(delayEnding(plays, 0.1)).toBe(plays)
+    const stops = { stopAt: 10, soft: false }
+    expect(delayEnding(stops, 0)).toBe(stops)
   })
 })
 

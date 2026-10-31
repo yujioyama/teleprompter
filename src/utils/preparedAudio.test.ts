@@ -14,7 +14,7 @@ const TRACK = new Blob(['track'], { type: 'audio/mpeg' })
 const PREPARED = new Blob(['prepared'], { type: 'audio/mp4' })
 const JOINED = new Blob(['joined'], { type: 'video/mp4' })
 const MIXED = new Blob(['mixed'], { type: 'video/mp4' })
-const KEY: FinalAudioKey = { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: null, soft: false } }
+const KEY: FinalAudioKey = { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: null, soft: false }, lead: 0 }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -53,7 +53,7 @@ describe('PreparedAudio', () => {
     prepared.prepare(COMBINED, { ...KEY }, track)
     await expect(prepared.get(COMBINED, KEY)).resolves.toBe(PREPARED)
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
-    expect(prepareFinalAudio).toHaveBeenCalledWith(COMBINED, TRACK, 0.3, true, 'natural', KEY.ending)
+    expect(prepareFinalAudio).toHaveBeenCalledWith(COMBINED, TRACK, 0.3, true, 'natural', KEY.ending, 0)
   })
 
   it('has nothing for another source or key', () => {
@@ -64,6 +64,15 @@ describe('PreparedAudio', () => {
     expect(prepared.get(COMBINED, { ...KEY, trackId: 'summer-pop' })).toBeNull()
     expect(prepared.get(COMBINED, { ...KEY, normalize: false })).toBeNull()
     expect(prepared.get(COMBINED, { ...KEY, voice: 'radio' })).toBeNull()
+    expect(prepared.get(COMBINED, { ...KEY, lead: 1 / 30 })).toBeNull()
+  })
+
+  it('prepares the audio after the silence under the cover frames the burn puts in', () => {
+    const prepared = new PreparedAudio()
+    prepared.prepare(COMBINED, { ...KEY, lead: 2 / 30 }, async () => TRACK)
+    return prepared.settled().then(() =>
+      expect(prepareFinalAudio).toHaveBeenCalledWith(COMBINED, TRACK, 0.3, true, 'natural', KEY.ending, 2 / 30),
+    )
   })
 
   it('forgets its result on clear', () => {
@@ -101,6 +110,13 @@ describe('mixForExport', () => {
     expect(mixMusic).toHaveBeenCalledWith(BURNED, TRACK, 0.6, 'natural', KEY.ending)
     expect(joinVideoAndAudio).not.toHaveBeenCalled()
     expect(console.info).toHaveBeenCalledWith(expect.stringMatching(/mixing instead/))
+  })
+
+  it('stops the BGM where the punchline is once the cover frames are in, when mixing into the video', async () => {
+    const prepared = new PreparedAudio()
+    const key = { ...KEY, ending: { stopAt: 10, soft: false }, lead: 1 / 30 }
+    await mixForExport(prepared, COMBINED, BURNED, TRACK, key)
+    expect(mixMusic).toHaveBeenCalledWith(BURNED, TRACK, 0.3, 'natural', { stopAt: 10 + 1 / 30, soft: false })
   })
 
   it('mixes as before when preparing failed', async () => {

@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
-import { insertCoverFrames, type CoverFramePlacement, type CoverFramesProgress } from '../utils/coverFrames'
+import type { CoverFramesProgress } from '../utils/coverFrames'
 import { useObjectUrl } from './useObjectUrl'
 
 export type CoverFramesState = 'idle' | 'inserting' | 'failed'
+
+/**
+ * How the cover frames go into the export's video: e.g. insertCoverFrames
+ * with the chosen image, or swapBurnedCover when the burn put a cover in.
+ * A new object for each new choice: the hook tells choices apart by it.
+ */
+export interface CoverChange {
+  run: (video: Blob, onProgress: (progress: CoverFramesProgress) => void) => Promise<Blob>
+}
 
 interface Covered {
   blob: Blob | null
@@ -14,9 +23,7 @@ interface Covered {
 /** What an insert was asked for, so its result is only used for those. */
 interface Request {
   video: Blob
-  image: Blob
-  placement: CoverFramePlacement
-  count: number
+  change: CoverChange
 }
 
 const NOTHING: Covered = { blob: null, state: 'idle', progress: null }
@@ -27,30 +34,25 @@ const INSERTING: Covered = { blob: null, state: 'inserting', progress: null }
 let queue: Promise<unknown> = Promise.resolve()
 
 /**
- * The export's video with the cover image put in as frames of its own (see
- * insertCoverFrames): `video` itself when there's no image or the
- * placement is `none`, so the output is then exactly what it was without
- * this step. Null while `video` is, and while the frames go in. If that
- * fails, `video` is still there to save without them, and `state` says so.
+ * The export's video with the cover frames put in by `change`: `video`
+ * itself when there's no change to make, so the output is then exactly
+ * what it was without this step. Null while `video` is, and while the
+ * frames go in. If that fails, `video` is still there to save without
+ * them, and `state` says so.
  */
-export function useCoverFrames(
-  video: Blob | null,
-  image: Blob | null,
-  placement: CoverFramePlacement,
-  count: number,
-) {
+export function useCoverFrames(video: Blob | null, change: CoverChange | null) {
   const [inserted, setInserted] = useState<{ request: Request; covered: Covered } | null>(null)
 
   useEffect(() => {
-    if (!video || !image || placement === 'none') return
-    const request: Request = { video, image, placement, count }
+    if (!video || !change) return
+    const request: Request = { video, change }
     let cancelled = false
     const settle = (covered: Covered) => {
       if (!cancelled) setInserted({ request, covered })
     }
     const onProgress = (progress: CoverFramesProgress) => settle({ blob: null, state: 'inserting', progress })
     // Skipped once superseded while waiting its turn.
-    const run = queue.then(() => (cancelled ? null : insertCoverFrames(video, image, placement, count, onProgress)))
+    const run = queue.then(() => (cancelled ? null : change.run(video, onProgress)))
     queue = run.catch(() => {})
     run.then(
       blob => {
@@ -65,20 +67,16 @@ export function useCoverFrames(
     return () => {
       cancelled = true
     }
-  }, [video, image, placement, count])
+  }, [video, change])
 
   // Worked out here rather than set by the effect, so no render ever
   // offers a video that isn't the one these inputs make.
   const current = inserted?.request
   const covered: Covered = !video
     ? NOTHING
-    : !image || placement === 'none'
+    : !change
       ? { blob: video, state: 'idle', progress: null }
-      : current &&
-          current.video === video &&
-          current.image === image &&
-          current.placement === placement &&
-          current.count === count
+      : current && current.video === video && current.change === change
         ? inserted.covered
         : INSERTING
   const url = useObjectUrl(covered.blob)

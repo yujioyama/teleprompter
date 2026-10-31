@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
@@ -12,8 +12,8 @@ import {
   type SavedCombinedClip,
   type SavedSubtitles,
 } from '../utils/finalizeProgressStore'
-import { ShotEncodeCache } from '../utils/shotEncodeCache'
-import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type ShotClip } from '../utils/shotEncoding'
+import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
+import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
@@ -26,7 +26,7 @@ import { fetchTrack } from '../utils/fetchTrack'
 import { defaultBgmTrack, useSettings, youtubeBgmTrack } from '../hooks/useSettings'
 import { useCombine, type CombinePhase } from '../hooks/useCombine'
 import { useExport } from '../hooks/useExport'
-import { useCoverFrames } from '../hooks/useCoverFrames'
+import { useCoverFrames, type CoverChange } from '../hooks/useCoverFrames'
 import { useYoutubeExport } from '../hooks/useYoutubeExport'
 import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
@@ -35,13 +35,16 @@ import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
-import { ShotCueInput, lineStartsInTake, takeLinesOf } from '../utils/subtitleCues'
+import { ShotCueInput, lineStartsInTake, takeLinesOf, type SubtitleCue } from '../utils/subtitleCues'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
 import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
+import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
+import { swapBurnedCover } from '../utils/burnedCover'
+import { coverLeadSeconds } from '../utils/webcodecs/coverLead'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
 import { buildVideoRecord, type BurnInputs, type MixInputs } from '../utils/videoRecord'
@@ -170,7 +173,16 @@ export default function FinalizePage() {
   const combinedBlob = combined?.blob ?? null
   const combinedUrl = combined?.url ?? null
   const combinedClips = combined?.clips ?? NO_CLIPS
-  const [burnedBlob, setBurnedBlob] = useState<Blob | null>(null)
+  // The burned video, and the cover its burn put in ahead of the first shot (null: none).
+  const [burned, setBurned] = useState<{ blob: Blob; cover: BurnCover | null } | null>(null)
+  const burnedBlob = burned?.blob ?? null
+  const burnedCover = burned?.cover ?? null
+  // The cover the burn in flight put in, for onBurned.
+  const burnedCoverRef = useRef<BurnCover | null>(null)
+  // The cover made for the burn, per what it's drawn from (see burnCoverFor).
+  const burnCoverRef = useRef<{ key: string; png: Promise<Blob | null> } | null>(null)
+  // The burn without the cover, for the YouTube version; made at the export.
+  const [plainBurned, setPlainBurned] = useState<{ of: Blob; blob: Blob | null } | null>(null)
   const [mixed, setMixed] = useState<MixedVideo | null>(null)
   // What `burnedBlob` and `mixed` were made from, for the video record; only
   // read while those are set. The refs hold the run in flight.
@@ -462,7 +474,7 @@ export default function FinalizePage() {
     // its input may change (e.g. re-combining after adjusting a trim).
     const targetIndex = STEP_ORDER.indexOf(target)
     setCompletedSteps(prev => prev.filter(s => STEP_ORDER.indexOf(s) < targetIndex))
-    if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurnedBlob(null)
+    if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurned(null)
     if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixed(null)
     setBgmAutoPending(false)
     setStep(target)
@@ -529,17 +541,52 @@ export default function FinalizePage() {
   )
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
+
+  // With the cover frames set to 最初 and 作ったカバー, the burn puts the
+  // cover in ahead of the first shot, in that shot's encode: the export then
+  // has nothing to insert. It's the cover カバー画像を作る starts with (see
+  // makeCover), made once per 結合 and words; null when it can't be made,
+  // and the export puts it in as before.
+  const { coverTextPosition, coverStickerSpot: movedCoverSticker, coverFramePlacement, coverFrameSource, coverFrameCount } = settings
+  const coverInBurn = coverFramePlacement === 'first' && coverFrameSource === 'made'
+  const burnCoverCount = clampCoverFrameCount(coverFrameCount)
+  const burnCoverFor = useCallback(
+    async (cues: SubtitleCue[]): Promise<BurnCover | undefined> => {
+      if (!coverInBurn || !combinedBlob || !script) return undefined
+      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja))
+      const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
+      const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker])
+      if (burnCoverRef.current?.key !== key) {
+        const png = makeCover(combinedBlob, words, coverTextPosition, sticker).catch(err => {
+          console.warn('[FinalizePage] could not make the cover for the burn:', err)
+          return null
+        })
+        burnCoverRef.current = { key, png }
+      }
+      const image = await burnCoverRef.current.png
+      return image ? { image, count: burnCoverCount } : undefined
+    },
+    [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount],
+  )
+
   useEffect(() => {
     if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
     if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
+    let cancelled = false
     const timer = setTimeout(() => {
-      const cache = getEncodeCache()
-      for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd)) {
-        cache.prefetch(request)
-      }
+      void burnCoverFor(subtitleCues).then(cover => {
+        if (cancelled) return
+        const cache = getEncodeCache()
+        for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd, cover)) {
+          cache.prefetch(request)
+        }
+      })
     }, BACKGROUND_ENCODE_DELAY_MS)
-    return () => clearTimeout(timer)
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd])
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd, burnCoverFor])
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
@@ -561,14 +608,22 @@ export default function FinalizePage() {
       if (cancelled || !ok) return
       preparedAudio.prepare(
         combinedBlob,
-        { trackId: defaultTrack.id, volume: bgmVolume, normalize: normalizeAudio, voice: voicePreset, ending: bgmEnding(defaultTrack.genre, bgmStopAt) },
+        {
+          trackId: defaultTrack.id,
+          volume: bgmVolume,
+          normalize: normalizeAudio,
+          voice: voicePreset,
+          ending: bgmEnding(defaultTrack.genre, bgmStopAt),
+          // The cover the burn is to put in comes first, over silence.
+          lead: coverInBurn ? coverLeadSeconds(burnCoverCount) : 0,
+        },
         () => fetchTrack(defaultTrack),
       )
     })
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio, coverInBurn, burnCoverCount])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -579,16 +634,53 @@ export default function FinalizePage() {
     step === 'export' ? finalBlob : null,
     { voice: mixed ? 'none' : voicePreset, normalize: normalizeAudio },
   )
+  // The shots burned again with another cover or none, from the cache: only
+  // the first is encoded again. For the export when the burn's cover is
+  // changed there, and for the YouTube version, which has none.
+  const reburn = useCallback(
+    (cover?: BurnCover) => {
+      if (!combinedBlob || !burnInputs) return Promise.reject(new Error('nothing burned to burn again'))
+      const { cues, position, hook: burnHook } = burnInputs
+      return burnSubtitlesByShot(
+        getEncodeCache(),
+        combinedClips,
+        combinedBlob,
+        cues,
+        position,
+        burnHook,
+        undefined,
+        undefined,
+        oneTake && cues.length > 0 ? cues[0].end : undefined,
+        cover,
+      )
+    },
+    [combinedBlob, combinedClips, burnInputs, oneTake],
+  )
   // Last, the cover image as frames of their own, on the finished video:
-  // the voice, the BGM and the subtitles move with it as one.
-  const madeCoverFrames = settings.coverFrameSource === 'made'
+  // the voice, the BGM and the subtitles move with it as one. When the burn
+  // already put the cover in, nothing is left to do unless it's changed here.
+  const madeCoverFrames = coverFrameSource === 'made'
+  const coverImage = madeCoverFrames ? madeCover.png : pickedCover
+  const coverChange = useMemo<CoverChange | null>(() => {
+    if (burnedCover) {
+      const unchanged =
+        coverInBurn &&
+        clampCoverFrameCount(coverFrameCount) === burnedCover.count &&
+        (coverImage === null || coverImage === burnedCover.image)
+      if (unchanged) return null
+      const choice = { image: coverImage, placement: coverFramePlacement, count: coverFrameCount }
+      return { run: (video, onProgress) => swapBurnedCover(video, burnedCover, choice, reburn, onProgress) }
+    }
+    if (!coverImage || coverFramePlacement === 'none') return null
+    return {
+      run: (video, onProgress) => insertCoverFrames(video, coverImage, coverFramePlacement, coverFrameCount, onProgress),
+    }
+  }, [burnedCover, coverInBurn, coverImage, coverFramePlacement, coverFrameCount, reburn])
   const { blob: exportBlob, url: finalUrl, state: coverFrameState, progress: coverFrameProgress } = useCoverFrames(
     finishedBlob,
-    madeCoverFrames ? madeCover.png : pickedCover,
-    settings.coverFramePlacement,
-    settings.coverFrameCount,
+    coverChange,
   )
-  const madeCoverWanted = madeCoverFrames && settings.coverFramePlacement !== 'none'
+  const madeCoverWanted = madeCoverFrames && coverFramePlacement !== 'none'
   // The made cover is still being made, or changed and isn't in the frames
   // yet: the saves wait, so the video never goes out without it or with the
   // cover as it was before.
@@ -632,17 +724,45 @@ export default function FinalizePage() {
   // normal version is ready, not alongside it.
   const youtubeEnabled = settings.youtubeExportEnabled
   const youtubeTrack = youtubeBgmTrack(settings)
+  // When the burn put the cover in, the YouTube version starts from the
+  // burn without it: made once the normal version is ready.
+  const youtubeWanted = youtubeEnabled && exportBlob !== null
+  const needsPlain = youtubeWanted && burnedBlob !== null && burnedCover !== null
+  const plain = needsPlain && plainBurned?.of === burnedBlob ? plainBurned : null
+  useEffect(() => {
+    if (!needsPlain || !burnedBlob || plainBurned?.of === burnedBlob) return
+    let cancelled = false
+    reburn().then(
+      ({ blob }) => {
+        if (!cancelled) setPlainBurned({ of: burnedBlob, blob })
+      },
+      err => {
+        if (cancelled) return
+        console.warn('[FinalizePage] could not burn the YouTube version without the cover:', err)
+        setPlainBurned({ of: burnedBlob, blob: null })
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [needsPlain, burnedBlob, plainBurned, reburn])
+  const plainFailed = plain !== null && plain.blob === null
+  // With no BGM to swap, the YouTube version is that burn finished as the normal one is.
+  const { blob: plainFinished } = useExport(needsPlain && !mixed ? (plain?.blob ?? null) : null, {
+    voice: voicePreset,
+    normalize: normalizeAudio,
+  })
+  const youtubeVideo = burnedCover ? (plain?.blob ?? null) : (burnedBlob ?? combinedBlob)
   const youtubeSwap = useMemo<YoutubeBgmSwap | null>(
     () =>
-      mixed && mixKey && combinedBlob
-        ? { source: combinedBlob, video: burnedBlob ?? combinedBlob, key: mixKey, track: youtubeTrack }
+      mixed && mixKey && combinedBlob && youtubeVideo
+        ? { source: combinedBlob, video: youtubeVideo, key: { ...mixKey, lead: 0 }, track: youtubeTrack }
         : null,
-    [mixed, mixKey, combinedBlob, burnedBlob, youtubeTrack],
+    [mixed, mixKey, combinedBlob, youtubeVideo, youtubeTrack],
   )
-  const { blob: youtubeBlob, url: youtubeUrl, state: youtubeState } = useYoutubeExport(
-    youtubeEnabled && exportBlob ? finishedBlob : null,
-    youtubeSwap,
-  )
+  const youtubeFinished = !youtubeWanted ? null : !burnedCover ? finishedBlob : mixed ? (youtubeSwap && finishedBlob) : plainFinished
+  const { blob: youtubeBlob, url: youtubeUrl, state: madeYoutubeState } = useYoutubeExport(youtubeFinished, youtubeSwap)
+  const youtubeState = plainFailed ? 'failed' : madeYoutubeState
   // Both versions go in one save; one that couldn't be made is left out.
   const saveReady = savable && (!youtubeEnabled || youtubeBlob !== null || youtubeState === 'failed')
   const previewUrl = youtubeEnabled && previewYoutube ? youtubeUrl : finalUrl
@@ -659,7 +779,7 @@ export default function FinalizePage() {
     // never contains 'subtitle'/'bgm' while sitting on 'trim' (the only way
     // back here is goToStep, which already truncates completedSteps), so
     // clearing the blobs is sufficient — no completedSteps update needed.
-    setBurnedBlob(null)
+    setBurned(null)
     setMixed(null)
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(initialSubtitleState())
@@ -916,9 +1036,11 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
-                burn={(cues, position, onProgress, signal) => {
+                burn={async (cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
-                  return burnSubtitlesByShot(
+                  burnedCoverRef.current = null
+                  const cover = await burnCoverFor(cues)
+                  const burned = await burnSubtitlesByShot(
                     getEncodeCache(),
                     combinedClips,
                     combinedBlob,
@@ -928,10 +1050,17 @@ export default function FinalizePage() {
                     onProgress,
                     signal,
                     oneTake && cues.length > 0 ? cues[0].end : undefined,
+                    cover,
                   )
+                  burnedCoverRef.current = burned.cover && cover ? cover : null
+                  return burned.blob
                 }}
-                onBurned={burned => {
-                  setBurnedBlob(burned)
+                onBurned={blob => {
+                  const cover = burnedCoverRef.current
+                  burnedCoverRef.current = null
+                  setBurned({ blob, cover })
+                  // The export's made cover is the one already in, until it's changed there.
+                  if (cover) setMadeCover({ png: cover.image, drawing: false })
                   setBurnInputs(burnInputsRef.current)
                   setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
@@ -966,6 +1095,7 @@ export default function FinalizePage() {
                     normalize: normalizeAudio,
                     voice: voicePreset,
                     ending: bgmEnding(track.genre, bgmStopAt),
+                    lead: burnedCover ? coverLeadSeconds(burnedCover.count) : 0,
                   }
                   mixKeyRef.current = key
                   return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, key)

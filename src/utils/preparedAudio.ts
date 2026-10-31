@@ -1,4 +1,4 @@
-import type { BgmEnding } from './bgmStop'
+import { delayEnding, type BgmEnding } from './bgmStop'
 import { mixMusic } from './mixMusic'
 import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
@@ -12,10 +12,15 @@ export interface FinalAudioKey {
   voice: VoicePreset
   /** Where the punchline starts and how the BGM ends there (see bgmStop). */
   ending: BgmEnding
+  /**
+   * Seconds of silence the video starts with before the source's audio:
+   * the cover frames the burn put in ahead of the first shot, or 0.
+   */
+  lead: number
 }
 
 function sameKey(a: FinalAudioKey, b: FinalAudioKey): boolean {
-  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && a.ending.stopAt === b.ending.stopAt && a.ending.soft === b.ending.soft
+  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && a.ending.stopAt === b.ending.stopAt && a.ending.soft === b.ending.soft && a.lead === b.lead
 }
 
 /**
@@ -29,7 +34,7 @@ export class PreparedAudio {
 
   prepare(source: Blob, key: FinalAudioKey, track: () => Promise<Blob>): void {
     if (this.entry && this.entry.source === source && sameKey(this.entry.key, key)) return
-    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending))
+    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending, key.lead))
     // Only means mixing the slow way later; never shown to the user.
     audio.catch(err => console.warn('[PreparedAudio] could not prepare the final audio:', err))
     this.entry = { source, key, audio }
@@ -58,7 +63,9 @@ export class PreparedAudio {
  * Add the BGM to `video`, the burned version of `source`: by joining it with
  * audio prepared for exactly this source and choice when there is some,
  * otherwise by mixing as before. A joined video's loudness is already
- * corrected when `key.normalize`, so the export step won't redo it.
+ * corrected when `key.normalize`, so the export step won't redo it. Mixed
+ * into `video` as it is, the BGM stops where the punchline is in `video`:
+ * `key.lead` after where it is in `source`.
  */
 export async function mixForExport(
   prepared: PreparedAudio,
@@ -83,5 +90,5 @@ export async function mixForExport(
   } else {
     console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
-  return mixMusic(video, trackBlob, key.volume, key.voice, key.ending)
+  return mixMusic(video, trackBlob, key.volume, key.voice, delayEnding(key.ending, key.lead))
 }

@@ -11,7 +11,7 @@ const SWAPPED = new Blob(['swapped'], { type: 'video/mp4' })
 const SWAP: YoutubeBgmSwap = {
   source: new Blob(['combined'], { type: 'video/mp4' }),
   video: new Blob(['burned'], { type: 'video/mp4' }),
-  key: { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: null, soft: false } },
+  key: { trackId: 'lofi-tokyo', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: null, soft: false }, lead: 0 },
   track: MUSIC_TRACKS[0],
 }
 

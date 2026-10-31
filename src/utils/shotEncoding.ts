@@ -9,6 +9,7 @@ import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
 import { onAbort, throwIfCancelled } from './cancellation'
+import { clampCoverFrameCount, renderCoverFrame } from './coverFrames'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -20,6 +21,21 @@ export interface ShotClip {
 
 function clipKey(clip: ShotClip): string {
   return `${clip.shotId}|${blobId(clip.blob)}|${clip.start.toFixed(3)}|${clip.end.toFixed(3)}`
+}
+
+/**
+ * The cover image to put in as frames of its own before the first shot, in
+ * that shot's encode (see withCoverFrames).
+ */
+export interface BurnCover {
+  image: Blob
+  count: number
+}
+
+/** The burned video, and whether `cover` went in: not when the whole video had to be burned at once. */
+export interface BurnedVideo {
+  blob: Blob
+  cover: boolean
 }
 
 /** The shot trimmed and normalized to the output profile. */
@@ -59,14 +75,16 @@ function fairyPlanOf(clips: ShotClip[], cues: SubtitleCue[], hook: HookOptions, 
  * shot with nothing of that is just its normalized clip, so it's shared with
  * the combine step's cache entry. The key holds everything that changes the
  * pixels (the fairies by their keys), so a hook change re-encodes only the
- * shots it shows up in.
+ * shots it shows up in. With `cover`, its frames go in ahead of the shot;
+ * that clip has a slot of its own, so the shot without them (the YouTube
+ * version's) is kept alongside it.
  */
-export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLook): EncodeRequest {
+export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLook, cover?: BurnCover): EncodeRequest {
   const translated = cues.filter(c => c.ja !== null)
   const extras = hasFirstShotExtras(look.hook, look.firstShotDuration)
   const fairies = look.fairies ?? []
   const midZoom = look.midZoom ?? []
-  if (translated.length === 0 && !extras && fairies.length === 0 && midZoom.length === 0) return normalizeRequest(clip)
+  if (!cover && translated.length === 0 && !extras && fairies.length === 0 && midZoom.length === 0) return normalizeRequest(clip)
   const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const placement = JSON.stringify([
@@ -82,11 +100,27 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   ])
   const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
+  if (!cover) {
+    return {
+      slot: `burn:${clip.shotId}`,
+      key: `burn|${clipKey(clip)}|${placement}|${firstShot}|${text}`,
+      run: (onProgress, signal) =>
+        burnShotSubtitles(clip.blob, clip.start, clip.end, translated, look, onProgress, signal),
+    }
+  }
+  const count = clampCoverFrameCount(cover.count)
   return {
-    slot: `burn:${clip.shotId}`,
-    key: `burn|${clipKey(clip)}|${placement}|${firstShot}|${text}`,
-    run: (onProgress, signal) =>
-      burnShotSubtitles(clip.blob, clip.start, clip.end, translated, look, onProgress, signal),
+    slot: `burn-cover:${clip.shotId}`,
+    key: `burn-cover|${clipKey(clip)}|${placement}|${firstShot}|${text}|${blobId(cover.image)}x${count}`,
+    run: async (onProgress, signal) => {
+      const frame = await renderCoverFrame(cover.image)
+      try {
+        return await burnShotSubtitles(clip.blob, clip.start, clip.end, translated, look, onProgress, signal, { frame, count })
+      } finally {
+        frame.width = 0
+        frame.height = 0
+      }
+    },
   }
 }
 
@@ -96,7 +130,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
  * cuesFromShotEntries times the cues by. Cues are styled on the joined
  * timeline first, so one running on past the first shot stays a hook cue.
  * The fairies are planned once over the joined timeline from the cues'
- * emoji and each shot gets the ones inside it.
+ * emoji and each shot gets the ones inside it. `cover` goes in ahead of the
+ * first shot.
  */
 export function shotBurnRequests(
   clips: ShotClip[],
@@ -104,6 +139,7 @@ export function shotBurnRequests(
   position: SubtitlePosition,
   hook: HookOptions,
   hookEnd?: number,
+  cover?: BurnCover,
 ): EncodeRequest[] {
   const hookSpan = firstShotDurationOf(clips, hookEnd)
   const styled = styleCues(cues, hookSpan, hook.style)
@@ -119,7 +155,7 @@ export function shotBurnRequests(
       fairies: fairiesForShot(plan, offset, duration),
       midZoom: midZoomForShot(zoomPlan, offset, duration),
     }
-    const request = burnRequest(clip, cuesForShot(styled, offset, duration), look)
+    const request = burnRequest(clip, cuesForShot(styled, offset, duration), look, i === 0 ? cover : undefined)
     offset += duration
     return request
   })
@@ -179,6 +215,8 @@ export async function encodeAll(
  * Falls back to re-encoding the whole joined video (burnSubtitles) when
  * that can't work: WebCodecs unavailable or failing (then ffmpeg.wasm
  * does it), or clips whose encoder headers don't match for packet copy.
+ * `cover` goes in ahead of the first shot only shot by shot; the result
+ * says whether it did.
  */
 export async function burnSubtitlesByShot(
   cache: ShotEncodeCache,
@@ -190,17 +228,18 @@ export async function burnSubtitlesByShot(
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
   hookEnd?: number,
-): Promise<Blob> {
+  cover?: BurnCover,
+): Promise<BurnedVideo> {
   const plan = fairyPlanOf(clips, cues, hook, position)
   const zoomPlan = midZoomPlanOf(clips, cues, hook)
   const hookSpan = firstShotDurationOf(clips, hookEnd)
-  if (!cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, hookSpan) && plan.length === 0 && zoomPlan.length === 0) {
-    return combinedBlob
+  if (!cover && !cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, hookSpan) && plan.length === 0 && zoomPlan.length === 0) {
+    return { blob: combinedBlob, cover: false }
   }
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd, cover), onProgress, signal)
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -208,7 +247,7 @@ export async function burnSubtitlesByShot(
     }
     if (burned) {
       try {
-        return await concatClipsWebCodecs(burned, signal)
+        return { blob: await concatClipsWebCodecs(burned, signal), cover: cover !== undefined }
       } catch (err) {
         throwIfCancelled(signal)
         console.warn('[burnSubtitlesByShot] joining burned shots failed, burning the joined video instead:', err)
@@ -216,11 +255,12 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  return burnSubtitles(
+  const blob = await burnSubtitles(
     combinedBlob,
     cues,
     { position, hook, firstShotDuration: hookSpan, fairies: plan, midZoom: zoomPlan },
     onProgress,
     signal,
   )
+  return { blob, cover: false }
 }

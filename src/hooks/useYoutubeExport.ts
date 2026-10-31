@@ -12,8 +12,9 @@ interface Made {
 const NOTHING: Made = { blob: null, state: 'idle' }
 
 /**
- * The export's YouTube version. `finished` is the normal version before its
- * cover frames go in; null while there's to be no YouTube version, or the
+ * The export's YouTube version. `finished` is the normal version without
+ * cover frames (from the burn without them, when the burn put them in);
+ * null while there's to be no YouTube version, or the
  * normal one isn't ready yet (they're made one after the other, not side by
  * side, to spare an iPhone's memory). With no BGM on the normal version
  * there is none to swap, and the YouTube version is `finished` itself.
