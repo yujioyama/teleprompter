@@ -1699,6 +1699,46 @@ describe('FinalizePage export step: YouTube version', () => {
     })) as unknown as typeof fetch
   })
 
+  it('builds the YouTube version\'s audio and cover-free first shot ahead, so the export only joins them', async () => {
+    useSettingsOf({ youtubeExportEnabled: true, coverFramePlacement: 'first', coverFrameSource: 'made', coverFrameCount: 1 })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockImplementation(async () => new Blob(['burned-shot'], { type: 'video/mp4' }))
+    const usualAudio = new Blob(['usual-audio'], { type: 'audio/mp4' })
+    const youtubeAudio = new Blob(['youtube-audio'], { type: 'audio/mp4' })
+    vi.mocked(prepareFinalAudio).mockImplementation(async (_source, track) => (track === YOUTUBE_TRACK ? youtubeAudio : usualAudio))
+    vi.mocked(joinVideoAndAudio).mockImplementation(async (video, audio) => new Blob([video, audio], { type: 'video/mp4' }))
+
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('次へ')
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    // While the subtitles are checked: the usual audio, then the YouTube one
+    // (its BGM, no cover's silence), and the first shot with and without the cover.
+    await waitFor(() => expect(prepareFinalAudio).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0][1]).not.toBe(YOUTUBE_TRACK)
+    expect(vi.mocked(prepareFinalAudio).mock.calls[1][1]).toBe(YOUTUBE_TRACK)
+    expect(vi.mocked(prepareFinalAudio).mock.calls[1][6]).toBe(0)
+    await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    expect(vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[7] !== undefined)).toEqual([true, false])
+
+    fireEvent.click(screen.getByText('次へ'))
+    await waitFor(() => expect(screen.getByText('2本とも保存する')).toBeEnabled())
+    // Nothing built again at the export: just joined.
+    expect(prepareFinalAudio).toHaveBeenCalledTimes(2)
+    expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(joinVideoAndAudio).mock.calls.some(([, audio]) => audio === youtubeAudio)).toBe(true)
+  })
+
   it('saves just the one video, cover frames and all, while switched off', async () => {
     useSettingsOf({})
     await walkToExport()

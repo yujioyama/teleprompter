@@ -204,6 +204,11 @@ export default function FinalizePage() {
   // set: it mixes that straight away. Coming back to it later never does.
   const [bgmAutoPending, setBgmAutoPending] = useState(false)
   const [preparedAudio] = useState(() => new PreparedAudio())
+  // The YouTube version's audio, built the same way once that's done (see below).
+  const [youtubeAudio] = useState(() => new PreparedAudio())
+  // Settles once the audio built ahead has been started (see below), for
+  // transcription to wait on it.
+  const audioAheadRef = useRef<Promise<void>>(Promise.resolve())
   const urlsRef = useRef<string[]>([])
   const [captionCopy, setCaptionCopy] = useState<'idle' | 'copied' | 'failed'>('idle')
   // The export step's cover maker, open below the final preview.
@@ -542,6 +547,10 @@ export default function FinalizePage() {
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
 
+  // YouTube用も書き出す, and the BGM it swaps in for the usual one.
+  const youtubeEnabled = settings.youtubeExportEnabled
+  const youtubeTrack = youtubeBgmTrack(settings)
+
   // With the cover frames set to 最初 and 作ったカバー, the burn puts the
   // cover in ahead of the first shot, in that shot's encode: the export then
   // has nothing to insert. It's the cover カバー画像を作る starts with (see
@@ -580,13 +589,17 @@ export default function FinalizePage() {
         for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd, cover)) {
           cache.prefetch(request)
         }
+        // The YouTube version has no cover: its first shot is burned without it.
+        if (cover && youtubeEnabled) {
+          cache.prefetch(shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd)[0])
+        }
       })
     }, BACKGROUND_ENCODE_DELAY_MS)
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd, burnCoverFor])
+  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd, burnCoverFor, youtubeEnabled])
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
@@ -601,29 +614,34 @@ export default function FinalizePage() {
   // are worked on: they only change the picture, so after the burn the
   // BGM step just joins this audio to the burned video. Hardware path
   // only; the ffmpeg.wasm fallback mixes after the burn as before.
+  // With YouTube用も書き出す, the YouTube version's audio (its BGM in the
+  // usual one's place, no cover frames) is built next, so the export only
+  // has to join it too. One after the other: both at once is more memory
+  // than an iPhone gives the page.
   useEffect(() => {
     if (step !== 'subtitle' || !combinedBlob || !defaultTrack) return
     let cancelled = false
-    void canUseWebCodecs().then(ok => {
+    audioAheadRef.current = canUseWebCodecs().then(async ok => {
       if (cancelled || !ok) return
-      preparedAudio.prepare(
-        combinedBlob,
-        {
-          trackId: defaultTrack.id,
-          volume: bgmVolume,
-          normalize: normalizeAudio,
-          voice: voicePreset,
-          ending: bgmEnding(defaultTrack.genre, bgmStopAt),
-          // The cover the burn is to put in comes first, over silence.
-          lead: coverInBurn ? coverLeadSeconds(burnCoverCount) : 0,
-        },
-        () => fetchTrack(defaultTrack),
-      )
+      const key: FinalAudioKey = {
+        trackId: defaultTrack.id,
+        volume: bgmVolume,
+        normalize: normalizeAudio,
+        voice: voicePreset,
+        ending: bgmEnding(defaultTrack.genre, bgmStopAt),
+        // The cover the burn is to put in comes first, over silence.
+        lead: coverInBurn ? coverLeadSeconds(burnCoverCount) : 0,
+      }
+      preparedAudio.prepare(combinedBlob, key, () => fetchTrack(defaultTrack))
+      if (!youtubeEnabled) return
+      await preparedAudio.settled()
+      if (cancelled) return
+      youtubeAudio.prepare(combinedBlob, { ...key, trackId: youtubeTrack.id, lead: 0 }, () => fetchTrack(youtubeTrack))
     })
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio, coverInBurn, burnCoverCount])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio, coverInBurn, burnCoverCount, youtubeEnabled, youtubeTrack, youtubeAudio])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -722,8 +740,6 @@ export default function FinalizePage() {
   // YouTube用も書き出す: the same video with the YouTube BGM in place of
   // the usual one, mixed the same way, and no cover frames. Made once the
   // normal version is ready, not alongside it.
-  const youtubeEnabled = settings.youtubeExportEnabled
-  const youtubeTrack = youtubeBgmTrack(settings)
   // When the burn put the cover in, the YouTube version starts from the
   // burn without it: made once the normal version is ready.
   const youtubeWanted = youtubeEnabled && exportBlob !== null
@@ -756,9 +772,9 @@ export default function FinalizePage() {
   const youtubeSwap = useMemo<YoutubeBgmSwap | null>(
     () =>
       mixed && mixKey && combinedBlob && youtubeVideo
-        ? { source: combinedBlob, video: youtubeVideo, key: { ...mixKey, lead: 0 }, track: youtubeTrack }
+        ? { source: combinedBlob, video: youtubeVideo, key: { ...mixKey, lead: 0 }, track: youtubeTrack, ahead: youtubeAudio }
         : null,
-    [mixed, mixKey, combinedBlob, youtubeVideo, youtubeTrack],
+    [mixed, mixKey, combinedBlob, youtubeVideo, youtubeTrack, youtubeAudio],
   )
   const youtubeFinished = !youtubeWanted ? null : !burnedCover ? finishedBlob : mixed ? (youtubeSwap && finishedBlob) : plainFinished
   const { blob: youtubeBlob, url: youtubeUrl, state: madeYoutubeState } = useYoutubeExport(youtubeFinished, youtubeSwap)
@@ -784,6 +800,7 @@ export default function FinalizePage() {
     // A re-combined video invalidates any subtitle cues tied to the old one.
     setSubtitleState(initialSubtitleState())
     preparedAudio.clear()
+    youtubeAudio.clear()
     const clips = availableEntries.map(clipOf)
     const joined = await combine(getEncodeCache(), clips)
     if (!joined) return false
@@ -1069,7 +1086,9 @@ export default function FinalizePage() {
                 // whole soundtrack; on top of Whisper that is more memory
                 // than an iPhone gives the page, which then reloads.
                 transcribe={async (blob, onProgress, signal) => {
+                  await audioAheadRef.current
                   await preparedAudio.settled()
+                  await youtubeAudio.settled()
                   return transcribeSpeech(blob, onProgress, signal)
                 }}
               />

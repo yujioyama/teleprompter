@@ -14,6 +14,8 @@ export interface YoutubeBgmSwap {
   key: FinalAudioKey
   /** The YouTube BGM, mixed in its place. */
   track: MusicTrack
+  /** Audio already built for this swap, if any: the export then only joins it on. */
+  ahead?: PreparedAudio
 }
 
 // Per video, per swap: returning to the export step, or changing the cover
@@ -45,13 +47,17 @@ export function mixYoutubeVersion(swap: YoutubeBgmSwap): Promise<Blob> {
   return run
 }
 
-async function mix({ source, video, key, track }: YoutubeBgmSwap): Promise<Blob> {
+async function mix({ source, video, key, track, ahead }: YoutubeBgmSwap): Promise<Blob> {
   const trackBlob = await fetchTrack(track)
   const swapped: FinalAudioKey = { ...key, trackId: track.id }
   // The same two ways the BGM step mixes: audio built from `source` and
-  // joined on (hardware path), or mixed into `video` as it is.
-  const prepared = new PreparedAudio()
-  if (await canUseWebCodecs()) prepared.prepare(source, swapped, async () => trackBlob)
+  // joined on (hardware path), or mixed into `video` as it is. Audio built
+  // ahead for exactly this is used as it is.
+  let prepared = ahead
+  if (!prepared?.get(source, swapped)) {
+    prepared = new PreparedAudio()
+    if (await canUseWebCodecs()) prepared.prepare(source, swapped, async () => trackBlob)
+  }
   const mixed = await mixForExport(prepared, source, video, trackBlob, swapped)
   // The voice preset went on in the mix, as on the normal version.
   return finishAudio(mixed, { voice: 'none', normalize: key.normalize })
