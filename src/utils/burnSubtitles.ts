@@ -9,6 +9,7 @@ import { OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_WIDTH, canUseWebCodecs, disabl
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
+import type { CoverLead } from './webcodecs/coverLead'
 import {
   hasFirstShotExtras,
   punchInEnd,
@@ -373,7 +374,8 @@ export async function burnSubtitles(
  * hardware encode (see normalizeShotWebCodecs). `cues` are already styled
  * on the joined timeline and moved into the trimmed shot's own (see
  * shotBurnRequests). WebCodecs only — throws when it's unavailable, so the
- * caller can fall back to burnSubtitles on the joined video.
+ * caller can fall back to burnSubtitles on the joined video. `cover` puts the
+ * cover frames in ahead of the shot, in the same encode.
  */
 export async function burnShotSubtitles(
   blob: Blob,
@@ -383,6 +385,7 @@ export async function burnShotSubtitles(
   look: SubtitleLook,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  cover?: CoverLead,
 ): Promise<Blob> {
   throwIfCancelled(signal)
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs unavailable for per-shot burn-in')
@@ -390,6 +393,7 @@ export async function burnShotSubtitles(
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
     punchIn: punchInPlan(look.hook, look.firstShotDuration),
     midZoom: look.midZoom ?? [],
+    cover,
   })
 }
 

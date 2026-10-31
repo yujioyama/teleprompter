@@ -21,7 +21,7 @@ import { listShotVideos } from '../utils/shotVideoStore'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { concatClipsWebCodecs } from '../utils/webcodecs/concatClips'
 import { buildVideoRecord } from '../utils/videoRecord'
-import { insertCoverFrames } from '../utils/coverFrames'
+import { insertCoverFrames, renderCoverFrame } from '../utils/coverFrames'
 import { makeCover } from '../utils/autoCover'
 
 vi.mock('../utils/videoRecord', async importOriginal => {
@@ -69,6 +69,7 @@ vi.mock('../utils/videoStills', () => ({
 vi.mock('../utils/coverFrames', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/coverFrames')>()),
   insertCoverFrames: vi.fn(async () => COVERED),
+  renderCoverFrame: vi.fn(async () => document.createElement('canvas')),
 }))
 vi.mock('../utils/normalizeLoudness', () => ({
   finishAudio: vi.fn(),
@@ -88,7 +89,8 @@ vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
 const SPEECH_1_TO_3: SpeechRegion = { speechStart: 1, speechEnd: 3, floor: 0, ceiling: 5, duration: 5 }
 // Off by default (as in jsdom itself): background encoding and per-shot
 // burn-in only happen on the hardware path.
-vi.mock('../utils/webcodecs/support', () => ({
+vi.mock('../utils/webcodecs/support', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/webcodecs/support')>()),
   canUseWebCodecs: vi.fn(async () => false),
   disableWebCodecs: vi.fn(),
 }))
@@ -1564,10 +1566,41 @@ describe('FinalizePage with a usual BGM', () => {
     const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
     expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
-    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', { stopAt: null, soft: false }])
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', { stopAt: null, soft: false }, 0])
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('puts the made cover in with the subtitles when the frames are 最初, so the export has nothing to insert', async () => {
+    useSettingsOf({
+      defaultBgmId: 'lofi-tokyo',
+      coverFramePlacement: 'first',
+      coverFrameSource: 'made',
+      coverFrameCount: 2,
+    })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    const prepared = new Blob(['prepared'], { type: 'audio/mp4' })
+    const joined = new Blob(['joined'], { type: 'video/mp4' })
+    vi.mocked(prepareFinalAudio).mockResolvedValue(prepared)
+    vi.mocked(joinVideoAndAudio).mockResolvedValue(joined)
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
+
+    await walkThroughSubtitles()
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+
+    // The cover went into the first shot's own encode, made from the script's words.
+    expect(makeCover).toHaveBeenCalledTimes(1)
+    expect(renderCoverFrame).toHaveBeenCalledWith(AUTO_COVER)
+    const shotCalls = vi.mocked(burnModule.burnShotSubtitles).mock.calls
+    expect(shotCalls.at(-1)?.[7]).toEqual({ frame: expect.anything(), count: 2 })
+    // The audio comes after the two frames' silence.
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0][6]).toBeCloseTo(2 / 30)
+    expect(insertCoverFrames).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(joined, 'テスト動画-final'))
   })
 
   it('prepares a quiet genre to end softly', async () => {

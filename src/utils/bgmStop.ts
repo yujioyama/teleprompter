@@ -39,6 +39,11 @@ export function bgmEnding(genre: MusicGenre, stopAt: number | null): BgmEnding {
   return { stopAt, soft: SOFT_GENRES.has(genre) }
 }
 
+/** `ending` on a video that starts `by` seconds later, e.g. after cover frames. */
+export function delayEnding(ending: BgmEnding, by: number): BgmEnding {
+  return ending.stopAt === null || by === 0 ? ending : { ...ending, stopAt: ending.stopAt + by }
+}
+
 /** The BGM's level changes after its fade in, each multiplying the next. */
 export interface BgmEnvelope {
   /** A soft BGM's ramp down to `level` before the punchline, then held; null when none. */

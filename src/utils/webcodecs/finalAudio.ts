@@ -48,7 +48,8 @@ export function durationsMatch(audio: number, video: number, sampleRate: number)
  * Built to the length of the source's video track, not of its audio: AAC
  * pads the audio's tail and each generation adds up to a frame (~21 ms), so
  * the audio of an already re-encoded cut runs past its picture and would
- * miss joinVideoAndAudio's tolerance.
+ * miss joinVideoAndAudio's tolerance. `lead` seconds of silence go before
+ * it, for a video whose burn put the cover frames in ahead of the first shot.
  */
 export async function prepareFinalAudio(
   source: Blob,
@@ -57,6 +58,7 @@ export async function prepareFinalAudio(
   normalize: boolean,
   voice: VoicePreset,
   ending: BgmEnding = PLAYS_TO_END,
+  lead = 0,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(source), formats: ALL_FORMATS })
   let audio: AudioBuffer
@@ -77,16 +79,45 @@ export async function prepareFinalAudio(
   // Its return value only says whether anything changed; the buffer is
   // encoded either way.
   if (normalize) applyTargetLoudness(audio)
-  return encodeAudioOnly(audio)
+  return encodeAudioOnly(audio, lead)
 }
 
-async function encodeAudioOnly(audio: AudioBuffer): Promise<Blob> {
+/**
+ * `video`'s audio with the silence it starts with changed from `from` to
+ * `to` seconds, as an audio-only M4A for joinVideoAndAudio: for when the
+ * cover frames ahead of the first shot change in number or go.
+ */
+export async function reLeadAudio(video: Blob, from: number, to: number): Promise<Blob> {
+  const input = new Input({ source: new BlobSource(video), formats: ALL_FORMATS })
+  let decoded: AudioBuffer
+  try {
+    const audioTrack = await input.getPrimaryAudioTrack()
+    if (!audioTrack) throw new Error('video has no audio track')
+    decoded = await decodeAudioTrack(audioTrack)
+  } finally {
+    input.dispose()
+  }
+  const skip = Math.min(decoded.length - 1, Math.round(from * decoded.sampleRate))
+  const rest = new AudioBuffer({
+    numberOfChannels: decoded.numberOfChannels,
+    length: decoded.length - skip,
+    sampleRate: decoded.sampleRate,
+  })
+  for (let c = 0; c < decoded.numberOfChannels; c++) rest.copyToChannel(decoded.getChannelData(c).subarray(skip), c)
+  return encodeAudioOnly(rest, to)
+}
+
+async function encodeAudioOnly(audio: AudioBuffer, lead: number): Promise<Blob> {
   // Primed as muxWithAudio's is, so the audible start lands at 0 once the
   // packets are copied next to the video.
   const source = await createPrimedAacSource()
   const output = createMp4Output()
   output.addAudioTrack(source)
   const buffer = await runOutput(output, async () => {
+    const silence = Math.round(lead * audio.sampleRate)
+    if (silence > 0) {
+      await source.add(new AudioBuffer({ numberOfChannels: audio.numberOfChannels, length: silence, sampleRate: audio.sampleRate }))
+    }
     await source.add(audio)
     source.close()
   })

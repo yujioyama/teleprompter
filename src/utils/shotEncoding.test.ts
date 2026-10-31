@@ -28,6 +28,10 @@ vi.mock('./webcodecs/support', () => ({
 vi.mock('./webcodecs/concatClips', () => ({
   concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs)),
 }))
+vi.mock('./coverFrames', () => ({
+  clampCoverFrameCount: (count: number) => Math.min(5, Math.max(1, Math.round(count))),
+  renderCoverFrame: vi.fn(async () => ({ width: 1080, height: 1920 })),
+}))
 
 const JOINED = new Blob(['joined'])
 // The mid-video zoom has its own tests below; elsewhere it would only add the last shot's punch.
@@ -169,7 +173,7 @@ describe('burnSubtitlesByShot', () => {
     expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
     const burned = await Promise.all(vi.mocked(burnModule.burnShotSubtitles).mock.results.map(r => r.value))
     expect(concatClipsWebCodecs).toHaveBeenCalledWith(burned, undefined)
-    expect(out).toBe(await vi.mocked(concatClipsWebCodecs).mock.results[0].value)
+    expect(out).toEqual({ blob: await vi.mocked(concatClipsWebCodecs).mock.results[0].value, cover: false })
   })
 
   it('only re-burns the shot whose subtitle changed', async () => {
@@ -204,7 +208,7 @@ describe('burnSubtitlesByShot', () => {
     const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cuesFromShotEntries([
       { text: 'first', duration: 2 },
     ]), 50, NO_HOOK)
-    expect(out).toBe(JOINED)
+    expect(out).toEqual({ blob: JOINED, cover: false })
     expect(burnModule.burnShotSubtitles).not.toHaveBeenCalled()
   })
 
@@ -237,6 +241,52 @@ describe('burnSubtitlesByShot', () => {
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK, onProgress)
 
     expect(onProgress).toHaveBeenLastCalledWith(0.37)
+  })
+
+  describe('with the cover', () => {
+    const COVER = { image: new Blob(['cover.png']), count: 2 }
+
+    it('puts it in ahead of the first shot only, in that shot\'s encode, and says it is in', async () => {
+      const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, COVER)
+
+      const calls = vi.mocked(burnModule.burnShotSubtitles).mock.calls
+      expect(calls[0][0]).toBe(clips[0].blob)
+      expect(calls[0][7]).toEqual({ frame: expect.objectContaining({ width: 0, height: 0 }), count: 2 })
+      expect(calls[1][7]).toBeUndefined()
+      expect(out.cover).toBe(true)
+    })
+
+    it('burns even with nothing translated, for the cover', async () => {
+      const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, [], 50, NO_HOOK, undefined, undefined, undefined, COVER)
+      expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1)
+      expect(trimAndNormalizeShot).toHaveBeenCalledTimes(1)
+      expect(out.cover).toBe(true)
+    })
+
+    it('keeps the first shot without it too, for the YouTube version', async () => {
+      const cache = new ShotEncodeCache()
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK)
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, COVER)
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK)
+      // Both shots once without, the first once more with: nothing evicted.
+      expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(3)
+    })
+
+    it('encodes the first shot again for another cover or frame count', async () => {
+      const cache = new ShotEncodeCache()
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, COVER)
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, { ...COVER, count: 3 })
+      await burnSubtitlesByShot(cache, clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, { ...COVER, image: new Blob(['other']) })
+      expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(4)
+    })
+
+    it('says it is not in when the whole video had to be burned', async () => {
+      vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('different parameters'))
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, COVER)
+      expect(out).toEqual({ blob: expect.any(Blob), cover: false })
+      expect(burnModule.burnSubtitles).toHaveBeenCalled()
+    })
   })
 
   it('burns the whole video, keeping WebCodecs on, when the burned shots can\'t be packet-joined', async () => {
@@ -420,7 +470,7 @@ describe('mid-video zoom', () => {
   it('burns even with nothing translated, and gives the whole-video fallback the full plan', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(false)
     const burned = await burnSubtitlesByShot(new ShotEncodeCache(), CLIPS, JOINED, CUES, 50, ZOOM_HOOK)
-    expect(burned).not.toBe(JOINED)
+    expect(burned.blob).not.toBe(JOINED)
     const look = vi.mocked(burnModule.burnSubtitles).mock.calls[0][2]
     expect(look.midZoom).toEqual([
       { start: 2, end: 5, kind: 'drift' },

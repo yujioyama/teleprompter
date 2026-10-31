@@ -1,5 +1,6 @@
 import {
   ALL_FORMATS,
+  type AudioSample,
   BlobSource,
   BufferTarget,
   Conversion,
@@ -18,6 +19,7 @@ import {
 } from './support'
 import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
+import { coverLeadSeconds, withCoverFrames, withCoverSilence, type CoverLead } from './coverLead'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
 /**
@@ -44,7 +46,9 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  * `signal` cancels the conversion (中断する, issue #34).
  *
  * `options.punchIn` zooms the first shot's picture in during the same encode,
- * and `options.midZoom` a peak's or the punchline's.
+ * and `options.midZoom` a peak's or the punchline's. `options.cover` puts the
+ * cover image in as frames before the shot's first, over silence, with the
+ * shot (overlays in its own timeline as before) following it.
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
@@ -53,12 +57,19 @@ export async function normalizeShotWebCodecs(
   onProgress?: (ratio: number) => void,
   overlays: SubtitleOverlay[] = [],
   signal?: AbortSignal,
-  options: OverlayOptions = {},
+  options: OverlayOptions & { cover?: CoverLead } = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
   const punchIn = options.punchIn ?? null
   const midZoom = options.midZoom ?? []
+  const cover = options.cover ?? null
+  // Feed the encoder early by its priming delay so the audio isn't
+  // pushed later than the video (see aacEncoderDelay).
+  const primeAudio = (sample: AudioSample) => {
+    sample.setTimestamp(sample.timestamp - audioDelay)
+    return sample
+  }
   const overlay = overlays.length > 0 || punchIn !== null || midZoom.length > 0
     ? await createOverlayProcess(overlays, { punchIn, midZoom })
     : null
@@ -82,7 +93,9 @@ export async function normalizeShotWebCodecs(
         quality: new Quality('high'),
         allowTransformationMetadata: false,
         forceTranscode: true,
-        ...(overlay && { process: overlay.process }),
+        ...(cover
+          ? { process: withCoverFrames(overlay?.process, cover) }
+          : overlay && { process: overlay.process }),
       },
       audio: {
         codec: 'aac',
@@ -90,12 +103,7 @@ export async function normalizeShotWebCodecs(
         numberOfChannels: OUTPUT_CHANNELS,
         quality: new Quality('high'),
         forceTranscode: true,
-        // Feed the encoder early by its priming delay so the audio isn't
-        // pushed later than the video (see aacEncoderDelay).
-        process: sample => {
-          sample.setTimestamp(sample.timestamp - audioDelay)
-          return sample
-        },
+        process: cover ? withCoverSilence(primeAudio, coverLeadSeconds(cover.count)) : primeAudio,
       },
       showWarnings: false,
     })

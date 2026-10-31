@@ -24,7 +24,7 @@ function swapOf(overrides: Partial<YoutubeBgmSwap> = {}): YoutubeBgmSwap {
   return {
     source: new Blob(['combined'], { type: 'video/mp4' }),
     video: new Blob(['burned'], { type: 'video/mp4' }),
-    key: { trackId: 'warmpiano-my-nightly-prayer', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: 4.2, soft: true } },
+    key: { trackId: 'warmpiano-my-nightly-prayer', volume: 0.3, normalize: true, voice: 'natural', ending: { stopAt: 4.2, soft: true }, lead: 0 },
     track: TRACK,
     ...overrides,
   }
@@ -50,7 +50,7 @@ describe('mixYoutubeVersion', () => {
     const [source, track, ...rest] = vi.mocked(prepareFinalAudio).mock.calls[0]
     expect(source).toBe(swap.source)
     expect(track).toBe(TRACK_BLOB)
-    expect(rest).toEqual([0.3, true, 'natural', { stopAt: 4.2, soft: true }])
+    expect(rest).toEqual([0.3, true, 'natural', { stopAt: 4.2, soft: true }, 0])
     expect(vi.mocked(joinVideoAndAudio).mock.calls[0][0]).toBe(swap.video)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(JOINED)
     expect(vi.mocked(finishAudio).mock.calls[0]).toEqual([JOINED, { voice: 'none', normalize: true }])
