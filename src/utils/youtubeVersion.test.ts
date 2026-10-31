@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mixYoutubeVersion, type YoutubeBgmSwap } from './youtubeVersion'
+import { PreparedAudio } from './preparedAudio'
 import { MUSIC_TRACKS } from '../data/musicTracks'
 import { fetchTrack } from './fetchTrack'
 import { mixMusic } from './mixMusic'
@@ -55,6 +56,32 @@ describe('mixYoutubeVersion', () => {
     expect(markLoudnessNormalized).toHaveBeenCalledWith(JOINED)
     expect(vi.mocked(finishAudio).mock.calls[0]).toEqual([JOINED, { voice: 'none', normalize: true }])
     expect(mixMusic).not.toHaveBeenCalled()
+  })
+
+  it('joins on audio built ahead for this swap, without building it again', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    const ahead = new PreparedAudio()
+    const swap = swapOf({ ahead })
+    const aheadAudio = new Blob(['built ahead'], { type: 'audio/mp4' })
+    vi.mocked(prepareFinalAudio).mockResolvedValueOnce(aheadAudio)
+    ahead.prepare(swap.source, { ...swap.key, trackId: TRACK.id }, async () => TRACK_BLOB)
+    await ahead.settled()
+
+    expect(await mixYoutubeVersion(swap)).toBe(FINISHED)
+    expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
+    expect(joinVideoAndAudio).toHaveBeenCalledWith(swap.video, aheadAudio)
+  })
+
+  it('builds the audio itself when what was built ahead is for another choice', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    const ahead = new PreparedAudio()
+    const swap = swapOf({ ahead })
+    ahead.prepare(swap.source, { ...swap.key, trackId: TRACK.id, volume: 0.6 }, async () => TRACK_BLOB)
+    await ahead.settled()
+
+    await mixYoutubeVersion(swap)
+    expect(prepareFinalAudio).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(prepareFinalAudio).mock.calls[1][2]).toBe(0.3)
   })
 
   it('mixes into the burned video with the same volume, voice and ending without WebCodecs', async () => {
