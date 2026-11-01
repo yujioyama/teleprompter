@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildVideoRecord, type BurnInputs } from './videoRecord'
 import type { HookOptions } from './subtitleHook'
 import type { Script } from '../types'
+import { parseVideoRecord } from '../../shared/videoRecord'
 
 const SCRIPT: Script = {
   id: 'script-1',
@@ -53,6 +54,13 @@ function build(changes: Partial<Parameters<typeof buildVideoRecord>[0]> = {}) {
 }
 
 describe('buildVideoRecord', () => {
+  it('records a Type A/B script’s type and opening look, for the weekly A/B comparison', () => {
+    const opening = { kind: 'colorPop' as const, at: 0.8 }
+    const record = build({ script: { ...SCRIPT, videoType: 'B' }, burn: { ...BURN, hook: { ...HOOK, punchIn: null, opening } } })
+    expect(record.effects).toMatchObject({ videoType: 'B', opening, zoom: null })
+    expect(parseVideoRecord(record)).toEqual(record)
+  })
+
   it('records how a burned, mixed video was made', () => {
     expect(build()).toEqual({
       scriptId: 'script-1',
@@ -73,6 +81,7 @@ describe('buildVideoRecord', () => {
         trim: TRIM,
         midZoom: true,
         oneTake: false,
+        opening: null,
       },
     })
   })

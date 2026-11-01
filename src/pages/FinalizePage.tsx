@@ -30,7 +30,7 @@ import { useCoverFrames, type CoverChange } from '../hooks/useCoverFrames'
 import { useYoutubeExport } from '../hooks/useYoutubeExport'
 import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
-import { hookOptionsOf, oneTakeHookSettings, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, oneTakeHookSettings, withVideoType, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
@@ -540,9 +540,11 @@ export default function FinalizePage() {
   )
   const oneTake = Boolean(script?.oneTake)
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
+  // A Type A/B script gets its type's opening look instead of the zoom.
+  const videoType = script?.videoType
   const hook = useMemo(
-    () => hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
-    [hookSettings, oneTake],
+    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, subtitleCues),
+    [hookSettings, oneTake, videoType, subtitleCues],
   )
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
@@ -1053,6 +1055,7 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
+                videoType={videoType}
                 burn={async (cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null

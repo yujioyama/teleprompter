@@ -6,6 +6,8 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
+import { openingKindFor, openingLookFor, type OpeningLook } from './openingLook'
+import type { VideoType } from '../types'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -52,6 +54,8 @@ export interface HookOptions {
   fairies?: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム, default: on). */
   midZoom?: boolean
+  /** Type A/B's opening look (black bars, color pop); null/absent = none. */
+  opening?: OpeningLook | null
 }
 
 export type HookSettings = Pick<
@@ -96,6 +100,15 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     fairies: settings.fairyEnabled ?? true,
     midZoom: settings.midZoomEnabled ?? true,
   }
+}
+
+/**
+ * A Type A/B script gets its type's opening look instead of the zoom, timed
+ * from `cues` (as edited); any other script keeps the hook as set.
+ */
+export function withVideoType(hook: HookOptions, type: VideoType | null | undefined, cues: SubtitleCue[]): HookOptions {
+  const kind = openingKindFor(type)
+  return kind ? { ...hook, punchIn: null, opening: openingLookFor(kind, cues) } : hook
 }
 
 // A cue starting where the second shot does is not in the first one.
@@ -192,7 +205,7 @@ export function followsFrames(
   midZoom: MidZoomSegment[] = [],
 ): boolean {
   const stickerAnimates = hook.sticker !== 'off'
-  const inFirstShot = (hook.punchIn !== null || stickerAnimates) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+  const inFirstShot = (hook.punchIn !== null || stickerAnimates || Boolean(hook.opening)) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
   // A drift moves all through its shot; a punch only changes at its cut.
   const zooming = midZoom.some(s =>
     s.kind === 'drift'
@@ -213,7 +226,12 @@ export function punchInPlan(hook: HookOptions, firstShotDuration: number | null)
   return hook.punchIn && firstShotDuration !== null ? { punchIn: hook.punchIn, until: firstShotDuration } : null
 }
 
+/** Only a video starting with the first shot gets the opening look. */
+export function openingPlan(hook: HookOptions, firstShotDuration: number | null): OpeningLook | null {
+  return hook.opening && firstShotDuration !== null ? hook.opening : null
+}
+
 /** Whether a video starting with the first shot needs an encode even without subtitles. */
 export function hasFirstShotExtras(hook: HookOptions, firstShotDuration: number | null): boolean {
-  return punchInPlan(hook, firstShotDuration) !== null
+  return punchInPlan(hook, firstShotDuration) !== null || openingPlan(hook, firstShotDuration) !== null
 }

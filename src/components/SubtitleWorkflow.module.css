@@ -143,3 +143,12 @@
 .positionBtn:disabled {
   opacity: 0.4;
 }
+
+/* Type A's cinema bars in the preview, as burned in (over the picture, under the subtitles). */
+.letterbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #000;
+  pointer-events: none;
+}

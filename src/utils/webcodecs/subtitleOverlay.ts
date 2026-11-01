@@ -4,7 +4,8 @@ import { midZoomScale, type MidZoomSegment } from '../midZoom'
 import { STICKER_SHADOW } from '../subtitleSticker'
 import type { StickerPath } from '../stickerMotion'
 import { drawSparkles, type Sparkle } from '../sparkles'
-import { drawZoomed } from './pictureEffects'
+import { drawOpening, drawZoomed } from './pictureEffects'
+import { openingActive, type OpeningLook } from '../openingLook'
 
 export interface SubtitleOverlay {
   start: number
@@ -47,6 +48,8 @@ export interface OverlayOptions {
   punchIn?: PunchInPlan | null
   /** The peaks' and the punchline's zoom, in this video's own timeline. */
   midZoom?: MidZoomSegment[]
+  /** Type A/B's opening look (black bars, color pop); null = none. */
+  opening?: OpeningLook | null
 }
 
 export interface OverlayProcess {
@@ -68,7 +71,7 @@ export interface OverlayProcess {
  */
 export async function createOverlayProcess(
   overlays: SubtitleOverlay[],
-  { punchIn = null, midZoom = [] }: OverlayOptions = {},
+  { punchIn = null, midZoom = [], opening = null }: OverlayOptions = {},
 ): Promise<OverlayProcess> {
   const bitmaps = await Promise.all(overlays.map(o => createImageBitmap(o.image)))
   const shadows = await Promise.all(overlays.map(o => (o.sprite ? createImageBitmap(o.sprite.shadow) : null)))
@@ -83,7 +86,8 @@ export async function createOverlayProcess(
       const t = sample.timestamp + sample.duration / 2
       const active = cues.filter(c => t >= c.start && t < c.end)
       const scale = punchIn && t < punchIn.until ? punchInScale(t, punchIn.punchIn, punchIn.until) : midZoomScale(t, midZoom)
-      if (active.length === 0 && scale === 1) return sample
+      const opens = openingActive(t, opening)
+      if (active.length === 0 && scale === 1 && !opens) return sample
       const width = sample.displayWidth
       const height = sample.displayHeight
       if (!canvas || canvas.width !== width || canvas.height !== height) {
@@ -94,6 +98,7 @@ export async function createOverlayProcess(
         ctx.imageSmoothingQuality = 'high'
       }
       drawZoomed(ctx!, sample, scale, width, height)
+      if (opens) drawOpening(ctx!, t, opening, width, height)
       for (const cue of active) {
         if (cue.sprite && cue.shadow) {
           const pose = cue.sprite.path(t)

@@ -6,7 +6,7 @@ import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
 import { lineJapaneseOf } from '../utils/subtitleCues'
-import { Shot } from '../types'
+import { Shot, type VideoType } from '../types'
 import styles from './ScriptEditPage.module.css'
 
 const DRAFT_KEY = 'teleprompter_new_script_draft'
@@ -67,6 +67,10 @@ export default function ScriptEditPage() {
   )
   // 一発撮り is the usual way to film now (2026-10-21), so new scripts start with it.
   const [oneTake, setOneTake] = useState<boolean>(() => existingScript ? Boolean(existingScript.oneTake) : true)
+  // Type A/B picks the opening look on its own (2026-11-02); Claude sends it with the script.
+  const [videoType, setVideoType] = useState<VideoType | null>(
+    () => (existingScript ? existingScript.videoType : inboxItem?.videoType) ?? null,
+  )
 
   // Grow the textarea to fit its content so a long pasted script is visible
   // in full, instead of hiding most of it in a small scroll box nested
@@ -120,14 +124,14 @@ export default function ScriptEditPage() {
 
     if (existingScript) {
       const shots = reconcileShots(existingScript.shots, preview, generateId)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake })
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese)
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined)
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
@@ -190,6 +194,27 @@ export default function ScriptEditPage() {
           />
           一発撮り（最初から最後まで1回で撮る。字幕は1行ずつ自動で切り替え）
         </label>
+
+        <div className={styles.splitOptions} role="group" aria-label="動画の型">
+          <span className={styles.splitOptionsLabel}>動画の型（冒頭の演出が自動で決まります）</span>
+          <div className={styles.splitOptionsList}>
+            {([
+              [null, 'なし（設定のズーム）'],
+              ['A', 'A: 2021年型（黒帯が開く）'],
+              ['B', 'B: 表現ノート型（色づく）'],
+            ] as const).map(([value, label]) => (
+              <label key={label} className={styles.splitOptionItem}>
+                <input
+                  type="radio"
+                  name="videoType"
+                  checked={videoType === value}
+                  onChange={() => setVideoType(value)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
 
         {!oneTake && (
         <div className={styles.splitOptions}>

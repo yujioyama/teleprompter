@@ -7,7 +7,7 @@ import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
-import type { LineJapanese } from '../types'
+import type { LineJapanese, VideoType } from '../types'
 import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
 
 vi.mock('../utils/burnSubtitles')
@@ -53,6 +53,7 @@ function ControlledSubtitleWorkflow({
   initialHookSettings,
   scriptJapanese,
   oneTake,
+  videoType,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -63,6 +64,7 @@ function ControlledSubtitleWorkflow({
   initialHookSettings?: Partial<HookSettings>
   scriptJapanese?: LineJapanese[]
   oneTake?: boolean
+  videoType?: VideoType
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -89,6 +91,7 @@ function ControlledSubtitleWorkflow({
       inboxKey={inboxKey}
       scriptJapanese={scriptJapanese}
       oneTake={oneTake}
+      videoType={videoType}
     />
   )
 }
@@ -519,7 +522,7 @@ describe('SubtitleWorkflow hook controls', () => {
 })
 
 describe('SubtitleWorkflow punch-in', () => {
-  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>) {
+  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>, videoType?: VideoType) {
     seedBurnMock()
     render(
       <ControlledSubtitleWorkflow
@@ -528,6 +531,7 @@ describe('SubtitleWorkflow punch-in', () => {
         onBurned={vi.fn()}
         onHookSettingsChange={onHookSettingsChange}
         initialHookSettings={initialHookSettings}
+        videoType={videoType}
       />,
     )
     await screen.findByDisplayValue('Hello')
@@ -554,6 +558,38 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.click(screen.getByLabelText('ズーム'))
     expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
     expect(video.style.transform).toBe('')
+  })
+
+  it('gives a Type A script black bars instead of the zoom, only while playing', async () => {
+    await renderTranslated(vi.fn(), undefined, 'A')
+    expect(screen.queryByLabelText('ズーム')).toBeNull()
+    expect(screen.getByText(/Type A: 冒頭は映画のような黒帯が開きます/)).toBeInTheDocument()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.timeUpdate(video)
+    expect(screen.queryByTestId('letterbox-top')).toBeNull()
+
+    fireEvent.play(video)
+    expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
+    expect(screen.getByTestId('letterbox-bottom').style.height).toBe('11%')
+    expect(video.style.transform).toBe('')
+
+    setTime(video, 1.2)
+    fireEvent.timeUpdate(video)
+    expect(screen.queryByTestId('letterbox-top')).toBeNull()
+  })
+
+  it('drains a Type B script’s color until the keyword while playing', async () => {
+    await renderTranslated(vi.fn(), undefined, 'B')
+    expect(screen.getByText(/Type B: 冒頭は少し色の抜けた画面が/)).toBeInTheDocument()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.play(video)
+    fireEvent.timeUpdate(video)
+    expect(video.style.filter).toBe('saturate(0.300)')
+    setTime(video, 1.9)
+    fireEvent.timeUpdate(video)
+    expect(video.style.filter).toBe('')
   })
 
   it('shows the preview at 1x when paused, even inside the zoom, so the controls stay reachable', async () => {

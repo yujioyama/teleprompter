@@ -46,7 +46,8 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  * `signal` cancels the conversion (中断する, issue #34).
  *
  * `options.punchIn` zooms the first shot's picture in during the same encode,
- * and `options.midZoom` a peak's or the punchline's. `options.cover` puts the
+ * and `options.midZoom` a peak's or the punchline's; `options.opening` gives
+ * it Type A/B's opening look. `options.cover` puts the
  * cover image in as frames before the shot's first, over silence, with the
  * shot (overlays in its own timeline as before) following it.
  */
@@ -63,6 +64,7 @@ export async function normalizeShotWebCodecs(
   const audioDelay = await aacEncoderDelay()
   const punchIn = options.punchIn ?? null
   const midZoom = options.midZoom ?? []
+  const opening = options.opening ?? null
   const cover = options.cover ?? null
   // Feed the encoder early by its priming delay so the audio isn't
   // pushed later than the video (see aacEncoderDelay).
@@ -70,8 +72,8 @@ export async function normalizeShotWebCodecs(
     sample.setTimestamp(sample.timestamp - audioDelay)
     return sample
   }
-  const overlay = overlays.length > 0 || punchIn !== null || midZoom.length > 0
-    ? await createOverlayProcess(overlays, { punchIn, midZoom })
+  const overlay = overlays.length > 0 || punchIn !== null || midZoom.length > 0 || opening !== null
+    ? await createOverlayProcess(overlays, { punchIn, midZoom, opening })
     : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {

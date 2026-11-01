@@ -1,3 +1,7 @@
+import type { VideoType } from '../shared/inbox'
+
+export type { VideoType }
+
 export interface Shot {
   id: string
   text: string
@@ -31,6 +35,11 @@ export interface Script {
    * on the line whose English is still `en`.
    */
   japanese?: LineJapanese[]
+  /**
+   * Type A (short daily thing) or B (expression-note story). Picks the
+   * opening look on its own; absent = the settings' zoom as before.
+   */
+  videoType?: VideoType
   createdAt: string
   updatedAt: string
 }

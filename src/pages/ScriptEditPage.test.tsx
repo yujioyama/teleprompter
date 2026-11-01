@@ -94,6 +94,25 @@ describe('ScriptEditPage from the Claude inbox', () => {
     ])
   })
 
+  it('keeps the type Claude sent, and lets it be changed or cleared', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'B' } } })
+    expect(screen.getByLabelText('B: 表現ノート型（色づく）')).toBeChecked()
+    fireEvent.click(screen.getByLabelText('A: 2021年型（黒帯が開く）'))
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].videoType).toBe('A')
+  })
+
+  it('stores no type when none was picked', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    expect(screen.getByLabelText('なし（設定のズーム）')).toBeChecked()
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).not.toHaveProperty('videoType')
+  })
+
   it('stores no Japanese when none was sent', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     fireEvent.click(screen.getByText('行に分ける'))

@@ -87,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'japanese'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese'])
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
   })
@@ -177,6 +177,28 @@ describe('handleMcpRequest', () => {
     const { result } = await res.json()
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('受け取り箱に保存できませんでした')
+  })
+
+  describe('type', () => {
+    it('keeps Type A/B with the script and says so', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A' }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・Type A）。teleprompterのホーム画面に届いています。')
+      expect((await store.list())[0].videoType).toBe('A')
+    })
+
+    it('stores no type when none was sent', async () => {
+      await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.' }), deps)
+      expect(await store.list()).toEqual([expect.not.objectContaining({ videoType: expect.anything() })])
+    })
+
+    it('refuses a type other than A or B', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'C' }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(await store.list()).toEqual([])
+    })
   })
 
   describe('japanese', () => {

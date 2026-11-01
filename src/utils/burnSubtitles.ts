@@ -12,6 +12,7 @@ import type { SubtitleOverlay } from './webcodecs/subtitleOverlay'
 import type { CoverLead } from './webcodecs/coverLead'
 import {
   hasFirstShotExtras,
+  openingPlan,
   punchInEnd,
   punchInPlan,
   styleCues,
@@ -26,6 +27,7 @@ import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
+import { openingFilterStages, type OpeningLook } from './openingLook'
 import {
   EN_STYLE,
   JA_STYLE,
@@ -49,11 +51,24 @@ import {
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
  * through the filter string itself. `baseFilter` (the zoom in) is applied
- * to the video first, under the overlays.
+ * to the video first, then `opening` (Type A/B's look), both under the overlays.
  */
-export function buildOverlayFilterGraph(ys: number[], baseFilter?: string): { filterGraph: string; outputLabel: string } {
-  const base = baseFilter ? '[base]' : '[0:v]'
-  const prelude = baseFilter ? [`[0:v]${baseFilter}[base]`] : []
+export function buildOverlayFilterGraph(
+  ys: number[],
+  baseFilter?: string,
+  opening?: OpeningLook | null,
+): { filterGraph: string; outputLabel: string } {
+  const prelude: string[] = []
+  let base = '[0:v]'
+  if (baseFilter) {
+    prelude.push(`${base}${baseFilter}[base]`)
+    base = '[base]'
+  }
+  if (opening) {
+    // Over the zoomed picture, under the subtitles, as on the hardware path.
+    prelude.push(...openingFilterStages(opening, base, '[opened]', OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    base = '[opened]'
+  }
   if (ys.length === 0) {
     return { filterGraph: prelude.join(';'), outputLabel: base }
   }
@@ -351,11 +366,12 @@ export async function burnSubtitles(
     return videoBlob
   }
   const plan = punchInPlan(look.hook, look.firstShotDuration)
+  const opening = openingPlan(look.hook, look.firstShotDuration)
 
   if (await canUseWebCodecs()) {
     const overlays = await renderSubtitleOverlays(translated, look)
     try {
-      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan, midZoom })
+      return await burnSubtitlesWebCodecs(videoBlob, overlays, onProgress, signal, { punchIn: plan, midZoom, opening })
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -366,7 +382,7 @@ export async function burnSubtitles(
   // ffmpeg can't move the sticker: it stays put at its spot. Nor does it
   // get the mid-video zoom, as it gets no fairies.
   const overlays = await renderSubtitleOverlays(translated, look, { still: true })
-  return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal)
+  return burnSubtitlesFFmpeg(videoBlob, overlays, plan, onProgress, signal, opening)
 }
 
 /**
@@ -393,6 +409,7 @@ export async function burnShotSubtitles(
   return normalizeShotWebCodecs(blob, start, end, onProgress, overlays, signal, {
     punchIn: punchInPlan(look.hook, look.firstShotDuration),
     midZoom: look.midZoom ?? [],
+    opening: openingPlan(look.hook, look.firstShotDuration),
     cover,
   })
 }
@@ -438,6 +455,7 @@ async function burnSubtitlesFFmpeg(
   plan: PunchInPlan | null,
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  opening: OpeningLook | null = null,
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const duration = onProgress ? await containerDuration(videoBlob) : 0
@@ -469,6 +487,7 @@ async function burnSubtitlesFFmpeg(
     const { filterGraph, outputLabel } = buildOverlayFilterGraph(
       overlays.map(o => o.y),
       plan !== null ? punchInFilter(plan) : undefined,
+      opening,
     )
 
     // buildOverlayFilterGraph's chain references each overlay's image input by an

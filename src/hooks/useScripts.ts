@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineJapanese, Script, Shot } from '../types'
+import { LineJapanese, Script, Shot, type VideoType } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
 import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
 
@@ -31,6 +31,7 @@ export function useScripts() {
     caption?: string,
     oneTake?: boolean,
     japanese?: LineJapanese[],
+    videoType?: VideoType,
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -40,6 +41,7 @@ export function useScripts() {
       ...(caption ? { caption } : {}),
       ...(oneTake ? { oneTake } : {}),
       ...(japanese?.length ? { japanese } : {}),
+      ...(videoType ? { videoType } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -52,13 +54,14 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
       // A cleared caption is stored as no caption, as createScript does.
       if (!next.caption) delete next.caption
       if (!next.oneTake) delete next.oneTake
+      if (!next.videoType) delete next.videoType
       return next
     })
     saveToStorage(updated)

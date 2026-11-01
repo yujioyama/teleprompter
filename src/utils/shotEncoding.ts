@@ -98,7 +98,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     fairies.map(f => f.key),
     midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
   ])
-  const firstShot = JSON.stringify(extras ? look.hook.punchIn : null)
+  const firstShot = JSON.stringify(extras ? (look.hook.opening ? [look.hook.punchIn, look.hook.opening] : look.hook.punchIn) : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   if (!cover) {
     return {

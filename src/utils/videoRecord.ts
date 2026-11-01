@@ -70,6 +70,8 @@ export function buildVideoRecord(input: {
       trim: input.trim,
       midZoom: burn ? planMidZoom(burn.cues, burn.durations, burn.hook).length > 0 : false,
       oneTake: Boolean(script.oneTake),
+      ...(script.videoType ? { videoType: script.videoType } : {}),
+      opening: burn?.hook.opening ? { kind: burn.hook.opening.kind, at: burn.hook.opening.at } : null,
     },
   }
 }

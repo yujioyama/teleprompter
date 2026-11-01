@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type CSSProperties } from 'react'
 import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart, setCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
@@ -12,6 +12,8 @@ import {
 import {
   hookOptionsOf,
   oneTakeHookSettings,
+  openingPlan,
+  withVideoType,
   PUNCH_IN_ZOOMS,
   punchInScale,
   followsFrames,
@@ -32,7 +34,8 @@ import CancelProcessing from './CancelProcessing'
 import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
-import type { LineJapanese } from '../types'
+import type { LineJapanese, VideoType } from '../types'
+import { colorPopSaturation, letterboxHeight } from '../utils/openingLook'
 import styles from './SubtitleWorkflow.module.css'
 
 // No 'error' stage: a failed generate/transcribe/burn reverts to the stage
@@ -106,6 +109,8 @@ interface SubtitleWorkflowProps {
   oneTake?: boolean
   /** The Japanese Claude sent with the script, put on the script's cues as they are made. */
   scriptJapanese?: LineJapanese[]
+  /** Type A/B: the opening look replaces the zoom (see withVideoType). */
+  videoType?: VideoType
 }
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
@@ -154,6 +159,7 @@ export default function SubtitleWorkflow({
   inboxKey = '',
   oneTake = false,
   scriptJapanese = [],
+  videoType,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
@@ -185,8 +191,8 @@ export default function SubtitleWorkflow({
   const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(
-    () => hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
-    [hookSettings, oneTake],
+    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, cues),
+    [hookSettings, oneTake, videoType, cues],
   )
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
@@ -422,6 +428,14 @@ export default function SubtitleWorkflow({
     : hook.punchIn && firstShotDuration !== null && previewTime < firstShotDuration
       ? punchInScale(previewTime, hook.punchIn, firstShotDuration)
       : midZoomScale(previewTime, midZoom)
+  // The opening look, also only while playing: the bars would cover the controls.
+  const opening = previewPlaying ? openingPlan(hook, firstShotDuration) : null
+  const previewSaturation = opening ? colorPopSaturation(previewTime, opening) : 1
+  const previewBar = opening ? letterboxHeight(previewTime, opening) : 0
+  const previewVideoStyle: CSSProperties = {
+    ...(previewZoom !== 1 ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` } : {}),
+    ...(previewSaturation < 1 ? { filter: `saturate(${previewSaturation.toFixed(3)})` } : {}),
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -530,15 +544,19 @@ export default function SubtitleWorkflow({
                   src={previewUrl ?? undefined}
                   controls={stage !== 'burning'}
                   playsInline
-                  style={previewZoom !== 1
-                    ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` }
-                    : undefined}
+                  style={Object.keys(previewVideoStyle).length > 0 ? previewVideoStyle : undefined}
                   onTimeUpdate={e => setPreviewTime(e.currentTarget.currentTime)}
                   onPlay={() => setPreviewPlaying(true)}
                   onPlaying={() => setPreviewPlaying(true)}
                   onPause={() => setPreviewPlaying(false)}
                   onEnded={() => setPreviewPlaying(false)}
                 />
+                {previewBar > 0 && (
+                  <>
+                    <div className={styles.letterbox} data-testid="letterbox-top" style={{ top: 0, height: `${(previewBar * 100).toFixed(2)}%` }} />
+                    <div className={styles.letterbox} data-testid="letterbox-bottom" style={{ bottom: 0, height: `${(previewBar * 100).toFixed(2)}%` }} />
+                  </>
+                )}
                 <SubtitleOverlayPreview
                   cues={cues}
                   position={position}
@@ -586,70 +604,80 @@ export default function SubtitleWorkflow({
                   </button>
                 ))}
               </div>
-              <label className={styles.toggleRow}>
-                <input
-                  type="checkbox"
-                  checked={hookSettings.punchInEnabled}
-                  onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
-                />
-                ズーム
-              </label>
-              <p className={styles.hint}>
-                {hookSettings.punchInDirection === 'out'
-                  ? '1フレーム目から寄った状態で始まり、引いて元の大きさに戻ります。「ゆっくり」は最初のショットの終わりまでかけて戻ります（字幕は拡大しません）'
-                  : '最初のショットの途中から寄っていき、2つ目のショットで元に戻ります。「ゆっくり」は最初のショットの終わりまでかけて寄ります（字幕は拡大しません）'}
-              </p>
-              {hookSettings.punchInEnabled && (
+              {videoType ? (
+                <p className={styles.hint}>
+                  {videoType === 'A'
+                    ? 'Type A: 冒頭は映画のような黒帯が開きます（ズームは使いません）'
+                    : 'Type B: 冒頭は少し色の抜けた画面が、1行目の黄色い語句を言う瞬間に色づきます（ズームは使いません）'}
+                </p>
+              ) : (
                 <>
-                  <div className={styles.positionRow} role="group" aria-label="ズームの向き">
-                    {ZOOM_DIRECTIONS.map(d => (
-                      <button
-                        key={d.value}
-                        className={`${styles.positionBtn} ${hookSettings.punchInDirection === d.value ? styles.positionBtnActive : ''}`}
-                        aria-pressed={hookSettings.punchInDirection === d.value}
-                        onClick={() => onHookSettingsChange({ punchInDirection: d.value })}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className={styles.positionRow} role="group" aria-label="ズーム倍率">
-                    {PUNCH_IN_ZOOMS.map(z => (
-                      <button
-                        key={z}
-                        className={`${styles.positionBtn} ${hookSettings.punchInZoom === z ? styles.positionBtnActive : ''}`}
-                        aria-pressed={hookSettings.punchInZoom === z}
-                        onClick={() => onHookSettingsChange({ punchInZoom: z })}
-                      >
-                        {z}倍
-                      </button>
-                    ))}
-                  </div>
-                  <div className={styles.positionRow} role="group" aria-label="ズームの速さ">
-                    {ZOOM_SPEEDS.map(s => (
-                      <button
-                        key={s.label}
-                        className={`${styles.positionBtn} ${hookSettings.punchInDuration === s.value ? styles.positionBtnActive : ''}`}
-                        aria-pressed={hookSettings.punchInDuration === s.value}
-                        onClick={() => onHookSettingsChange({ punchInDuration: s.value })}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className={styles.fineTuneRow}>
-                    <label htmlFor="punch-in-at-slider">動き始めるタイミング {hookSettings.punchInAt.toFixed(1)}秒</label>
-                    <input
-                      id="punch-in-at-slider"
-                      aria-label="動き始めるタイミング"
-                      type="range"
-                      min={0}
-                      max={1.5}
-                      step={0.1}
-                      value={hookSettings.punchInAt}
-                      onChange={e => onHookSettingsChange({ punchInAt: Number(e.target.value) })}
-                    />
-                  </div>
+                <label className={styles.toggleRow}>
+                  <input
+                    type="checkbox"
+                    checked={hookSettings.punchInEnabled}
+                    onChange={e => onHookSettingsChange({ punchInEnabled: e.target.checked })}
+                  />
+                  ズーム
+                </label>
+                <p className={styles.hint}>
+                  {hookSettings.punchInDirection === 'out'
+                    ? '1フレーム目から寄った状態で始まり、引いて元の大きさに戻ります。「ゆっくり」は最初のショットの終わりまでかけて戻ります（字幕は拡大しません）'
+                    : '最初のショットの途中から寄っていき、2つ目のショットで元に戻ります。「ゆっくり」は最初のショットの終わりまでかけて寄ります（字幕は拡大しません）'}
+                </p>
+                {hookSettings.punchInEnabled && (
+                  <>
+                    <div className={styles.positionRow} role="group" aria-label="ズームの向き">
+                      {ZOOM_DIRECTIONS.map(d => (
+                        <button
+                          key={d.value}
+                          className={`${styles.positionBtn} ${hookSettings.punchInDirection === d.value ? styles.positionBtnActive : ''}`}
+                          aria-pressed={hookSettings.punchInDirection === d.value}
+                          onClick={() => onHookSettingsChange({ punchInDirection: d.value })}
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.positionRow} role="group" aria-label="ズーム倍率">
+                      {PUNCH_IN_ZOOMS.map(z => (
+                        <button
+                          key={z}
+                          className={`${styles.positionBtn} ${hookSettings.punchInZoom === z ? styles.positionBtnActive : ''}`}
+                          aria-pressed={hookSettings.punchInZoom === z}
+                          onClick={() => onHookSettingsChange({ punchInZoom: z })}
+                        >
+                          {z}倍
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.positionRow} role="group" aria-label="ズームの速さ">
+                      {ZOOM_SPEEDS.map(s => (
+                        <button
+                          key={s.label}
+                          className={`${styles.positionBtn} ${hookSettings.punchInDuration === s.value ? styles.positionBtnActive : ''}`}
+                          aria-pressed={hookSettings.punchInDuration === s.value}
+                          onClick={() => onHookSettingsChange({ punchInDuration: s.value })}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.fineTuneRow}>
+                      <label htmlFor="punch-in-at-slider">動き始めるタイミング {hookSettings.punchInAt.toFixed(1)}秒</label>
+                      <input
+                        id="punch-in-at-slider"
+                        aria-label="動き始めるタイミング"
+                        type="range"
+                        min={0}
+                        max={1.5}
+                        step={0.1}
+                        value={hookSettings.punchInAt}
+                        onChange={e => onHookSettingsChange({ punchInAt: Number(e.target.value) })}
+                      />
+                    </div>
+                  </>
+                )}
                 </>
               )}
               {!oneTake && (
