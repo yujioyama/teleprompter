@@ -96,8 +96,8 @@ describe('ScriptEditPage from the Claude inbox', () => {
 
   it('keeps the type Claude sent, and lets it be changed or cleared', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'B' } } })
-    expect(screen.getByLabelText('B: 表現ノート型（色づく）')).toBeChecked()
-    fireEvent.click(screen.getByLabelText('A: 2021年型（幕が開いて黒帯）'))
+    expect(screen.getByLabelText('B: 表現ノート型')).toBeChecked()
+    fireEvent.click(screen.getByLabelText('A: 2021年型'))
     fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()

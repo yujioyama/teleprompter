@@ -200,8 +200,8 @@ export default function ScriptEditPage() {
           <div className={styles.splitOptionsList}>
             {([
               [null, 'なし（設定のズーム）'],
-              ['A', 'A: 2021年型（幕が開いて黒帯）'],
-              ['B', 'B: 表現ノート型（色づく）'],
+              ['A', 'A: 2021年型'],
+              ['B', 'B: 表現ノート型'],
             ] as const).map(([value, label]) => (
               <label key={label} className={styles.splitOptionItem}>
                 <input
