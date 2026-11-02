@@ -5,9 +5,11 @@ import { stripStickers } from './subtitleSticker'
 /**
  * The opening look a Type A/B script gets on its own (2026-11-02), in place
  * of the first shot's zoom:
- * - 'letterbox' (Type A): cinema bars over the top and bottom that hold
- *   through line 1 and slide away as it ends, so a small daily thing opens
- *   like a film.
+ * - 'letterbox' (Type A): the picture starts all black and opens like a
+ *   curtain, top and bottom, to thick cinema bars that hold through line 1
+ *   and slide away as it ends, so a small daily thing opens like a film.
+ *   The all-black is kept short (2026-11-02): a feed viewer scrolls past a
+ *   first second with nothing on it, and the hook's text shows over it.
  * - 'colorPop' (Type B): the picture starts nearly gray and fills back in
  *   the moment line 1's *keyword* is said.
  * Both stay on for at least about a second (2026-11-02): a feed viewer
@@ -25,8 +27,12 @@ export interface OpeningLook {
 }
 
 export const LETTERBOX = {
-  /** Each bar's height, as a fraction of the frame's. */
-  height: 0.11,
+  /** Each bar's height once the curtain has opened, as a fraction of the frame's. */
+  height: 0.22,
+  /** Seconds the frame stays all black (each bar half of it)… */
+  coverHold: 0.1,
+  /** …and then takes to open to the bars. */
+  reveal: 0.35,
   /** The bars open as line 1 ends, but hold at least this many seconds… */
   minHold: 1.2,
   /** …and never longer than this. */
@@ -102,10 +108,17 @@ export function openingEnd(look: OpeningLook): number {
   return look.at + (look.kind === 'letterbox' ? LETTERBOX.duration : COLOR_POP.duration)
 }
 
-/** Each bar's height (fraction of the frame) at `t`; 0 once they've opened. */
+/**
+ * Each bar's height (fraction of the frame) at `t`: half the frame (all
+ * black) at first, the curtain opening to LETTERBOX.height, then sliding
+ * away from `at`; 0 once they've opened. The two moves are multiplied, so
+ * a look moved early (see openingPlan) still eases out of the curtain.
+ */
 export function letterboxHeight(t: number, look: OpeningLook): number {
   if (look.kind !== 'letterbox') return 0
-  return LETTERBOX.height * (1 - ease((t - look.at) / LETTERBOX.duration))
+  const { height, coverHold, reveal, duration } = LETTERBOX
+  const curtain = height + (0.5 - height) * (1 - ease((t - coverHold) / reveal))
+  return curtain * (1 - ease((t - look.at) / duration))
 }
 
 /** The picture's saturation at `t` (1 = untouched). */
@@ -123,7 +136,8 @@ export function openingActive(t: number, look: OpeningLook | null): look is Open
 /**
  * ffmpeg's version of the look, from `input` to `output` labels: the color
  * through `hue` (its saturation is a per-frame expression of t), the bars as
- * two black boxes slid off with `overlay` (drawbox can't move over time).
+ * two half-frame black boxes slid by `overlay` (drawbox can't move over
+ * time) so they show letterboxHeight of the frame each.
  * burnSubtitlesFFmpeg gives every overlay eof_action=pass, so the bars'
  * own end lets the picture through.
  * Returns filtergraph stages.
@@ -135,13 +149,15 @@ export function openingFilterStages(look: OpeningLook, input: string, output: st
     const p = `clip((t-${at})/${COLOR_POP.duration},0,1)`
     return [`${input}hue=s='${s}+${(1 - s).toFixed(2)}*${p}*${p}*(3-2*${p})'${output}`]
   }
-  const bar = Math.round(height * LETTERBOX.height)
-  const p = `clip((t-${at})/${LETTERBOX.duration},0,1)`
-  const shown = `(1-${p}*${p}*(3-2*${p}))`
-  const life = (look.at + LETTERBOX.duration + 0.2).toFixed(3)
+  const half = Math.ceil(height / 2)
+  const { height: bar, coverHold, reveal, duration } = LETTERBOX
+  const r = `clip((t-${coverHold})/${reveal},0,1)`
+  const p = `clip((t-${at})/${duration},0,1)`
+  const shown = `${height}*(${bar}+${(0.5 - bar).toFixed(2)}*(1-${r}*${r}*(3-2*${r})))*(1-${p}*${p}*(3-2*${p}))`
+  const life = (look.at + duration + 0.2).toFixed(3)
   return [
-    `color=c=black:s=${width}x${bar}:d=${life}[lbtop];color=c=black:s=${width}x${bar}:d=${life}[lbbot]`,
-    `${input}[lbtop]overlay=x=0:y='-${bar}+${bar}*${shown}':eval=frame[lbmid]`,
-    `[lbmid][lbbot]overlay=x=0:y='H-${bar}*${shown}':eval=frame${output}`,
+    `color=c=black:s=${width}x${half}:d=${life}[lbtop];color=c=black:s=${width}x${half}:d=${life}[lbbot]`,
+    `${input}[lbtop]overlay=x=0:y='-${half}+${shown}':eval=frame[lbmid]`,
+    `[lbmid][lbbot]overlay=x=0:y='H-(${shown})':eval=frame${output}`,
   ]
 }
