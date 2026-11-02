@@ -46,17 +46,22 @@ describe('keywordTime', () => {
 })
 
 describe('openingLookFor', () => {
-  it('opens the bars just after the start', () => {
-    expect(openingLookFor('letterbox', [])).toEqual({ kind: 'letterbox', at: LETTERBOX.hold })
+  it('opens the bars as line 1 ends, held long enough to be seen but not past the hook', () => {
+    expect(openingLookFor('letterbox', [cue('I eat toast every morning.', 0.2, 1.9)])).toEqual({ kind: 'letterbox', at: 1.9 })
+    expect(openingLookFor('letterbox', [cue('Hi.', 0, 0.5)]).at).toBe(LETTERBOX.minHold)
+    expect(openingLookFor('letterbox', [cue('A very long first line.', 0, 6)]).at).toBe(LETTERBOX.maxHold)
+    expect(openingLookFor('letterbox', []).at).toBe(LETTERBOX.minHold)
   })
 
-  it('pops the color at the keyword, or soon after the start without one', () => {
-    expect(openingLookFor('colorPop', [cue('*Reckon*. To my ears, that is Japanese.', 0.3)]).at).toBeCloseTo(0.3, 3)
-    expect(openingLookFor('colorPop', [cue('No keyword here.')]).at).toBe(COLOR_POP.fallbackAt)
+  it('pops the color at the keyword, or as line 1 ends without one', () => {
+    // "In Japan, we drink " is 19 of the 43 letters.
+    expect(openingLookFor('colorPop', [cue('In Japan, we drink *turmeric*🍛 before tequila.', 0.2, 3.2)]).at).toBeCloseTo(0.2 + (19 / 43) * 3, 3)
+    expect(openingLookFor('colorPop', [cue('No keyword here.', 0.2, 1.8)]).at).toBe(1.8)
   })
 
-  it('never waits past 3 seconds', () => {
-    expect(openingLookFor('colorPop', [cue('a b c d e f g h i j k l m n o p q *late*', 0, 10)]).at).toBe(3)
+  it('holds the gray at least a second, and never past 3 seconds', () => {
+    expect(openingLookFor('colorPop', [cue('*Reckon*. To my ears, that is Japanese.', 0.3)]).at).toBe(COLOR_POP.minAt)
+    expect(openingLookFor('colorPop', [cue('a b c d e f g h i j k l m n o p q *late*', 0, 10)]).at).toBe(COLOR_POP.maxAt)
   })
 })
 
@@ -89,7 +94,7 @@ describe('withVideoType', () => {
   it('swaps the zoom for the type’s look', () => {
     const typed = withVideoType(HOOK, 'A', [])
     expect(typed.punchIn).toBeNull()
-    expect(typed.opening).toEqual({ kind: 'letterbox', at: LETTERBOX.hold })
+    expect(typed.opening).toEqual({ kind: 'letterbox', at: LETTERBOX.minHold })
     expect(withVideoType(HOOK, 'B', [cue('*Hankering*')]).opening?.kind).toBe('colorPop')
   })
 
@@ -103,6 +108,15 @@ describe('withVideoType', () => {
     expect(openingPlan(typed, null)).toBeNull()
     expect(hasFirstShotExtras(typed, null)).toBe(false)
   })
+
+  it('moves the look earlier when it would outlast the first shot', () => {
+    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)])
+    expect(openingPlan(typed, 5)).toEqual({ kind: 'letterbox', at: 2.4 })
+    const plan = openingPlan(typed, 2.6)!
+    expect(plan.at).toBeCloseTo(2.6 - LETTERBOX.duration, 5)
+    expect(openingEnd(plan)).toBeCloseTo(2.6, 5)
+    expect(openingPlan(typed, 0.3)!.at).toBe(0)
+  })
 })
 
 describe('openingFilterStages', () => {
@@ -115,7 +129,7 @@ describe('openingFilterStages', () => {
 
   it('fades the saturation up from the keyword', () => {
     const [stage] = openingFilterStages({ kind: 'colorPop', at: 0.8 }, '[in]', '[out]', 1080, 1920)
-    expect(stage).toBe("[in]hue=s='0.3+0.70*clip((t-0.800)/0.4,0,1)*clip((t-0.800)/0.4,0,1)*(3-2*clip((t-0.800)/0.4,0,1))'[out]")
+    expect(stage).toBe("[in]hue=s='0.1+0.90*clip((t-0.800)/0.6,0,1)*clip((t-0.800)/0.6,0,1)*(3-2*clip((t-0.800)/0.6,0,1))'[out]")
   })
 })
 
@@ -138,7 +152,7 @@ describe('drawOpening', () => {
   it('blends gray in with "saturation" to drain the color', () => {
     const { ctx, calls } = fakeCtx()
     drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, { kind: 'colorPop', at: 1 }, 1080, 1920)
-    expect(calls).toContain('rect saturation 0.70 #808080 0,0,1080,1920')
+    expect(calls).toContain('rect saturation 0.90 #808080 0,0,1080,1920')
   })
 
   it('draws the bars at the top and bottom', () => {

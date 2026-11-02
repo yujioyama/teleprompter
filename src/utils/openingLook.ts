@@ -5,10 +5,14 @@ import { stripStickers } from './subtitleSticker'
 /**
  * The opening look a Type A/B script gets on its own (2026-11-02), in place
  * of the first shot's zoom:
- * - 'letterbox' (Type A): cinema bars over the top and bottom that slide
- *   away just after the first word, so a small daily thing opens like a film.
- * - 'colorPop' (Type B): the picture starts with most of its color drained
- *   and fills back in the moment line 1's *keyword* is said.
+ * - 'letterbox' (Type A): cinema bars over the top and bottom that hold
+ *   through line 1 and slide away as it ends, so a small daily thing opens
+ *   like a film.
+ * - 'colorPop' (Type B): the picture starts nearly gray and fills back in
+ *   the moment line 1's *keyword* is said.
+ * Both stay on for at least about a second (2026-11-02): a feed viewer
+ * needs that long to see the look at all, and it frames the hook line, the
+ * part that decides whether they keep watching.
  * Only the picture gets it; subtitles and the sticker keep their color and
  * sit over the bars.
  */
@@ -23,19 +27,23 @@ export interface OpeningLook {
 export const LETTERBOX = {
   /** Each bar's height, as a fraction of the frame's. */
   height: 0.11,
-  /** Seconds the bars hold before they open. */
-  hold: 0.15,
+  /** The bars open as line 1 ends, but hold at least this many seconds… */
+  minHold: 1.2,
+  /** …and never longer than this. */
+  maxHold: 2.5,
   /** Seconds they take to slide away. */
-  duration: 0.7,
+  duration: 0.8,
 } as const
 
 export const COLOR_POP = {
   /** How much color is left before the keyword (1 = full color). */
-  startSaturation: 0.3,
+  startSaturation: 0.1,
   /** Seconds the color takes to fill back in. */
-  duration: 0.4,
-  /** When there's no *keyword* in line 1. */
-  fallbackAt: 0.4,
+  duration: 0.6,
+  /** The gray holds at least this many seconds, even for an early keyword… */
+  minAt: 1,
+  /** …and never so long that it outstays the hook. */
+  maxAt: 3,
 } as const
 
 export function openingKindFor(type: VideoType | null | undefined): OpeningKind | null {
@@ -68,12 +76,25 @@ export function keywordTime(cues: SubtitleCue[]): number | null {
   return first.start + (before / total) * Math.max(0, first.end - first.start)
 }
 
-/** The look for `kind`, timed from the cues (the color pop waits for the keyword). */
+/** When line 1 ends, from `cues` as edited; null without cues. */
+function firstLineEnd(cues: SubtitleCue[]): number | null {
+  const first = [...cues].sort((a, b) => a.start - b.start)[0]
+  return first ? first.end : null
+}
+
+function clampTime(t: number, min: number, max: number): number {
+  return Math.round(Math.min(Math.max(t, min), max) * 1000) / 1000
+}
+
+/**
+ * The look for `kind`, timed from the cues: the bars open as line 1 ends,
+ * the color pops at the keyword (or as line 1 ends without one).
+ */
 export function openingLookFor(kind: OpeningKind, cues: SubtitleCue[]): OpeningLook {
-  if (kind === 'letterbox') return { kind, at: LETTERBOX.hold }
-  const at = keywordTime(cues) ?? COLOR_POP.fallbackAt
-  // Never so late that the drained picture outstays the hook.
-  return { kind, at: Math.round(Math.min(Math.max(at, 0.15), 3) * 1000) / 1000 }
+  const lineEnd = firstLineEnd(cues)
+  if (kind === 'letterbox') return { kind, at: clampTime(lineEnd ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold) }
+  const at = keywordTime(cues) ?? lineEnd ?? 0
+  return { kind, at: clampTime(at, COLOR_POP.minAt, COLOR_POP.maxAt) }
 }
 
 /** When the look has finished moving; from then on the picture is untouched. */
