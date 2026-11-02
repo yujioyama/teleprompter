@@ -4,7 +4,7 @@ import { burnShotSubtitles, burnSubtitles, type SubtitleLook } from './burnSubti
 import { cuesForShot, type SubtitleCue } from './subtitleCues'
 import { fairiesForShot, fairiesFromSubtitles, type FairyAppearance } from './fairyPlan'
 import { midZoomForShot, planMidZoom, type MidZoomSegment } from './midZoom'
-import { hasFirstShotExtras, styleCues, type HookOptions, type StyledCue } from './subtitleHook'
+import { hasFirstShotExtras, openingPlan, styleCues, type HookOptions, type StyledCue } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
@@ -98,7 +98,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     fairies.map(f => f.key),
     midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
   ])
-  const firstShot = JSON.stringify(extras ? (look.hook.opening ? [look.hook.punchIn, look.hook.opening] : look.hook.punchIn) : null)
+  const opening = openingPlan(look.hook, look.firstShotDuration)
+  const firstShot = JSON.stringify(extras ? (opening ? [look.hook.punchIn, opening] : look.hook.punchIn) : null)
   const text = JSON.stringify(translated.map(c => [c.start.toFixed(3), c.end.toFixed(3), c.en, c.ja, c.variant]))
   if (!cover) {
     return {

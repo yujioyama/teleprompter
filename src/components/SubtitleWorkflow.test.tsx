@@ -574,20 +574,27 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(screen.getByTestId('letterbox-bottom').style.height).toBe('11%')
     expect(video.style.transform).toBe('')
 
+    // Line 1 runs the whole 2s first shot, so the bars slide away just before its cut.
     setTime(video, 1.2)
+    fireEvent.timeUpdate(video)
+    expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
+    setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
   })
 
   it('drains a Type B script’s color until the keyword while playing', async () => {
     await renderTranslated(vi.fn(), undefined, 'B')
-    expect(screen.getByText(/Type B: 冒頭は少し色の抜けた画面が/)).toBeInTheDocument()
+    expect(screen.getByText(/Type B: 冒頭はほぼグレーの画面が/)).toBeInTheDocument()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.play(video)
     fireEvent.timeUpdate(video)
-    expect(video.style.filter).toBe('saturate(0.300)')
-    setTime(video, 1.9)
+    expect(video.style.filter).toBe('saturate(0.100)')
+    setTime(video, 1.2)
+    fireEvent.timeUpdate(video)
+    expect(video.style.filter).toBe('saturate(0.100)')
+    setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(video.style.filter).toBe('')
   })

@@ -403,7 +403,7 @@ describe('opening look', () => {
 
   it('drains the color with hue in the ffmpeg graph, even with no subtitles', () => {
     const { filterGraph, outputLabel } = buildOverlayFilterGraph([], undefined, COLOR_POP_LOOK)
-    expect(filterGraph).toMatch(/^\[0:v\]hue=s='0\.3\+0\.70\*/)
+    expect(filterGraph).toMatch(/^\[0:v\]hue=s='0\.1\+0\.90\*/)
     expect(outputLabel).toBe('[opened]')
   })
 })

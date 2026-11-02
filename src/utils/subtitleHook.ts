@@ -6,7 +6,7 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
-import { openingKindFor, openingLookFor, type OpeningLook } from './openingLook'
+import { openingEnd, openingKindFor, openingLookFor, type OpeningLook } from './openingLook'
 import type { VideoType } from '../types'
 
 /**
@@ -226,9 +226,15 @@ export function punchInPlan(hook: HookOptions, firstShotDuration: number | null)
   return hook.punchIn && firstShotDuration !== null ? { punchIn: hook.punchIn, until: firstShotDuration } : null
 }
 
-/** Only a video starting with the first shot gets the opening look. */
+/**
+ * Only a video starting with the first shot gets the opening look, moved
+ * earlier when needed so it has finished by the first shot's end: it's
+ * drawn on that shot alone, and would snap off at the cut.
+ */
 export function openingPlan(hook: HookOptions, firstShotDuration: number | null): OpeningLook | null {
-  return hook.opening && firstShotDuration !== null ? hook.opening : null
+  if (!hook.opening || firstShotDuration === null) return null
+  const late = openingEnd(hook.opening) - firstShotDuration
+  return late > 0 ? { ...hook.opening, at: Math.max(0, hook.opening.at - late) } : hook.opening
 }
 
 /** Whether a video starting with the first shot needs an encode even without subtitles. */
