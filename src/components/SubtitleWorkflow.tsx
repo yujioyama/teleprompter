@@ -607,7 +607,7 @@ export default function SubtitleWorkflow({
               {videoType ? (
                 <p className={styles.hint}>
                   {videoType === 'A'
-                    ? 'Type A: 冒頭は映画のような黒帯が開きます（ズームは使いません）'
+                    ? 'Type A: 冒頭は真っ黒から幕が上下に開き、映画のような黒帯が1行目のあいだ映ります（ズームは使いません）'
                     : 'Type B: 冒頭はほぼグレーの画面が、1行目の黄色い語句を言う瞬間に色づきます（ズームは使いません）'}
                 </p>
               ) : (

@@ -563,21 +563,21 @@ describe('SubtitleWorkflow punch-in', () => {
   it('gives a Type A script black bars instead of the zoom, only while playing', async () => {
     await renderTranslated(vi.fn(), undefined, 'A')
     expect(screen.queryByLabelText('ズーム')).toBeNull()
-    expect(screen.getByText(/Type A: 冒頭は映画のような黒帯が開きます/)).toBeInTheDocument()
+    expect(screen.getByText(/Type A: 冒頭は真っ黒から幕が上下に開き/)).toBeInTheDocument()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
 
     fireEvent.play(video)
-    expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
-    expect(screen.getByTestId('letterbox-bottom').style.height).toBe('11%')
+    expect(screen.getByTestId('letterbox-top').style.height).toBe('50%')
+    expect(screen.getByTestId('letterbox-bottom').style.height).toBe('50%')
     expect(video.style.transform).toBe('')
 
     // Line 1 runs the whole 2s first shot, so the bars slide away just before its cut.
     setTime(video, 1.2)
     fireEvent.timeUpdate(video)
-    expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
+    expect(screen.getByTestId('letterbox-top').style.height).toBe('22%')
     setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()

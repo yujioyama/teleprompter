@@ -66,14 +66,25 @@ describe('openingLookFor', () => {
 })
 
 describe('the look over time', () => {
-  const bars = { kind: 'letterbox' as const, at: 0.15 }
+  const bars = { kind: 'letterbox' as const, at: 1.5 }
   const pop = { kind: 'colorPop' as const, at: 1 }
 
-  it('holds the bars, slides them away, and is done after', () => {
-    expect(letterboxHeight(0, bars)).toBeCloseTo(LETTERBOX.height)
-    expect(letterboxHeight(0.15 + LETTERBOX.duration / 2, bars)).toBeCloseTo(LETTERBOX.height / 2)
+  it('starts all black, opens like a curtain to the bars, holds them, slides them away, and is done after', () => {
+    expect(letterboxHeight(0, bars)).toBe(0.5)
+    expect(letterboxHeight(LETTERBOX.coverHold, bars)).toBe(0.5)
+    expect(letterboxHeight(LETTERBOX.coverHold + LETTERBOX.reveal / 2, bars)).toBeCloseTo((0.5 + LETTERBOX.height) / 2)
+    expect(letterboxHeight(LETTERBOX.coverHold + LETTERBOX.reveal, bars)).toBeCloseTo(LETTERBOX.height)
+    expect(letterboxHeight(1.4, bars)).toBeCloseTo(LETTERBOX.height)
+    expect(letterboxHeight(1.5 + LETTERBOX.duration / 2, bars)).toBeCloseTo(LETTERBOX.height / 2)
     expect(letterboxHeight(openingEnd(bars), bars)).toBe(0)
     expect(colorPopSaturation(0, bars)).toBe(1)
+  })
+
+  it('still starts all black and opens smoothly when moved early to fit a short first shot', () => {
+    const early = { kind: 'letterbox' as const, at: 0 }
+    expect(letterboxHeight(0, early)).toBe(0.5)
+    expect(letterboxHeight(0.2, early)).toBeLessThan(0.5)
+    expect(letterboxHeight(LETTERBOX.duration, early)).toBe(0)
   })
 
   it('keeps the color drained until the keyword, then fills it in', () => {
@@ -120,11 +131,18 @@ describe('withVideoType', () => {
 })
 
 describe('openingFilterStages', () => {
-  it('slides two black bars off over the input', () => {
-    const stages = openingFilterStages({ kind: 'letterbox', at: 0.15 }, '[in]', '[out]', 1080, 1920)
-    expect(stages[0]).toContain('s=1080x211')
-    expect(stages[1]).toMatch(/^\[in\]\[lbtop\]overlay=x=0:y='-211\+211\*/)
-    expect(stages[2]).toMatch(/^\[lbmid\]\[lbbot\]overlay=x=0:y='H-211\*.*\[out\]$/)
+  it('slides two half-frame black boxes over the input, showing the same bars as letterboxHeight', () => {
+    const look = { kind: 'letterbox' as const, at: 1.5 }
+    const stages = openingFilterStages(look, '[in]', '[out]', 1080, 1920)
+    expect(stages[0]).toContain('s=1080x960')
+    const top = stages[1].match(/^\[in\]\[lbtop\]overlay=x=0:y='-960\+(.*)':eval=frame\[lbmid\]$/)
+    const bottom = stages[2].match(/^\[lbmid\]\[lbbot\]overlay=x=0:y='H-\((.*)\)':eval=frame\[out\]$/)
+    expect(top?.[1]).toBe(bottom?.[1])
+    const shown = new Function('t', 'clip', `return ${top![1]}`) as (t: number, clip: (v: number, lo: number, hi: number) => number) => number
+    const clip = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+    for (const t of [0, 0.2, 0.3, 1, 1.5, 1.9, 2.3, 3]) {
+      expect(shown(t, clip)).toBeCloseTo(letterboxHeight(t, look) * 1920, 0)
+    }
   })
 
   it('fades the saturation up from the keyword', () => {
@@ -157,9 +175,13 @@ describe('drawOpening', () => {
 
   it('draws the bars at the top and bottom', () => {
     const { ctx, calls } = fakeCtx()
-    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, { kind: 'letterbox', at: 0.15 }, 1080, 1920)
-    expect(calls).toContain('rect source-over 1.00 #000 0,0,1080,211')
-    expect(calls).toContain('rect source-over 1.00 #000 0,1709,1080,211')
+    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, { kind: 'letterbox', at: 1.5 }, 1080, 1920)
+    expect(calls).toContain('rect source-over 1.00 #000 0,0,1080,960')
+    expect(calls).toContain('rect source-over 1.00 #000 0,960,1080,960')
+    const { ctx: later, calls: laterCalls } = fakeCtx()
+    drawOpening(later as unknown as OffscreenCanvasRenderingContext2D, 1, { kind: 'letterbox', at: 1.5 }, 1080, 1920)
+    expect(laterCalls).toContain('rect source-over 1.00 #000 0,0,1080,422')
+    expect(laterCalls).toContain('rect source-over 1.00 #000 0,1498,1080,422')
   })
 
   it('draws nothing once the look is done', () => {
