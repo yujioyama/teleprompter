@@ -372,17 +372,16 @@ describe('burnShotSubtitles', () => {
 })
 
 describe('opening look', () => {
-  const LETTERBOX_LOOK = { kind: 'letterbox' as const, at: 0.15 }
-  const COLOR_POP_LOOK = { kind: 'colorPop' as const, at: 0.8 }
+  const LETTERBOX_LOOK = { kind: 'letterbox' as const, at: 0.15, height: 0.2 }
 
   it('forwards a Type A/B opening look to both hardware encodes', async () => {
     stubCanvas()
-    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null, opening: COLOR_POP_LOOK }, firstShotDuration: 2 }
+    const look: SubtitleLook = { position: 72, hook: { style: true, position: 50, punchIn: null, opening: LETTERBOX_LOOK }, firstShotDuration: 2 }
     await burnSubtitles(new Blob(['x']), [{ id: 'c0', start: 0, end: 1, en: 'Hi', ja: 'やあ' }], look)
-    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls.at(-1)![4]).toMatchObject({ punchIn: null, opening: COLOR_POP_LOOK })
+    expect(vi.mocked(burnSubtitlesWebCodecs).mock.calls.at(-1)![4]).toMatchObject({ punchIn: null, opening: LETTERBOX_LOOK })
     const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
     await burnShotSubtitles(new Blob(['shot']), 0, 2, [hookCue], look)
-    expect(vi.mocked(normalizeShotWebCodecs).mock.calls.at(-1)![6]).toMatchObject({ opening: COLOR_POP_LOOK })
+    expect(vi.mocked(normalizeShotWebCodecs).mock.calls.at(-1)![6]).toMatchObject({ opening: LETTERBOX_LOOK })
   })
 
   it('leaves out the look on a shot other than the first', async () => {
@@ -399,11 +398,5 @@ describe('opening look', () => {
     expect(filterGraph.indexOf('[opened]')).toBeLessThan(filterGraph.indexOf('[sub0]'))
     expect(filterGraph).toContain('[opened][sub0]overlay')
     expect(outputLabel).toBe('[v0]')
-  })
-
-  it('drains the color with hue in the ffmpeg graph, even with no subtitles', () => {
-    const { filterGraph, outputLabel } = buildOverlayFilterGraph([], undefined, COLOR_POP_LOOK)
-    expect(filterGraph).toMatch(/^\[0:v\]hue=s='0\.1\+0\.90\*/)
-    expect(outputLabel).toBe('[opened]')
   })
 })

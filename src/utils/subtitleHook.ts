@@ -6,7 +6,7 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
-import { openingEnd, openingKindFor, openingLookFor, type OpeningLook } from './openingLook'
+import { hasOpening, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { VideoType } from '../types'
 
 /**
@@ -54,7 +54,7 @@ export interface HookOptions {
   fairies?: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム, default: on). */
   midZoom?: boolean
-  /** Type A/B's opening look (black bars, color pop); null/absent = none. */
+  /** Type A/B's opening look (black bars); null/absent = none. */
   opening?: OpeningLook | null
 }
 
@@ -103,12 +103,19 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
 }
 
 /**
- * A Type A/B script gets its type's opening look instead of the zoom, timed
- * from `cues` (as edited); any other script keeps the hook as set.
+ * A Type A/B script gets the opening look instead of the zoom, timed from
+ * `cues` (as edited) and kept clear of them where they're shown: at the
+ * hook position with the hook style, else at `position`, the subtitles'.
+ * Any other script keeps the hook as set.
  */
-export function withVideoType(hook: HookOptions, type: VideoType | null | undefined, cues: SubtitleCue[]): HookOptions {
-  const kind = openingKindFor(type)
-  return kind ? { ...hook, punchIn: null, opening: openingLookFor(kind, cues) } : hook
+export function withVideoType(
+  hook: HookOptions,
+  type: VideoType | null | undefined,
+  cues: SubtitleCue[],
+  position: SubtitlePosition,
+): HookOptions {
+  if (!hasOpening(type)) return hook
+  return { ...hook, punchIn: null, opening: openingLookFor(cues, hook.style ? hook.position : position) }
 }
 
 // A cue starting where the second shot does is not in the first one.

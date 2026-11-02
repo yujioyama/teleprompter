@@ -35,7 +35,7 @@ import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineJapanese, VideoType } from '../types'
-import { colorPopSaturation, letterboxHeight } from '../utils/openingLook'
+import { letterboxHeight } from '../utils/openingLook'
 import styles from './SubtitleWorkflow.module.css'
 
 // No 'error' stage: a failed generate/transcribe/burn reverts to the stage
@@ -191,8 +191,8 @@ export default function SubtitleWorkflow({
   const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(
-    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, cues),
-    [hookSettings, oneTake, videoType, cues],
+    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, cues, position),
+    [hookSettings, oneTake, videoType, cues, position],
   )
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
@@ -430,11 +430,9 @@ export default function SubtitleWorkflow({
       : midZoomScale(previewTime, midZoom)
   // The opening look, also only while playing: the bars would cover the controls.
   const opening = previewPlaying ? openingPlan(hook, firstShotDuration) : null
-  const previewSaturation = opening ? colorPopSaturation(previewTime, opening) : 1
   const previewBar = opening ? letterboxHeight(previewTime, opening) : 0
   const previewVideoStyle: CSSProperties = {
     ...(previewZoom !== 1 ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` } : {}),
-    ...(previewSaturation < 1 ? { filter: `saturate(${previewSaturation.toFixed(3)})` } : {}),
   }
 
   return (
@@ -606,9 +604,7 @@ export default function SubtitleWorkflow({
               </div>
               {videoType ? (
                 <p className={styles.hint}>
-                  {videoType === 'A'
-                    ? 'Type A: 冒頭は真っ黒から幕が上下に開き、映画のような黒帯が1行目のあいだ映ります（ズームは使いません）'
-                    : 'Type B: 冒頭はほぼグレーの画面が、1行目の黄色い語句を言う瞬間に色づきます（ズームは使いません）'}
+                  Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
                 </p>
               ) : (
                 <>

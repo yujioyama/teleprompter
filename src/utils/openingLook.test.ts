@@ -1,20 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  COLOR_POP,
   LETTERBOX,
-  colorPopSaturation,
-  keywordTime,
+  hasOpening,
+  letterboxBarHeight,
   letterboxHeight,
   openingActive,
   openingEnd,
   openingFilterStages,
-  openingKindFor,
   openingLookFor,
 } from './openingLook'
 import { hasFirstShotExtras, openingPlan, withVideoType, type HookOptions } from './subtitleHook'
+import { layoutCue, type MeasureText } from './subtitleLayout'
+import { clampedSubtitleY } from './subtitlePosition'
 import { drawOpening } from './webcodecs/pictureEffects'
 
-const cue = (en: string, start = 0.2, end = 2.2) => ({ id: 'c', start, end, en, ja: null })
+const cue = (en: string, start = 0.2, end = 2.2, ja: string | null = null) => ({ id: 'c', start, end, en, ja })
 
 const HOOK: HookOptions = {
   style: true,
@@ -22,107 +22,120 @@ const HOOK: HookOptions = {
   punchIn: { zoom: 1.25, direction: 'out', at: 0, duration: 0.6 },
 }
 
-describe('openingKindFor', () => {
-  it('gives Type A the black bars, Type B the color pop, and others nothing', () => {
-    expect(openingKindFor('A')).toBe('letterbox')
-    expect(openingKindFor('B')).toBe('colorPop')
-    expect(openingKindFor(undefined)).toBeNull()
-    expect(openingKindFor(null)).toBeNull()
-  })
-})
+// 30px a letter, so a line wraps past 30 letters.
+const measure: MeasureText = text => text.length * 30
+const top = (c: { en: string; ja: string | null }, position: number) => clampedSubtitleY(position, layoutCue(c, measure).height)
+const bars = (at: number, height: number = LETTERBOX.height) => ({ kind: 'letterbox' as const, at, height })
 
-describe('keywordTime', () => {
-  it('spreads the first line over its letters and finds where the keyword starts', () => {
-    // "In Japan, we drink " is 19 of the 43 letters, emoji and markers aside.
-    const t = keywordTime([cue('In Japan, we drink *turmeric*🍛 before tequila.', 0.2, 2.2)])
-    expect(t).toBeCloseTo(0.2 + (19 / 43) * 2, 3)
-  })
-
-  it('reads the earliest cue, and is null without a keyword', () => {
-    expect(keywordTime([cue('Later *line*', 3, 4), cue('*First* line', 0, 1)])).toBeCloseTo(0, 5)
-    expect(keywordTime([cue('I eat toast every morning.')])).toBeNull()
-    expect(keywordTime([])).toBeNull()
+describe('hasOpening', () => {
+  it('gives Type A and Type B the bars, and others nothing', () => {
+    expect(hasOpening('A')).toBe(true)
+    expect(hasOpening('B')).toBe(true)
+    expect(hasOpening(undefined)).toBe(false)
+    expect(hasOpening(null)).toBe(false)
   })
 })
 
 describe('openingLookFor', () => {
-  it('opens the bars as line 1 ends, held long enough to be seen but not past the hook', () => {
-    expect(openingLookFor('letterbox', [cue('I eat toast every morning.', 0.2, 1.9)])).toEqual({ kind: 'letterbox', at: 1.9 })
-    expect(openingLookFor('letterbox', [cue('Hi.', 0, 0.5)]).at).toBe(LETTERBOX.minHold)
-    expect(openingLookFor('letterbox', [cue('A very long first line.', 0, 6)]).at).toBe(LETTERBOX.maxHold)
-    expect(openingLookFor('letterbox', []).at).toBe(LETTERBOX.minHold)
+  it('slides the bars away as line 1 ends, held long enough to be seen but not past the hook', () => {
+    expect(openingLookFor([cue('I eat toast every morning.', 0.2, 1.9)], 72, measure).at).toBe(1.9)
+    expect(openingLookFor([cue('Hi.', 0, 0.5)], 72, measure).at).toBe(LETTERBOX.minHold)
+    expect(openingLookFor([cue('A very long first line.', 0, 6)], 72, measure).at).toBe(LETTERBOX.maxHold)
+    expect(openingLookFor([], 72, measure)).toEqual(bars(LETTERBOX.minHold))
   })
 
-  it('pops the color at the keyword, or as line 1 ends without one', () => {
-    // "In Japan, we drink " is 19 of the 43 letters.
-    expect(openingLookFor('colorPop', [cue('In Japan, we drink *turmeric*🍛 before tequila.', 0.2, 3.2)]).at).toBeCloseTo(0.2 + (19 / 43) * 3, 3)
-    expect(openingLookFor('colorPop', [cue('No keyword here.', 0.2, 1.8)]).at).toBe(1.8)
+  it('keeps the full bars when the subtitles sit well below them', () => {
+    expect(openingLookFor([cue('Hi.', 0, 1, 'やあ')], 50, measure).height).toBe(LETTERBOX.height)
   })
 
-  it('holds the gray at least a second, and never past 3 seconds', () => {
-    expect(openingLookFor('colorPop', [cue('*Reckon*. To my ears, that is Japanese.', 0.3)]).at).toBe(COLOR_POP.minAt)
-    expect(openingLookFor('colorPop', [cue('a b c d e f g h i j k l m n o p q *late*', 0, 10)]).at).toBe(COLOR_POP.maxAt)
+  it('stops the top bar just above a high subtitle, its Japanese line included', () => {
+    const line = cue('Hi.', 0, 1.5, 'やあ')
+    const { height } = openingLookFor([line], 22.5, measure)
+    expect(height).toBeLessThan(LETTERBOX.height)
+    expect(height * 1920).toBeCloseTo(top(line, 22.5) - LETTERBOX.gap, 0)
+    expect(height * 1920).toBeLessThan(top(line, 22.5))
+  })
+
+  it('makes room for a line 1 that wraps', () => {
+    const short = cue('I eat toast.', 0, 1.5, 'トースト')
+    const long = cue('Every single morning I eat toast with honey and butter.', 0, 1.5, '毎朝トースト')
+    const shortBar = openingLookFor([short], 22.5, measure).height
+    const longBar = openingLookFor([long], 22.5, measure).height
+    expect(layoutCue(long, measure).en.lines.length).toBeGreaterThan(1)
+    expect(longBar).toBeLessThan(shortBar)
+    expect(longBar * 1920).toBeLessThan(top(long, 22.5))
+  })
+
+  it('clears every cue that starts before the bars are gone, but not later ones', () => {
+    const first = cue('Hi.', 0, 0.5, 'やあ')
+    const second = cue('Every single morning I eat toast with honey and butter.', 0.5, 1.5, '毎朝')
+    const later = cue('Every single morning I eat toast with honey and butter, and jam.', 3, 4, '毎朝')
+    expect(openingLookFor([first, second], 22.5, measure).height * 1920).toBeCloseTo(top(second, 22.5) - LETTERBOX.gap, 0)
+    expect(openingLookFor([first, later], 22.5, measure).height * 1920).toBeCloseTo(top(first, 22.5) - LETTERBOX.gap, 0)
+  })
+
+  it('reads an emoji in line 1 as the sticker, not as text', () => {
+    expect(openingLookFor([cue('Hi 🧴', 0, 1, 'やあ')], 22.5, measure).height).toBe(openingLookFor([cue('Hi', 0, 1, 'やあ')], 22.5, measure).height)
+  })
+})
+
+describe('letterboxBarHeight', () => {
+  it('is at most LETTERBOX.height, and never below 0', () => {
+    expect(letterboxBarHeight([])).toBe(LETTERBOX.height)
+    expect(letterboxBarHeight([1000])).toBe(LETTERBOX.height)
+    expect(letterboxBarHeight([316])).toBeCloseTo(300 / 1920, 4)
+    expect(letterboxBarHeight([0])).toBe(0)
   })
 })
 
 describe('the look over time', () => {
-  const bars = { kind: 'letterbox' as const, at: 1.5 }
-  const pop = { kind: 'colorPop' as const, at: 1 }
-
-  it('starts all black, opens like a curtain to the bars, holds them, slides them away, and is done after', () => {
-    expect(letterboxHeight(0, bars)).toBe(0.5)
-    expect(letterboxHeight(LETTERBOX.coverHold, bars)).toBe(0.5)
-    expect(letterboxHeight(LETTERBOX.coverHold + LETTERBOX.reveal / 2, bars)).toBeCloseTo((0.5 + LETTERBOX.height) / 2)
-    expect(letterboxHeight(LETTERBOX.coverHold + LETTERBOX.reveal, bars)).toBeCloseTo(LETTERBOX.height)
-    expect(letterboxHeight(1.4, bars)).toBeCloseTo(LETTERBOX.height)
-    expect(letterboxHeight(1.5 + LETTERBOX.duration / 2, bars)).toBeCloseTo(LETTERBOX.height / 2)
-    expect(letterboxHeight(openingEnd(bars), bars)).toBe(0)
-    expect(colorPopSaturation(0, bars)).toBe(1)
+  it('shows the bars from the first frame, holds them, slides them away, and is done after', () => {
+    const look = bars(1.5, 0.15)
+    expect(letterboxHeight(0, look)).toBe(0.15)
+    expect(letterboxHeight(1.4, look)).toBe(0.15)
+    expect(letterboxHeight(1.5 + LETTERBOX.duration / 2, look)).toBeCloseTo(0.075)
+    expect(letterboxHeight(openingEnd(look), look)).toBe(0)
   })
 
-  it('still starts all black and opens smoothly when moved early to fit a short first shot', () => {
-    const early = { kind: 'letterbox' as const, at: 0 }
-    expect(letterboxHeight(0, early)).toBe(0.5)
-    expect(letterboxHeight(0.2, early)).toBeLessThan(0.5)
-    expect(letterboxHeight(LETTERBOX.duration, early)).toBe(0)
-  })
-
-  it('keeps the color drained until the keyword, then fills it in', () => {
-    expect(colorPopSaturation(0, pop)).toBeCloseTo(COLOR_POP.startSaturation)
-    expect(colorPopSaturation(0.99, pop)).toBeCloseTo(COLOR_POP.startSaturation)
-    expect(colorPopSaturation(1 + COLOR_POP.duration, pop)).toBe(1)
-    expect(letterboxHeight(0, pop)).toBe(0)
-  })
-
-  it('is active only until it stops moving', () => {
-    expect(openingActive(0.5, pop)).toBe(true)
-    expect(openingActive(openingEnd(pop), pop)).toBe(false)
+  it('is active only until the bars are gone', () => {
+    const look = bars(1)
+    expect(openingActive(0.5, look)).toBe(true)
+    expect(openingActive(openingEnd(look), look)).toBe(false)
     expect(openingActive(0, null)).toBe(false)
   })
 })
 
 describe('withVideoType', () => {
-  it('swaps the zoom for the type’s look', () => {
-    const typed = withVideoType(HOOK, 'A', [])
+  it('swaps the zoom for the same bars on Type A and Type B', () => {
+    const typed = withVideoType(HOOK, 'A', [], 72)
     expect(typed.punchIn).toBeNull()
-    expect(typed.opening).toEqual({ kind: 'letterbox', at: LETTERBOX.minHold })
-    expect(withVideoType(HOOK, 'B', [cue('*Hankering*')]).opening?.kind).toBe('colorPop')
+    expect(typed.opening).toEqual(bars(LETTERBOX.minHold))
+    const lines = [cue('*Hankering*. A word I love.', 0, 1.8, '欲しくてたまらない')]
+    expect(withVideoType(HOOK, 'B', lines, 72)).toEqual(withVideoType(HOOK, 'A', lines, 72))
+  })
+
+  it('keeps the bars clear of the hook position, or the subtitles’ without the hook style', () => {
+    const lines = [cue('Every single morning I eat toast with honey.', 0, 1.8, '毎朝トースト')]
+    const atHook = withVideoType({ ...HOOK, position: 22.5 }, 'A', lines, 72).opening!
+    expect(atHook.height).toBeLessThan(LETTERBOX.height)
+    expect(withVideoType({ ...HOOK, style: false, position: 22.5 }, 'A', lines, 72).opening!.height).toBe(LETTERBOX.height)
+    expect(withVideoType({ ...HOOK, style: false, position: 50 }, 'A', lines, 22.5).opening!.height).toBe(atHook.height)
   })
 
   it('leaves an untyped script as set', () => {
-    expect(withVideoType(HOOK, undefined, [])).toBe(HOOK)
+    expect(withVideoType(HOOK, undefined, [], 72)).toBe(HOOK)
   })
 
   it('needs an encode for the first shot only', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [])
+    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [], 72)
     expect(hasFirstShotExtras(typed, 2)).toBe(true)
     expect(openingPlan(typed, null)).toBeNull()
     expect(hasFirstShotExtras(typed, null)).toBe(false)
   })
 
   it('moves the look earlier when it would outlast the first shot', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)])
-    expect(openingPlan(typed, 5)).toEqual({ kind: 'letterbox', at: 2.4 })
+    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)], 72)
+    expect(openingPlan(typed, 5)).toEqual(bars(2.4))
     const plan = openingPlan(typed, 2.6)!
     expect(plan.at).toBeCloseTo(2.6 - LETTERBOX.duration, 5)
     expect(openingEnd(plan)).toBeCloseTo(2.6, 5)
@@ -132,7 +145,7 @@ describe('withVideoType', () => {
 
 describe('openingFilterStages', () => {
   it('slides two half-frame black boxes over the input, showing the same bars as letterboxHeight', () => {
-    const look = { kind: 'letterbox' as const, at: 1.5 }
+    const look = bars(1.5, 0.15)
     const stages = openingFilterStages(look, '[in]', '[out]', 1080, 1920)
     expect(stages[0]).toContain('s=1080x960')
     const top = stages[1].match(/^\[in\]\[lbtop\]overlay=x=0:y='-960\+(.*)':eval=frame\[lbmid\]$/)
@@ -143,11 +156,6 @@ describe('openingFilterStages', () => {
     for (const t of [0, 0.2, 0.3, 1, 1.5, 1.9, 2.3, 3]) {
       expect(shown(t, clip)).toBeCloseTo(letterboxHeight(t, look) * 1920, 0)
     }
-  })
-
-  it('fades the saturation up from the keyword', () => {
-    const [stage] = openingFilterStages({ kind: 'colorPop', at: 0.8 }, '[in]', '[out]', 1080, 1920)
-    expect(stage).toBe("[in]hue=s='0.1+0.90*clip((t-0.800)/0.6,0,1)*clip((t-0.800)/0.6,0,1)*(3-2*clip((t-0.800)/0.6,0,1))'[out]")
   })
 })
 
@@ -167,26 +175,16 @@ describe('drawOpening', () => {
     return { ctx, calls }
   }
 
-  it('blends gray in with "saturation" to drain the color', () => {
+  it('draws the bars at the top and bottom from the first frame', () => {
     const { ctx, calls } = fakeCtx()
-    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, { kind: 'colorPop', at: 1 }, 1080, 1920)
-    expect(calls).toContain('rect saturation 0.90 #808080 0,0,1080,1920')
-  })
-
-  it('draws the bars at the top and bottom', () => {
-    const { ctx, calls } = fakeCtx()
-    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, { kind: 'letterbox', at: 1.5 }, 1080, 1920)
-    expect(calls).toContain('rect source-over 1.00 #000 0,0,1080,960')
-    expect(calls).toContain('rect source-over 1.00 #000 0,960,1080,960')
-    const { ctx: later, calls: laterCalls } = fakeCtx()
-    drawOpening(later as unknown as OffscreenCanvasRenderingContext2D, 1, { kind: 'letterbox', at: 1.5 }, 1080, 1920)
-    expect(laterCalls).toContain('rect source-over 1.00 #000 0,0,1080,422')
-    expect(laterCalls).toContain('rect source-over 1.00 #000 0,1498,1080,422')
+    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 0, bars(1.5, 0.15), 1080, 1920)
+    expect(calls).toContain('rect source-over 1.00 #000 0,0,1080,288')
+    expect(calls).toContain('rect source-over 1.00 #000 0,1632,1080,288')
   })
 
   it('draws nothing once the look is done', () => {
     const { ctx } = fakeCtx()
-    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 5, { kind: 'letterbox', at: 0.15 }, 1080, 1920)
+    drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 5, bars(0.15), 1080, 1920)
     expect(ctx.fillRect).not.toHaveBeenCalled()
   })
 })

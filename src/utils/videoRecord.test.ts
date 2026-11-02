@@ -55,9 +55,9 @@ function build(changes: Partial<Parameters<typeof buildVideoRecord>[0]> = {}) {
 
 describe('buildVideoRecord', () => {
   it('records a Type A/B script’s type and opening look, for the weekly A/B comparison', () => {
-    const opening = { kind: 'colorPop' as const, at: 0.8 }
+    const opening = { kind: 'letterbox' as const, at: 0.8, height: 0.18 }
     const record = build({ script: { ...SCRIPT, videoType: 'B' }, burn: { ...BURN, hook: { ...HOOK, punchIn: null, opening } } })
-    expect(record.effects).toMatchObject({ videoType: 'B', opening, zoom: null })
+    expect(record.effects).toMatchObject({ videoType: 'B', opening: { kind: 'letterbox', at: 0.8 }, zoom: null })
     expect(parseVideoRecord(record)).toEqual(record)
   })
 

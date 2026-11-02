@@ -560,43 +560,30 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(video.style.transform).toBe('')
   })
 
-  it('gives a Type A script black bars instead of the zoom, only while playing', async () => {
-    await renderTranslated(vi.fn(), undefined, 'A')
+  it.each(['A', 'B'] as const)('gives a Type %s script black bars instead of the zoom, only while playing', async type => {
+    await renderTranslated(vi.fn(), undefined, type)
     expect(screen.queryByLabelText('ズーム')).toBeNull()
-    expect(screen.getByText(/Type A: 冒頭は真っ黒から幕が上下に開き/)).toBeInTheDocument()
+    expect(screen.getByText(`Type ${type}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）`)).toBeInTheDocument()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
 
+    // There from the first frame, at the bars' full height: the hook sits well below them.
     fireEvent.play(video)
-    expect(screen.getByTestId('letterbox-top').style.height).toBe('50%')
-    expect(screen.getByTestId('letterbox-bottom').style.height).toBe('50%')
+    expect(screen.getByTestId('letterbox-top').style.height).toBe('22%')
+    expect(screen.getByTestId('letterbox-bottom').style.height).toBe('22%')
     expect(video.style.transform).toBe('')
+    expect(video.style.filter).toBe('')
 
     // Line 1 runs the whole 2s first shot, so the bars slide away just before its cut.
     setTime(video, 1.2)
     fireEvent.timeUpdate(video)
     expect(screen.getByTestId('letterbox-top').style.height).toBe('22%')
+    expect(video.style.filter).toBe('')
     setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
-  })
-
-  it('drains a Type B script’s color until the keyword while playing', async () => {
-    await renderTranslated(vi.fn(), undefined, 'B')
-    expect(screen.getByText(/Type B: 冒頭はほぼグレーの画面が/)).toBeInTheDocument()
-    const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 0)
-    fireEvent.play(video)
-    fireEvent.timeUpdate(video)
-    expect(video.style.filter).toBe('saturate(0.100)')
-    setTime(video, 1.2)
-    fireEvent.timeUpdate(video)
-    expect(video.style.filter).toBe('saturate(0.100)')
-    setTime(video, 2)
-    fireEvent.timeUpdate(video)
-    expect(video.style.filter).toBe('')
   })
 
   it('shows the preview at 1x when paused, even inside the zoom, so the controls stay reachable', async () => {
