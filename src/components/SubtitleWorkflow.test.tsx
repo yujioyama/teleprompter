@@ -40,6 +40,8 @@ const DEFAULT_HOOK_SETTINGS: HookSettings = {
   stickerRoute: 0,
   fairyEnabled: true,
   midZoomEnabled: true,
+  cinemaLookThrough: false,
+  cinemaLookStrength: 1,
 }
 
 // SubtitleWorkflow is a controlled component (state/onStateChange lifted up
@@ -520,7 +522,7 @@ describe('SubtitleWorkflow hook controls', () => {
     expect(burnModule.burnSubtitles).toHaveBeenLastCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true, midZoom: true }, firstShotDuration: 2 }),
+      expect.objectContaining({ hook: { style: true, position: 50, punchIn: { zoom: 1.25, direction: 'in', at: 0.4, duration: null }, sticker: 'chest', stickerMotion: 'random', stickerRoute: 0, fairies: true, midZoom: true, lookThrough: false, lookStrength: 1 }, firstShotDuration: 2 }),
     )
   })
 

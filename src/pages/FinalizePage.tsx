@@ -155,7 +155,7 @@ export default function FinalizePage() {
   // One settings instance for the page: the subtitle step changes the hook
   // settings through it, so the burn below always sees the current ones.
   const [settings, updateSettings] = useSettings()
-  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled } = settings
+  const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled, cinemaLookThrough, cinemaLookStrength } = settings
   const { normalizeAudio, voicePreset } = settings
   const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume, bgmStopBeforePunchline } = settings
@@ -538,8 +538,8 @@ export default function FinalizePage() {
   // shots that changed.
   const { stage: subtitleStage, cues: subtitleCues, position: subtitlePosition } = subtitleState
   const hookSettings: HookSettings = useMemo(
-    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled }),
-    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled],
+    () => ({ hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled, cinemaLookThrough, cinemaLookStrength }),
+    [hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled, cinemaLookThrough, cinemaLookStrength],
   )
   const oneTake = Boolean(script?.oneTake)
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).

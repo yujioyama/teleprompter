@@ -30,6 +30,13 @@ export interface OpeningLook {
   height: number
   /** The film look under the bars; null = the picture as shot. */
   grade: CinemaLook | null
+  /**
+   * The film look stays on to the end instead of fading with the bars
+   * (2026-11-03): one look over the whole video. Absent = fades with them.
+   */
+  through?: boolean
+  /** The film look's strength, 0-1; absent = 1. */
+  strength?: number
 }
 
 export const LETTERBOX = {
@@ -104,14 +111,23 @@ export function letterboxHeight(t: number, look: OpeningLook): number {
   return look.height * (1 - ease((t - look.at) / LETTERBOX.duration))
 }
 
-/** How much of the film look shows at `t`: all of it until `at`, then fading away as the bars slide. */
-export function lookOpacity(t: number, look: OpeningLook): number {
-  return 1 - ease((t - look.at) / LETTERBOX.duration)
+/** The film look's strength, clamped to 0-1. */
+function lookStrength(look: OpeningLook): number {
+  return Math.min(1, Math.max(0, look.strength ?? 1))
 }
 
-/** Whether the look changes the picture at `t`. */
+/**
+ * How much of the film look shows at `t`: its strength until `at`, then
+ * fading away as the bars slide, unless it stays on to the end.
+ */
+export function lookOpacity(t: number, look: OpeningLook): number {
+  if (look.grade && look.through) return lookStrength(look)
+  return lookStrength(look) * (1 - ease((t - look.at) / LETTERBOX.duration))
+}
+
+/** Whether the look changes the picture at `t`: during the opening, or to the end with a film look kept on. */
 export function openingActive(t: number, look: OpeningLook | null): look is OpeningLook {
-  return look !== null && t < openingEnd(look)
+  return look !== null && (t < openingEnd(look) || Boolean(look.grade && look.through))
 }
 
 /**
@@ -133,7 +149,8 @@ const LOOK_FILTERS: Record<CinemaLook, string[]> = {
  * burnSubtitlesFFmpeg gives every overlay eof_action=pass, so the bars'
  * own end lets the picture through.
  * A film look adds one color stage under the bars, cut off at the end of
- * the opening rather than faded: this path is the last resort.
+ * the opening rather than faded (or kept to the end with `through`), at
+ * full strength: this path is the last resort.
  * Returns filtergraph stages.
  */
 export function openingFilterStages(look: OpeningLook, input: string, output: string, width: number, height: number): string[] {
@@ -145,7 +162,7 @@ export function openingFilterStages(look: OpeningLook, input: string, output: st
   const life = (look.at + duration + 0.2).toFixed(3)
   // The stage works on `input`, so the bars' stages read its output instead.
   const graded = look.grade
-    ? [`${input}${LOOK_FILTERS[look.grade].map(f => `${f}:enable='lt(t,${openingEnd(look)})'`).join(',')}[lookgraded]`]
+    ? [`${input}${LOOK_FILTERS[look.grade].map(f => (look.through ? f : `${f}:enable='lt(t,${openingEnd(look)})'`)).join(',')}[lookgraded]`]
     : []
   const barsIn = look.grade ? '[lookgraded]' : input
   return [
