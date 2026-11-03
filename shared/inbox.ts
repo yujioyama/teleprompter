@@ -1,7 +1,7 @@
 /**
  * Which of the two daily formats a script is (from 2026-11-02): 'A' is the
- * short 2021-style daily thing, 'B' the expression-note story. Each gets its
- * own opening look (see openingLookFor).
+ * short 2021-style daily thing, 'B' the expression-note story. Both get the
+ * opening bars (see openingLookFor).
  */
 export type VideoType = 'A' | 'B'
 

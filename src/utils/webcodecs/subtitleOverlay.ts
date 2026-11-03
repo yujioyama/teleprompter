@@ -48,7 +48,7 @@ export interface OverlayOptions {
   punchIn?: PunchInPlan | null
   /** The peaks' and the punchline's zoom, in this video's own timeline. */
   midZoom?: MidZoomSegment[]
-  /** Type A/B's opening look (black bars, color pop); null = none. */
+  /** Type A/B's opening look (black bars and the picked look); null = none. */
   opening?: OpeningLook | null
 }
 

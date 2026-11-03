@@ -1,3 +1,4 @@
+import type { CinemaLook } from '../../shared/cinemaLook'
 import type { VideoType } from '../types'
 import type { SubtitleCue } from './subtitleCues'
 import { createCanvasMeasure, layoutCue, type MeasureText } from './subtitleLayout'
@@ -17,6 +18,8 @@ import { stripStickers } from './subtitleSticker'
  * The bars stop short of the subtitles shown meanwhile (2026-11-03): a cue
  * half on black and half on the picture reads as two backgrounds.
  * Only the picture gets them; subtitles and the sticker sit over them.
+ * A picked film look (`grade`) is on the picture from the first frame and
+ * fades away with the bars, over the same time and ease.
  */
 export interface OpeningLook {
   /** Kept for the video record, which still knows Type B's old 'colorPop'. */
@@ -25,6 +28,8 @@ export interface OpeningLook {
   at: number
   /** Each bar's height, as a fraction of the frame's (see letterboxBarHeight). */
   height: number
+  /** The film look under the bars; null = the picture as shot. */
+  grade: CinemaLook | null
 }
 
 export const LETTERBOX = {
@@ -74,17 +79,19 @@ export function letterboxBarHeight(tops: number[]): number {
  * The look timed and sized from `cues` (as edited): the bars slide away as
  * line 1 ends, and are kept clear of every cue starting before they're
  * gone, each laid out and centered on `position` as the burn places it.
+ * `grade` is the film look picked for it.
  */
 export function openingLookFor(
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  grade: CinemaLook | null = null,
   measure: MeasureText = createCanvasMeasure(),
 ): OpeningLook {
   const at = clampTime(firstLineEnd(cues) ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold)
   const tops = cues
     .filter(c => c.start < at + LETTERBOX.duration)
     .map(c => clampedSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure).height))
-  return { kind: 'letterbox', at, height: letterboxBarHeight(tops) }
+  return { kind: 'letterbox', at, height: letterboxBarHeight(tops), grade }
 }
 
 /** When the bars are gone; from then on the picture is untouched. */
@@ -95,6 +102,11 @@ export function openingEnd(look: OpeningLook): number {
 /** Each bar's height (fraction of the frame) at `t`: look.height until `at`, then sliding away. */
 export function letterboxHeight(t: number, look: OpeningLook): number {
   return look.height * (1 - ease((t - look.at) / LETTERBOX.duration))
+}
+
+/** How much of the film look shows at `t`: all of it until `at`, then fading away as the bars slide. */
+export function lookOpacity(t: number, look: OpeningLook): number {
+  return 1 - ease((t - look.at) / LETTERBOX.duration)
 }
 
 /** Whether the look changes the picture at `t`. */

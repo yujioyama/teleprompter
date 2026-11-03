@@ -372,7 +372,7 @@ describe('burnShotSubtitles', () => {
 })
 
 describe('opening look', () => {
-  const LETTERBOX_LOOK = { kind: 'letterbox' as const, at: 0.15, height: 0.2 }
+  const LETTERBOX_LOOK = { kind: 'letterbox' as const, at: 0.15, height: 0.2, grade: null }
 
   it('forwards a Type A/B opening look to both hardware encodes', async () => {
     stubCanvas()
