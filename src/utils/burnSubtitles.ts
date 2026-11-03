@@ -120,6 +120,11 @@ export interface SubtitleLook {
    * joined video, or the first shot's own clip); null for any other shot.
    */
   firstShotDuration: number | null
+  /**
+   * The length of the clip the first shot starts: longer than it in 一発撮り,
+   * where the first shot is only line 1 of the take. Default firstShotDuration.
+   */
+  firstClipDuration?: number | null
   /** The fairies to burn in, in this video's own timeline; default none. */
   fairies?: FairyAppearance[]
   /** The peaks' and the punchline's zoom, in this video's own timeline; default none. */
@@ -304,9 +309,9 @@ export async function renderSubtitleOverlays(
     const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) })
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
-  const sticker = placeSticker(cues, look.hook, look.firstShotDuration)
-  if (sticker && look.firstShotDuration !== null) {
-    const window = { start: 0, end: look.firstShotDuration }
+  const sticker = placeSticker(cues, look.hook, look.firstShotDuration, look.firstClipDuration)
+  if (sticker) {
+    const window = { start: sticker.start, end: sticker.end }
     if (!still) {
       // One that stays put is a sprite too, so it can still twinkle.
       const { home } = sticker

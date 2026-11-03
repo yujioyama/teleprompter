@@ -97,7 +97,7 @@ describe('stickerSeed', () => {
 })
 
 describe('placeSticker sparkles', () => {
-  const CUES = [{ en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }]
+  const CUES = [{ start: 0, end: 3, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' }]
 
   it("trails sparkles while travelling, bursts on landing, and all die by the first shot's end", () => {
     const s = placeSticker(CUES, { sticker: 'right', stickerMotion: 'wander', stickerRoute: 0 }, 3)!
@@ -113,5 +113,46 @@ describe('placeSticker sparkles', () => {
     const s = placeSticker(CUES, { sticker: 'right', stickerMotion: 'wander', stickerRoute: 0 }, 1)!
     expect(s.path).toBeNull()
     expect(s.sparkles.length).toBeGreaterThan(0)
+  })
+})
+
+describe('placeSticker behind the opening bars', () => {
+  // 一発撮り: line 1 is the first shot (0-2.5), the bars are gone at 2.5, line 2 runs to 6.
+  const CUES = [
+    { start: 0, end: 2.5, en: 'I put *Vaseline*🧴 on', ja: 'ワセリン', variant: 'hook' },
+    { start: 2.5, end: 6, en: 'every night.', ja: '毎晩', variant: 'normal' },
+  ]
+  const BARS = { kind: 'letterbox' as const, at: 1.7, height: 0.22, grade: null }
+  const hook = { sticker: 'right' as const, stickerMotion: 'wander' as const, stickerRoute: 0, opening: BARS }
+
+  it('shows over the whole first shot without the bars', () => {
+    const s = placeSticker(CUES, { ...hook, opening: null }, 2.5, 10)!
+    expect([s.start, s.end]).toEqual([0, 2.5])
+  })
+
+  it('pops in as the bars have gone and travels through line 2', () => {
+    const s = placeSticker(CUES, hook, 2.5, 10)!
+    expect([s.start, s.end]).toEqual([2.5, 6])
+    expect(s.path).not.toBeNull()
+    expect(s.path!(2.5).scale).toBeCloseTo(0)
+    expect(s.path!(2.5 + 0.3).scale).toBeCloseTo(1)
+    for (const p of s.sparkles) {
+      expect(p.born).toBeGreaterThanOrEqual(2.5)
+      expect(p.born + p.life).toBeLessThanOrEqual(6 + 1e-9)
+    }
+  })
+
+  it('stays put after popping in when line 2 is too short to travel', () => {
+    const short = [CUES[0], { ...CUES[1], end: 3.3 }]
+    const s = placeSticker(short, hook, 2.5, 10)!
+    expect([s.start, s.end]).toEqual([2.5, 3.3])
+    const pose = s.path!(3)
+    expect([pose.x, pose.y, pose.scale]).toEqual([s.home.x, s.home.y, 1])
+  })
+
+  it("never outlasts the clip, and falls back to the whole first shot when there's no time after the bars", () => {
+    expect(placeSticker(CUES, hook, 2.5, 4)!.end).toBe(4)
+    const s = placeSticker(CUES, hook, 2.5)!
+    expect([s.start, s.end]).toEqual([0, 2.5])
   })
 })

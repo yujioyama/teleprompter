@@ -10,6 +10,7 @@ import {
   GRAIN_WIDTH,
   LOOK_GRAIN,
   LOOK_HAS_DUST,
+  DUST_OPACITY,
   lookStep,
   releaseLookTables,
   vignetteMask,
@@ -186,7 +187,7 @@ export function drawCinemaLookAtScale(
     ctx.globalCompositeOperation = 'source-over'
   }
   if (LOOK_HAS_DUST(look)) {
-    ctx.globalAlpha = alpha
+    ctx.globalAlpha = alpha * DUST_OPACITY
     drawDust(ctx, dustFor(frame, width, height), height)
   }
 

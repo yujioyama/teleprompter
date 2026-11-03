@@ -25,8 +25,9 @@ describe('lookColor', () => {
     expect(g).toBe(b)
   })
 
-  it('lifts the blacks of the old film', () => {
-    for (const c of lookColor('oldFilm', 0, 0, 0)) expect(c).toBeGreaterThanOrEqual(0.14)
+  it('lifts the blacks of the old film, a little', () => {
+    for (const c of lookColor('oldFilm', 0, 0, 0)) expect(c).toBeGreaterThanOrEqual(0.05)
+    for (const c of lookColor('oldFilm', 0, 0, 0)) expect(c).toBeLessThan(0.14)
   })
 
   it('turns a gray blue at night', () => {
@@ -34,11 +35,12 @@ describe('lookColor', () => {
     expect(b).toBeGreaterThan(r)
   })
 
-  it('warms the highlights and cools the shadows for hollywood', () => {
-    const [hr, , hb] = lookColor('hollywood', 0.9, 0.9, 0.9)
-    const [sr, , sb] = lookColor('hollywood', 0.1, 0.1, 0.1)
-    expect(hr).toBeGreaterThan(hb)
-    expect(sb).toBeGreaterThan(sr)
+  it('darkens hollywood without tinting it, the shadows most', () => {
+    const [r, g, b] = lookColor('hollywood', 0.5, 0.5, 0.5)
+    expect(r).toBeCloseTo(g)
+    expect(g).toBeCloseTo(b)
+    expect(r).toBeLessThan(0.5)
+    expect(lookColor('hollywood', 0.2, 0.2, 0.2)[0] / 0.2).toBeLessThan(lookColor('hollywood', 0.8, 0.8, 0.8)[0] / 0.8)
   })
 })
 
@@ -266,8 +268,8 @@ describe('lookStep', () => {
 })
 
 describe('which looks get grain and dust', () => {
-  it('gives grain to the old film most and dust only to it', () => {
-    expect(LOOK_GRAIN).toEqual({ hollywood: 0, oldFilm: 1, nightBlue: 0.25, mono: 0.5, glitch: 0 })
+  it('gives grain to the old film, night and mono, and dust only to the old film', () => {
+    expect(LOOK_GRAIN).toEqual({ hollywood: 0, oldFilm: 0.4, nightBlue: 0.25, mono: 0.5, glitch: 0 })
     expect(LOOK_HAS_DUST('oldFilm')).toBe(true)
     expect(LOOK_HAS_DUST('mono')).toBe(false)
   })

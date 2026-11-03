@@ -11,9 +11,12 @@ import { random as rng } from './seededRandom'
 type ColorLook = Exclude<CinemaLook, 'glitch'>
 
 /** Grain laid over each look, 0 = none (the reference's `grain`). */
-export const LOOK_GRAIN: Record<CinemaLook, number> = { hollywood: 0, oldFilm: 1, nightBlue: 0.25, mono: 0.5, glitch: 0 }
+export const LOOK_GRAIN: Record<CinemaLook, number> = { hollywood: 0, oldFilm: 0.4, nightBlue: 0.25, mono: 0.5, glitch: 0 }
 
 export const LOOK_HAS_DUST = (look: CinemaLook): boolean => look === 'oldFilm'
+
+/** How strongly the old film's dust is drawn: faint, so it reads as a layer (2026-11-03). */
+export const DUST_OPACITY = 0.4
 
 /** The reference's reference size; every pixel length in it is relative to this width. */
 const REFERENCE_WIDTH = 540
@@ -34,26 +37,23 @@ const saturate = (r: number, g: number, b: number, s: number): [number, number, 
 export function lookColor(look: ColorLook, r: number, g: number, b: number): [number, number, number] {
   switch (look) {
     case 'hollywood': {
-      ;[r, g, b] = saturate(r, g, b, 0.85)
-      const L = luma(r, g, b)
-      const sh = (1 - L) ** 2
-      const hi = L * L
-      r += -0.12 * sh + 0.11 * hi
-      g += 0.03 * sh + 0.03 * hi
-      b += 0.12 * sh - 0.1 * hi
-      return [sCurve(clamp(r), 0.4), sCurve(clamp(g), 0.4), sCurve(clamp(b), 0.4)]
+      // No tint (2026-11-03): the picture's own colors, a little darker, the shadows sunk toward black.
+      ;[r, g, b] = saturate(r, g, b, 0.9)
+      const f = (x: number) => sCurve(clamp(x * 0.88) ** 1.3, 0.35)
+      return [f(r), f(g), f(b)]
     }
     case 'oldFilm': {
-      ;[r, g, b] = saturate(r, g, b, 0.55)
+      // Softer since 2026-11-03: a faded layer over the picture, not a worn print.
+      ;[r, g, b] = saturate(r, g, b, 0.7)
       const L = luma(r, g, b)
       const sh = (1 - L) ** 2
-      r += 0.08
-      g += 0.04 + 0.03 * sh
-      b -= 0.1
-      // Flatter, with the blacks lifted: old prints lost their contrast.
-      const lift = 0.15
-      const top = 0.9
-      const f = (x: number) => lift + sCurve(clamp(x), -0.15) * (top - lift)
+      r += 0.05
+      g += 0.025 + 0.02 * sh
+      b -= 0.06
+      // A little flatter, the blacks a little lifted: old prints lost their contrast.
+      const lift = 0.07
+      const top = 0.95
+      const f = (x: number) => lift + sCurve(clamp(x), -0.1) * (top - lift)
       return [f(r), f(g), f(b)]
     }
     case 'nightBlue': {
