@@ -1,7 +1,7 @@
 # Cinema Looks: A Picked Film Look Between the Opening Bars
 
 **Date:** 2026-11-03
-**Status:** Draft, waiting for approval (brainstorming)
+**Status:** Approved (brainstorming)
 **Builds on:** the Type A/B opening bars (#106–#111, `src/utils/openingLook.ts`),
 the Claude inbox (`send_to_teleprompter`), video records (#75), the
 "TikTok台本ネタ出し" routine
