@@ -140,7 +140,7 @@ describe('drawCinemaLook', () => {
     expect(back.op).toBe('source-over')
     expect(back.alpha).toBe(0.5)
     expect(grain.op).toBe('overlay')
-    expect(grain.alpha).toBeCloseTo(0.55 * 0.5)
+    expect(grain.alpha).toBeCloseTo(0.4 * 0.55 * 0.5)
     expect(grain.source!.width).toBe(GRAIN_WIDTH)
     expect(grain.source!.height).toBe(GRAIN_HEIGHT)
     expect(grain.args).toEqual([0, 0, W, H])
@@ -148,7 +148,7 @@ describe('drawCinemaLook', () => {
 
     const specks = calls('ellipse')
     expect(specks.length).toBeGreaterThan(0)
-    expect(specks.every(e => e.op === 'source-over' && e.alpha === 0.5)).toBe(true)
+    expect(specks.every(e => e.op === 'source-over' && e.alpha === 0.5 * 0.4)).toBe(true)
     expect(calls('stroke').length).toBeGreaterThan(0)
     // 2 hairs curve; scratches run to the bottom of the frame
     expect(calls('bezierCurveTo')).toHaveLength(2)

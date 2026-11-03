@@ -119,8 +119,8 @@ export function openingActive(t: number, look: OpeningLook | null): look is Open
  * grade, with no grain, dust or motion. Only the last-resort path reads these.
  */
 const LOOK_FILTERS: Record<CinemaLook, string[]> = {
-  hollywood: ['eq=saturation=0.85:contrast=1.15', 'colorbalance=rs=-0.1:bs=0.1:rh=0.1:bh=-0.1'],
-  oldFilm: ['eq=saturation=0.55:contrast=0.8:brightness=0.04', 'colorbalance=rm=0.08:bm=-0.1'],
+  hollywood: ['eq=saturation=0.9:contrast=1.15:brightness=-0.06:gamma=0.85'],
+  oldFilm: ['eq=saturation=0.7:contrast=0.9:brightness=0.02', 'colorbalance=rm=0.05:bm=-0.06'],
   nightBlue: ['eq=saturation=0.55:contrast=1.2', 'colorbalance=rs=-0.06:bs=0.1:rm=-0.04:bm=0.08'],
   mono: ['hue=s=0', 'eq=contrast=1.3'],
   glitch: ['rgbashift=rh=-6:bh=6'],
