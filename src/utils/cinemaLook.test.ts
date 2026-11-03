@@ -83,10 +83,32 @@ describe('gradePixels', () => {
     gradePixels(data, w, h, lut, mask)
     const [r, g, b] = lutApply(lut, 200, 120, 40)
     const p = 3 * w + 4
-    expect(data[p * 4]).toBe(Math.round(r * mask[p]))
-    expect(data[p * 4 + 1]).toBe(Math.round(g * mask[p]))
-    expect(data[p * 4 + 2]).toBe(Math.round(b * mask[p]))
+    // The frame reads a coarser table than lutApply's, so a level or two apart.
+    expect(Math.abs(data[p * 4] - r * mask[p])).toBeLessThanOrEqual(2)
+    expect(Math.abs(data[p * 4 + 1] - g * mask[p])).toBeLessThanOrEqual(2)
+    expect(Math.abs(data[p * 4 + 2] - b * mask[p])).toBeLessThanOrEqual(2)
     expect(data[p * 4 + 3]).toBe(77)
+  })
+})
+
+describe('gradePixels accuracy', () => {
+  it('stays within 2/255 of the look itself, whole frame at once', () => {
+    let seed = 11
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296
+      return seed / 4294967296
+    }
+    const count = 4000
+    for (const look of COLOR_LOOKS) {
+      const data = new Uint8ClampedArray(count * 4)
+      for (let i = 0; i < data.length; i += 4) data.set([rand() * 256, rand() * 256, rand() * 256, 255], i)
+      const before = data.slice()
+      gradePixels(data, count, 1, buildLut(look), new Float32Array(count).fill(1))
+      for (let i = 0; i < data.length; i += 4) {
+        const want = lookColor(look, before[i] / 255, before[i + 1] / 255, before[i + 2] / 255)
+        for (let c = 0; c < 3; c++) expect(Math.abs(data[i + c] - Math.min(1, Math.max(0, want[c])) * 255)).toBeLessThanOrEqual(2)
+      }
+    }
   })
 })
 

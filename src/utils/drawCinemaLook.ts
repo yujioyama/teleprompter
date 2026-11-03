@@ -27,9 +27,9 @@ type AnyCanvas = HTMLCanvasElement | OffscreenCanvas
 /**
  * How big the pixels are graded at, relative to the frame: 1 is the frame's
  * own size, 0.5 grades a quarter of the pixels and scales the result back up
- * (the look is soft anyway). Chosen from timing on this Mac; see the commit.
+ * (the look is soft anyway). Chosen from timing on a Mac; see the commits.
  */
-export const LOOK_PROCESS_SCALE: 1 | 0.5 = 1
+export const LOOK_PROCESS_SCALE: 1 | 0.5 = 0.5
 
 /** The grain and dust are cycled over this many frames, as in the reference. */
 const GRAIN_FRAMES = 6
@@ -52,15 +52,20 @@ interface Scratch {
   out: ImageData
 }
 
-let scratch: Scratch | null = null
+/** One per size: the burn (1080×1920) and the subtitle preview (540×960) draw at the same time. */
+const scratches = new Map<string, Scratch>()
 
-/** The picture's copy to read pixels from; kept between frames, remade if the size changes. */
+/** The picture's copy to read pixels from; kept between frames. */
 function scratchFor(width: number, height: number): Scratch {
-  if (scratch && scratch.canvas.width === width && scratch.canvas.height === height) return scratch
-  const canvas = createCanvas(width, height)
-  const ctx = context(canvas, true)
-  scratch = { canvas, ctx, out: ctx.createImageData(width, height) }
-  return scratch
+  const key = `${width}x${height}`
+  let work = scratches.get(key)
+  if (!work) {
+    const canvas = createCanvas(width, height)
+    const ctx = context(canvas, true)
+    work = { canvas, ctx, out: ctx.createImageData(width, height) }
+    scratches.set(key, work)
+  }
+  return work
 }
 
 const grainCanvases: AnyCanvas[] = []

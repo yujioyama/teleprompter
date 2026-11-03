@@ -60,8 +60,10 @@ const W = 8
 const H = 16
 
 describe('drawCinemaLook', () => {
-  let draw: Draw
+  let drawDefault: Draw
   let drawAt: DrawAt
+  /** Full size, whatever the shipped scale is. */
+  const draw = (...args: Parameters<Draw>) => drawAt(...args, 1)
   let ctx: Ctx
 
   beforeEach(async () => {
@@ -69,13 +71,20 @@ describe('drawCinemaLook', () => {
     FakeCanvas.all = []
     vi.stubGlobal('OffscreenCanvas', FakeCanvas)
     vi.resetModules()
-    ;({ drawCinemaLook: draw, drawCinemaLookAtScale: drawAt } = await import('./drawCinemaLook'))
+    ;({ drawCinemaLook: drawDefault, drawCinemaLookAtScale: drawAt } = await import('./drawCinemaLook'))
     ctx = new FakeCanvas(W, H).ctx as unknown as Ctx
     events = []
   })
 
   const calls = (name: string) => events.filter(e => e.call === name)
   const grainDraws = () => calls('drawImage').filter(e => e.op === 'overlay')
+
+  it('processes at half size by default', async () => {
+    const { LOOK_PROCESS_SCALE } = await import('./drawCinemaLook')
+    expect(LOOK_PROCESS_SCALE).toBe(0.5)
+    drawDefault(ctx, 'mono', 0, 1, W, H)
+    expect(calls('getImageData')[0].args).toEqual([0, 0, W / 2, H / 2])
+  })
 
   it('draws nothing at opacity 0', () => {
     draw(ctx, 'oldFilm', 0.3, 0, W, H)
@@ -165,6 +174,16 @@ describe('drawCinemaLook', () => {
     expect(b).not.toBe(a)
     // six frames, cycled
     expect(grainOf(6 / 12 + 0.01)).toBe(a)
+  })
+
+  it('keeps a scratch canvas for each size, so two sizes drawn in turn make none after the first', () => {
+    const other = new FakeCanvas(W * 2, H * 2).ctx as unknown as Ctx
+    draw(ctx, 'mono', 0, 1, W, H)
+    draw(other, 'mono', 0, 1, W * 2, H * 2)
+    const made = FakeCanvas.all.length
+    draw(ctx, 'mono', 0.01, 1, W, H)
+    draw(other, 'mono', 0.01, 1, W * 2, H * 2)
+    expect(FakeCanvas.all.length).toBe(made)
   })
 
   it('processes at half size and scales back up when asked', () => {
