@@ -11,6 +11,7 @@ import {
   LOOK_GRAIN,
   LOOK_HAS_DUST,
   lookStep,
+  releaseLookTables,
   vignetteMask,
   type DustSpec,
 } from './cinemaLook'
@@ -118,6 +119,21 @@ function drawDust(ctx: Ctx, specs: DustSpec[], height: number): void {
       ctx.stroke()
     }
   }
+}
+
+/**
+ * Frees what the look keeps between frames (~17 MB: tables, scratch canvases,
+ * masks, grain); the next draw rebuilds it. Called when the page that draws
+ * looks goes away, since the iPhone has run out of memory before.
+ */
+export function releaseCinemaLookCaches(): void {
+  // a zero size lets Safari free the canvas's backing store right away
+  for (const work of scratches.values()) work.canvas.width = work.canvas.height = 0
+  for (const canvas of grainCanvases) canvas.width = canvas.height = 0
+  scratches.clear()
+  grainCanvases.length = 0
+  dustCache.clear()
+  releaseLookTables()
 }
 
 /**

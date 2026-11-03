@@ -69,7 +69,8 @@ describe('buildVideoRecord', () => {
   })
 
   it('still reads the records from before the film looks', () => {
-    const { opening: _, ...rest } = build().effects
+    const rest: Record<string, unknown> = { ...build().effects }
+    delete rest.opening
     const old = (opening: unknown) => ({ ...build(), effects: { ...rest, opening } })
     for (const opening of [{ kind: 'letterbox', at: 0.8 }, { kind: 'colorPop', at: 1.2 }]) {
       expect(parseVideoRecord(old(opening))).not.toBeNull()

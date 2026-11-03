@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import {
   LOOK_GRAIN,
   LOOK_HAS_DUST,
   buildLut,
   dustSpecs,
+  fastTableBuilds,
   glitchParams,
   glitchPixels,
   gradePixels,
@@ -11,6 +12,7 @@ import {
   lookColor,
   lookStep,
   lutApply,
+  releaseLookTables,
   vignetteMask,
 } from './cinemaLook'
 
@@ -107,6 +109,63 @@ describe('gradePixels accuracy', () => {
       for (let i = 0; i < data.length; i += 4) {
         const want = lookColor(look, before[i] / 255, before[i + 1] / 255, before[i + 2] / 255)
         for (let c = 0; c < 3; c++) expect(Math.abs(data[i + c] - Math.min(1, Math.max(0, want[c])) * 255)).toBeLessThanOrEqual(2)
+      }
+    }
+  })
+})
+
+describe('gradePixels with two looks at once', () => {
+  let now = 0
+  beforeEach(() => {
+    releaseLookTables()
+    now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  const frame = (seed: number, count: number) => {
+    let s = seed
+    const data = new Uint8ClampedArray(count * 4)
+    for (let i = 0; i < data.length; i += 4) {
+      const v: number[] = []
+      for (let c = 0; c < 3; c++) {
+        s = (s * 1664525 + 1013904223) % 4294967296
+        v.push((s / 4294967296) * 256)
+      }
+      data.set([...v, 255], i)
+    }
+    return data
+  }
+
+  it('builds the fast table once, not every frame, while the looks alternate within a second', () => {
+    const before = fastTableBuilds()
+    for (let n = 0; n < 40; n++) {
+      now = n * 20
+      gradePixels(frame(n, 64), 64, 1, buildLut(n % 2 ? 'mono' : 'hollywood'), new Float32Array(64).fill(1))
+    }
+    expect(fastTableBuilds() - before).toBe(1)
+    // a miss a second after the last build rebuilds for the other look
+    now = 1500
+    gradePixels(frame(1, 64), 64, 1, buildLut('mono'), new Float32Array(64).fill(1))
+    expect(fastTableBuilds() - before).toBe(2)
+  })
+
+  it('stays within 2/255 of the look while it is graded through the LUT instead', () => {
+    const count = 4000
+    const mask = new Float32Array(count).map((_, i) => 0.4 + 0.6 * (i / count))
+    gradePixels(frame(3, 16), 16, 1, buildLut('hollywood'), new Float32Array(16).fill(1)) // takes the table
+    for (const look of ['oldFilm', 'nightBlue', 'mono'] as const) {
+      const data = frame(7, count)
+      const before = data.slice()
+      now += 10
+      const builds = fastTableBuilds()
+      gradePixels(data, count, 1, buildLut(look), mask)
+      expect(fastTableBuilds()).toBe(builds)
+      for (let p = 0; p < count; p++) {
+        const i = p * 4
+        const want = lookColor(look, before[i] / 255, before[i + 1] / 255, before[i + 2] / 255)
+        for (let c = 0; c < 3; c++) expect(Math.abs(data[i + c] - Math.min(1, Math.max(0, want[c])) * 255 * mask[p])).toBeLessThanOrEqual(2)
+        expect(data[i + 3]).toBe(255)
       }
     }
   })

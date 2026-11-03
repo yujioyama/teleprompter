@@ -15,6 +15,7 @@ import {
 import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
 import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
+import { releaseCinemaLookCaches } from '../utils/drawCinemaLook'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
@@ -164,6 +165,8 @@ export default function FinalizePage() {
   // The script as of now, for work that finishes after a 間を残す switch.
   const scriptRef = useRef(script)
   scriptRef.current = script
+  // The film look keeps ~17 MB between frames; give it back when leaving the page.
+  useEffect(() => releaseCinemaLookCaches, [])
 
   const [entries, setEntries] = useState<ShotEntry[]>([])
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null)

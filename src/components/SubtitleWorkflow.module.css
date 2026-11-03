@@ -59,6 +59,13 @@
   gap: 8px;
 }
 
+/* Six looks: 3 × 2, so ハリウッド風 and 昔のフィルム fit on one line on a phone. */
+.lookGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
 .positionBtn {
   flex: 1;
   background: var(--surface2);

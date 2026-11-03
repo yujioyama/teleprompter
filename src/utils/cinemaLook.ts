@@ -197,18 +197,49 @@ function buildFastTable(lut: Lut): Uint32Array {
 
 /** 8 MB, and a video wears one look: keep only the latest (the iPhone has run out of memory before). */
 let fastCache: { lut: Lut; table: Uint32Array } | null = null
+let fastBuiltAt = -Infinity
+let fastBuilds = 0
 
-function fastTableFor(lut: Lut): Uint32Array {
+/**
+ * A miss this soon after a build is two looks drawn at once (the burn and the
+ * preview): rebuilding would evict the other's table every frame (99 ms vs 3 ms
+ * a frame), so that frame is graded through the 33³ LUT instead.
+ */
+const FAST_REBUILD_AFTER_MS = 1000
+
+/** null when `lut` is not the cached one and a build is too soon. */
+function fastTableFor(lut: Lut): Uint32Array | null {
   if (fastCache?.lut === lut) return fastCache.table
+  if (performance.now() - fastBuiltAt < FAST_REBUILD_AFTER_MS) return null
   fastCache = null // free the old one before the new one is built
   fastCache = { lut, table: buildFastTable(lut) }
+  fastBuilds++
+  fastBuiltAt = performance.now()
   return fastCache.table
+}
+
+/** How many fast tables have been built (for tests). */
+export function fastTableBuilds(): number {
+  return fastBuilds
+}
+
+/** Drops the LUTs, the fast table and the vignette masks; they are rebuilt on the next draw. */
+export function releaseLookTables(): void {
+  lutCache.clear()
+  vignetteCache.clear()
+  fastCache = null
+  fastBuiltAt = -Infinity
 }
 
 /** In place: each pixel through the look, then darkened by the vignette. Alpha is left alone. */
 export function gradePixels(data: Uint8ClampedArray, width: number, height: number, lut: Lut, mask: Float32Array): void {
   const table = fastTableFor(lut)
   const count = width * height
+  if (!table) {
+    // sampleLut takes its inputs by value, so it can write over the pixel it read
+    for (let p = 0, i = 0; p < count; p++, i += 4) sampleLut(lut, data[i], data[i + 1], data[i + 2], data, i, mask[p])
+    return
+  }
   const gShift = FAST_BITS
   const rShift = 2 * FAST_BITS
   for (let p = 0, i = 0; p < count; p++, i += 4) {

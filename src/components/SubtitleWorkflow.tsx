@@ -618,7 +618,7 @@ export default function SubtitleWorkflow({
                   <p className={styles.hint}>
                     Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
                   </p>
-                  <div className={styles.positionRow} role="group" aria-label="冒頭の色">
+                  <div className={styles.lookGrid} role="group" aria-label="冒頭の色">
                     {[null, ...CINEMA_LOOKS].map(look => (
                       <button
                         key={look ?? 'none'}

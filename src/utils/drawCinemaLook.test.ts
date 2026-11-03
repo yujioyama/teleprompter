@@ -63,6 +63,7 @@ const H = 16
 describe('drawCinemaLook', () => {
   let drawDefault: Draw
   let drawAt: DrawAt
+  let release: () => void
   /** Full size, whatever the shipped scale is. */
   const draw = (...args: Parameters<Draw>) => drawAt(...args, 1)
   let ctx: Ctx
@@ -72,7 +73,7 @@ describe('drawCinemaLook', () => {
     FakeCanvas.all = []
     vi.stubGlobal('OffscreenCanvas', FakeCanvas)
     vi.resetModules()
-    ;({ drawCinemaLook: drawDefault, drawCinemaLookAtScale: drawAt } = await import('./drawCinemaLook'))
+    ;({ drawCinemaLook: drawDefault, drawCinemaLookAtScale: drawAt, releaseCinemaLookCaches: release } = await import('./drawCinemaLook'))
     ctx = new FakeCanvas(W, H).ctx as unknown as Ctx
     events = []
   })
@@ -93,6 +94,17 @@ describe('drawCinemaLook', () => {
     events = []
     drawDefault(ctx, 'glitch', 0, 1, W, H)
     expect(calls('getImageData')[0].args).toEqual([0, 0, W, H])
+  })
+
+  it('rebuilds its scratch and grain canvases after the caches are released', () => {
+    draw(ctx, 'oldFilm', 0, 1, W, H)
+    const made = FakeCanvas.all.length
+    draw(ctx, 'oldFilm', 0, 1, W, H)
+    expect(FakeCanvas.all).toHaveLength(made) // kept between frames
+    release()
+    draw(ctx, 'oldFilm', 0, 1, W, H)
+    expect(FakeCanvas.all.length).toBeGreaterThan(made)
+    expect(calls('putImageData').length).toBeGreaterThan(0)
   })
 
   it('draws nothing at opacity 0', () => {
