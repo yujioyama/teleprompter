@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CINEMA_LOOKS } from './cinemaLook.js'
 
 // How a saved video was made, so the weekly analysis can tell which videos
 // used which opening and pacing. The app sends one on 保存する; Claude reads
@@ -48,8 +49,14 @@ export const videoRecordSchema = z.object({
     oneTake: z.boolean().optional(),
     /** Type A (2021-style daily thing) or B (expression-note story); absent = untyped or before 2026-11-02. */
     videoType: z.enum(['A', 'B']).optional(),
-    /** Type A/B's opening look (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03); null = none, absent = before it. */
-    opening: z.object({ kind: z.enum(['letterbox', 'colorPop']), at: z.number() }).nullable().optional(),
+    /**
+     * Type A/B's opening (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03);
+     * null = none, absent = before it. `look` is the film look graded under the bars; null = none, absent = before it.
+     */
+    opening: z
+      .object({ kind: z.enum(['letterbox', 'colorPop']), at: z.number(), look: z.enum(CINEMA_LOOKS).nullable().optional() })
+      .nullable()
+      .optional(),
   }),
 })
 

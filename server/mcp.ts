@@ -42,7 +42,7 @@ const SUBTITLES_DESCRIPTION = [
 const RECORDS_DESCRIPTION = [
   'teleprompterアプリで「保存する」を押した完成動画の制作記録を返します（1台本につき最後の保存の1件、新しい順のJSON）。',
   'TikTokなどの動画を、hookLine（字幕の1行目。*や絵文字なし）と savedAt（保存日時。投稿はその後）で突き合わせると、その動画の作り方が分かります。',
-  'effects: hookStyle/hookPosition（最初のショットのフック字幕）、zoom（最初のショットのズーム。direction=outは寄った画から始まる）、sticker（顔の横の絵文字ステッカー）、fairies（途中の妖精と最後のフィナーレ）、subtitles、bgm、voicePreset、trim（無音の余白の秒数: firstStart=最初のショットの前、start/end=各ショットの前後、lastEnd=最後のショットの後ろ、pauseShots=「間を残す」にしたショット数。nullは不明）、midZoom（中盤のズーム: 山場の行でじわっと寄り、最後の行で寄る。trueなら使った。項目が無いのは導入前の記録）、oneTake（一発撮り: 台本全体を1回で撮り、字幕を行ごとに切り替えた。trueなら一発撮り。項目が無いのは導入前の記録）、videoType（A＝2021年型、B＝表現ノート型。無いのは型なしか2026-11-02より前）、opening（冒頭の演出: letterbox＝黒帯が開く、colorPop＝1行目の語句で色づく（2026-11-03より前のType B）。atは動き始める秒。nullは無し、項目が無いのは導入前）。',
+  'effects: hookStyle/hookPosition（最初のショットのフック字幕）、zoom（最初のショットのズーム。direction=outは寄った画から始まる）、sticker（顔の横の絵文字ステッカー）、fairies（途中の妖精と最後のフィナーレ）、subtitles、bgm、voicePreset、trim（無音の余白の秒数: firstStart=最初のショットの前、start/end=各ショットの前後、lastEnd=最後のショットの後ろ、pauseShots=「間を残す」にしたショット数。nullは不明）、midZoom（中盤のズーム: 山場の行でじわっと寄り、最後の行で寄る。trueなら使った。項目が無いのは導入前の記録）、oneTake（一発撮り: 台本全体を1回で撮り、字幕を行ごとに切り替えた。trueなら一発撮り。項目が無いのは導入前の記録）、videoType（A＝2021年型、B＝表現ノート型。無いのは型なしか2026-11-02より前）、opening（冒頭の演出: letterbox＝黒帯が開く、colorPop＝1行目の語句で色づく（2026-11-03より前のType B）。atは動き始める秒、look（冒頭の色: hollywood/oldFilm/nightBlue/mono/glitch。nullは無し、項目が無いのは導入前）。openingそのものがnullなら無し、項目が無いのは導入前）。',
 ].join('\n')
 
 // The app's request id ends in its English line count (e.g. "1x9kq2c-6").
