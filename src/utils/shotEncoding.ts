@@ -95,6 +95,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     hasHookCue ? (look.hook.stickerRoute ?? 0) : null,
     // The sticker's size and sparkles changed the pixels; old cached burns are stale.
     'sparkles-v1',
+    // So did the sticker waiting for the bars and the softer looks (2026-11-03).
+    'after-bars-v1',
     fairies.map(f => f.key),
     midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
   ])
@@ -153,6 +155,7 @@ export function shotBurnRequests(
       position,
       hook,
       firstShotDuration: i === 0 ? hookSpan : null,
+      firstClipDuration: i === 0 ? duration : null,
       fairies: fairiesForShot(plan, offset, duration),
       midZoom: midZoomForShot(zoomPlan, offset, duration),
     }
@@ -259,7 +262,7 @@ export async function burnSubtitlesByShot(
   const blob = await burnSubtitles(
     combinedBlob,
     cues,
-    { position, hook, firstShotDuration: hookSpan, fairies: plan, midZoom: zoomPlan },
+    { position, hook, firstShotDuration: hookSpan, firstClipDuration: firstShotDurationOf(clips), fairies: plan, midZoom: zoomPlan },
     onProgress,
     signal,
   )

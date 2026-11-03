@@ -17,6 +17,7 @@ import {
   PUNCH_IN_ZOOMS,
   punchInScale,
   followsFrames,
+  styleCues,
   ZOOM_ANCHOR_Y,
   type HookSettings,
   type PunchInDuration,
@@ -25,7 +26,7 @@ import {
 import { fairiesFromSubtitles } from '../utils/fairyPlan'
 import { midZoomScale, planMidZoom } from '../utils/midZoom'
 import { reapplyStickers, type StickerPlacement } from '../utils/subtitleSticker'
-import type { StickerMotion } from '../utils/stickerMotion'
+import { placeSticker, type StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
 import SubtitleEditor from './SubtitleEditor'
 import CueCheckPlayer from './CueCheckPlayer'
@@ -205,6 +206,12 @@ export default function SubtitleWorkflow({
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
   const firstShotDuration = oneTake ? (cues[0]?.end ?? null) : (shotCueInputs[0]?.duration ?? null)
+  const firstClipDuration = shotCueInputs[0]?.duration ?? null
+  // Behind the bars, the sticker waits and stays on into line 2: the preview follows it there.
+  const stickerEnd = useMemo(
+    () => placeSticker(styleCues(cues, firstShotDuration, hook.style), hook, firstShotDuration, firstClipDuration)?.end ?? null,
+    [cues, firstShotDuration, firstClipDuration, hook],
+  )
   // Read from the subtitles' emoji, so editing them is what the preview shows.
   const fairies = useMemo(
     () => fairiesFromSubtitles(cues, shotCueInputs.map(s => s.duration), hook, position),
@@ -220,7 +227,7 @@ export default function SubtitleWorkflow({
   // zooms; elsewhere onTimeUpdate is enough, and per-frame state would
   // re-render the whole workflow.
   useVideoFrameTime(previewVideo, t => {
-    if (followsFrames(t, hook, firstShotDuration, fairies, midZoom)) setPreviewTime(t)
+    if (followsFrames(t, hook, firstShotDuration, fairies, midZoom, stickerEnd)) setPreviewTime(t)
   })
   // Must be stable: an inline arrow would be re-run on every render, setting state each time and looping.
   const attachPreview = useCallback((el: HTMLVideoElement | null) => {
@@ -512,6 +519,7 @@ export default function SubtitleWorkflow({
                       currentTime={time}
                       hook={hook}
                       firstShotDuration={firstShotDuration}
+                      firstClipDuration={firstClipDuration}
                       fairies={fairies}
                     />
                   )}
@@ -572,6 +580,7 @@ export default function SubtitleWorkflow({
                   currentTime={previewTime}
                   hook={hook}
                   firstShotDuration={firstShotDuration}
+                  firstClipDuration={firstClipDuration}
                   fairies={fairies}
                 />
               </div>

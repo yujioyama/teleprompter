@@ -138,9 +138,9 @@ describe('shotBurnRequests', () => {
     const calls = vi.mocked(burnModule.burnShotSubtitles).mock.calls
     expect(calls.map(([blob, start, end, shotCues, shotLook]) => [blob, start, end, shotCues, shotLook])).toEqual([
       [clips[0].blob, 1, 3, [expect.objectContaining({ en: 'first', start: 0, end: 2, variant: 'normal' })],
-        { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [], midZoom: [] }],
+        { position: 50, hook: NO_HOOK, firstShotDuration: 2, firstClipDuration: 2, fairies: [], midZoom: [] }],
       [clips[1].blob, 0, 1.5, [expect.objectContaining({ en: 'second', start: 0, end: 1.5, variant: 'normal' })],
-        { position: 50, hook: NO_HOOK, firstShotDuration: null, fairies: [], midZoom: [] }],
+        { position: 50, hook: NO_HOOK, firstShotDuration: null, firstClipDuration: null, fairies: [], midZoom: [] }],
     ])
   })
 
@@ -172,7 +172,7 @@ describe('burnSubtitlesByShot', () => {
     { text: 'first', duration: 2 },
     { text: 'second', duration: 1 },
   ]))
-  const fallbackLook = { position: 50, hook: NO_HOOK, firstShotDuration: 2, fairies: [], midZoom: [] }
+  const fallbackLook = { position: 50, hook: NO_HOOK, firstShotDuration: 2, firstClipDuration: 2, fairies: [], midZoom: [] }
 
   it('joins the per-shot burns by packet copy', async () => {
     const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK)

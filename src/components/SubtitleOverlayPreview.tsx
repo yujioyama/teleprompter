@@ -29,6 +29,8 @@ interface SubtitleOverlayPreviewProps {
   hook?: HookOptions
   /** The first shot's length in seconds, which decides the hook cues. */
   firstShotDuration?: number | null
+  /** The first clip's length, past the first shot in 一発撮り; the sticker may stay on into it. */
+  firstClipDuration?: number | null
   /** The mid-video cameos and the finale, in the joined video's time. */
   fairies?: FairyAppearance[]
 }
@@ -108,6 +110,7 @@ export default function SubtitleOverlayPreview({
   currentTime,
   hook,
   firstShotDuration = null,
+  firstClipDuration = firstShotDuration,
   fairies,
 }: SubtitleOverlayPreviewProps) {
   const measure = useMemo(() => createCanvasMeasure(), [])
@@ -122,15 +125,16 @@ export default function SubtitleOverlayPreview({
     () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure) : null),
     [cue, measure],
   )
-  // As burned: only translated cues count, and it stays up for the whole first shot.
+  // As burned: only translated cues count, and it shows over the window placeSticker gives it.
+  const stickerOpening = hook?.opening ?? null
   const stickerMotion = hook?.stickerMotion
   const stickerRoute = hook?.stickerRoute
   const stickerPlacement = hook?.sticker
   const sticker = useMemo(
-    () => placeSticker(styled, { sticker: stickerPlacement, stickerMotion, stickerRoute }, firstShotDuration),
-    [styled, stickerPlacement, stickerMotion, stickerRoute, firstShotDuration],
+    () => placeSticker(styled, { sticker: stickerPlacement, stickerMotion, stickerRoute, opening: stickerOpening }, firstShotDuration, firstClipDuration),
+    [styled, stickerPlacement, stickerMotion, stickerRoute, stickerOpening, firstShotDuration, firstClipDuration],
   )
-  const showSticker = sticker !== null && firstShotDuration !== null && currentTime < firstShotDuration
+  const showSticker = sticker !== null && currentTime >= sticker.start && currentTime < sticker.end
   const pose = sticker && (sticker.path ? sticker.path(currentTime) : { ...sticker.home, scale: 1 })
 
   const hookPosition = hook?.position ?? position

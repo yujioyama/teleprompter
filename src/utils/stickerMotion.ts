@@ -10,6 +10,7 @@ import type { HookOptions } from './subtitleHook'
 import { hash, random } from './seededRandom'
 import { emitSparkles, type Sparkle } from './sparkles'
 import { DEFAULT_STICKER_PLACEMENT, STICKER_EMOJI_PX, STICKER_PLACEMENTS, findSticker } from './subtitleSticker'
+import { openingEnd } from './openingLook'
 
 export type StickerMotion = 'none' | 'random' | 'wander' | 'bounce' | 'orbit' | 'warp' | 'dash'
 /** The motions おまかせ ('random') picks from. */
@@ -208,26 +209,65 @@ export function stickerPath(motion: StickerMotion, seed: number, home: Home, dur
   }
 }
 
-/** The first shot's sticker as placed: its emoji, its spot, its trip (null = it stays put) and its sparkles. */
+/** Seconds the sticker takes to pop in when it waits for the opening's bars. */
+const POP_IN = 0.3
+/** Less time than this after the bars and it shows over the whole first shot, as before. */
+const MIN_AFTER_BARS = 0.5
+
+/** Scale over the pop in, `u` 0-1: from nothing, up past its size, settled. */
+function popIn(u: number): number {
+  const c = 1.7
+  const v = clamp(u, 0, 1) - 1
+  return 1 + (c + 1) * v * v * v + c * v * v
+}
+
+/** The first shot's sticker as placed: its emoji, its spot, when it shows, its trip (null = it stays put) and its sparkles. */
 export interface PlacedSticker {
   emoji: string
   home: Home
+  /** Seconds into the video it shows from and until. */
+  start: number
+  end: number
+  /** In the video's time, over [start, end]. */
   path: StickerPath | null
-  /** Over [0, firstShotDuration], all gone by its end; they follow the sticker. */
+  /** Over [start, end], all gone by its end; they follow the sticker. */
   sparkles: Sparkle[]
+}
+
+/**
+ * When the sticker shows. Over the whole first shot, unless the video opens
+ * with the black bars (2026-11-03): then the serious opening is left alone and
+ * it pops in as the bars have gone, staying through line 2 where the clip goes
+ * on past line 1 (一発撮り: `clipDuration`).
+ */
+function stickerWindow(
+  cues: { start: number; end: number; ja: string | null }[],
+  hook: Pick<HookOptions, 'opening'>,
+  firstShotDuration: number,
+  clipDuration: number,
+): { start: number; end: number } {
+  const whole = { start: 0, end: firstShotDuration }
+  if (!hook.opening) return whole
+  // openingPlan moves the bars earlier to be gone by the first shot's end.
+  const start = Math.min(openingEnd(hook.opening), firstShotDuration)
+  const line2 = cues.find(c => c.ja !== null && c.start >= firstShotDuration - 0.05)
+  const end = Math.min(clipDuration, Math.max(firstShotDuration, line2?.end ?? 0))
+  return end - start < MIN_AFTER_BARS ? whole : { start, end }
 }
 
 /**
  * The sticker the burn and the preview both show: the first hook cue's
  * emoji (translated cues only, as burned) at `placement`, moving as
- * `motion` says over the first shot. Null without one, with placement
- * 'off', or for a video that doesn't start with the first shot. Its
- * sparkles trail the trip and burst at the landing, or twinkle when still.
+ * `motion` says over its window (see stickerWindow). Null without one,
+ * with placement 'off', or for a video that doesn't start with the first
+ * shot. Its sparkles trail the trip and burst at the landing, or twinkle
+ * when still.
  */
 export function placeSticker(
-  cues: { en: string; ja: string | null; variant: string }[],
-  hook: Pick<HookOptions, 'sticker' | 'stickerMotion' | 'stickerRoute'>,
+  cues: { start: number; end: number; en: string; ja: string | null; variant: string }[],
+  hook: Pick<HookOptions, 'sticker' | 'stickerMotion' | 'stickerRoute' | 'opening'>,
   firstShotDuration: number | null,
+  clipDuration: number | null = firstShotDuration,
 ): PlacedSticker | null {
   const placement = hook.sticker ?? DEFAULT_STICKER_PLACEMENT
   if (firstShotDuration === null || placement === 'off') return null
@@ -236,17 +276,26 @@ export function placeSticker(
   const at = STICKER_PLACEMENTS[placement]
   const home = { x: at.x, y: at.y / 100, rotation: at.rotation }
   const seed = stickerSeed(cue.en, hook.stickerRoute ?? 0)
-  const path = stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, firstShotDuration)
-  const landing = firstShotDuration - LANDING
-  // Without a path the sticker never moves, so it only twinkles; a burst would have nothing to land.
+  const { start, end } = stickerWindow(cues, hook, firstShotDuration, clipDuration ?? firstShotDuration)
+  const trip = stickerPath(hook.stickerMotion ?? DEFAULT_STICKER_MOTION, seed, home, end - start)
+  const still: StickerPath = () => ({ x: home.x, y: home.y, rotation: home.rotation, scale: 1 })
+  const popping = start > 0
+  const path: StickerPath | null =
+    !popping ? trip : t => {
+      const pose = (trip ?? still)(t - start)
+      const u = (t - start) / POP_IN
+      return u < 1 ? { ...pose, scale: Math.min(STICKER_MAX_SCALE, pose.scale * popIn(u)) } : pose
+    }
+  const landing = end - LANDING
+  // Without a trip the sticker never moves, so it only twinkles; a burst would have nothing to land.
   const sparkles = emitSparkles({
-    path: path ?? (() => ({ x: home.x, y: home.y, rotation: home.rotation, scale: 1 })),
-    start: 0,
-    end: firstShotDuration,
+    path: path ?? still,
+    start,
+    end,
     seed: hash(`sparkles|${seed}`),
     spread: (0.5 * STICKER_EMOJI_PX) / 1080,
-    bursts: path ? [landing] : [],
-    moving: t => path !== null && t < landing,
+    bursts: [...(popping ? [start] : []), ...(trip ? [landing] : [])],
+    moving: t => trip !== null && t < landing,
   })
-  return { emoji: findSticker(cue.en)!, home, path, sparkles }
+  return { emoji: findSticker(cue.en)!, home, start, end, path, sparkles }
 }

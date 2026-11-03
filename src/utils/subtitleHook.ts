@@ -204,7 +204,8 @@ const FAIRY_FOLLOW_MARGIN = 0.1
 /**
  * Whether the preview needs frame-accurate time at `t`: while the first
  * shot animates (the zoom, or the sticker, which always has sparkles) and
- * the playhead is in (or just past) it, and around each fairy. Elsewhere
+ * the playhead is in (or just past) it, until `stickerEnd` when the sticker
+ * stays on past it (placeSticker), and around each fairy. Elsewhere
  * the normal timeupdate rate is enough, so per-frame re-renders are skipped.
  */
 export function followsFrames(
@@ -213,16 +214,18 @@ export function followsFrames(
   firstShotDuration: number | null,
   fairies: FairyAppearance[] = [],
   midZoom: MidZoomSegment[] = [],
+  stickerEnd: number | null = null,
 ): boolean {
   const stickerAnimates = hook.sticker !== 'off'
   const inFirstShot = (hook.punchIn !== null || stickerAnimates || Boolean(hook.opening)) && firstShotDuration !== null && t < firstShotDuration + FRAME_FOLLOW_TAIL
+  const withSticker = stickerAnimates && stickerEnd !== null && t < stickerEnd + FRAME_FOLLOW_TAIL
   // A drift moves all through its shot; a punch only changes at its cut.
   const zooming = midZoom.some(s =>
     s.kind === 'drift'
       ? s.start - FRAME_FOLLOW_TAIL <= t && t <= s.end + FRAME_FOLLOW_TAIL
       : Math.abs(t - s.start) <= FRAME_FOLLOW_TAIL,
   )
-  return inFirstShot || zooming || fairies.some(f => f.start - FAIRY_FOLLOW_MARGIN <= t && t <= f.end + FAIRY_FOLLOW_MARGIN)
+  return inFirstShot || withSticker || zooming || fairies.some(f => f.start - FAIRY_FOLLOW_MARGIN <= t && t <= f.end + FAIRY_FOLLOW_MARGIN)
 }
 
 /** The punch-in a video gets and until when (the first shot's end). */
