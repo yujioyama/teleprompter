@@ -195,16 +195,14 @@ function buildFastTable(lut: Lut): Uint32Array {
   return table
 }
 
-/** 8 MB each, and a video wears one look: keep the latest two. */
-const fastTables = new Map<Lut, Uint32Array>()
+/** 8 MB, and a video wears one look: keep only the latest (the iPhone has run out of memory before). */
+let fastCache: { lut: Lut; table: Uint32Array } | null = null
 
 function fastTableFor(lut: Lut): Uint32Array {
-  const cached = fastTables.get(lut)
-  if (cached) return cached
-  if (fastTables.size >= 2) fastTables.delete(fastTables.keys().next().value!)
-  const table = buildFastTable(lut)
-  fastTables.set(lut, table)
-  return table
+  if (fastCache?.lut === lut) return fastCache.table
+  fastCache = null // free the old one before the new one is built
+  fastCache = { lut, table: buildFastTable(lut) }
+  return fastCache.table
 }
 
 /** In place: each pixel through the look, then darkened by the vignette. Alpha is left alone. */

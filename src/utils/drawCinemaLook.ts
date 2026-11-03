@@ -25,11 +25,13 @@ type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas
 
 /**
- * How big the pixels are graded at, relative to the frame: 1 is the frame's
- * own size, 0.5 grades a quarter of the pixels and scales the result back up
- * (the look is soft anyway). Chosen from timing on a Mac; see the commits.
+ * The width the pixels are graded at. A fixed width, not a fraction of the
+ * frame: the glitch's scanlines are 2 px at 540 wide, so the 540 preview and
+ * the 1080 burn must both process at 540 (the burn scales its result up) or
+ * the preview would show something other than what is burned. Narrower frames
+ * are not scaled up. 540 also kept every look under 12 ms a frame on a Mac.
  */
-export const LOOK_PROCESS_SCALE: 1 | 0.5 = 0.5
+export const LOOK_PROCESS_WIDTH = 540
 
 /** The grain and dust are cycled over this many frames, as in the reference. */
 const GRAIN_FRAMES = 6
@@ -119,8 +121,8 @@ function drawDust(ctx: Ctx, specs: DustSpec[], height: number): void {
 }
 
 /**
- * `drawCinemaLook` at a given processing scale; split out so the half-size
- * path can be tested without changing the exported constant.
+ * `drawCinemaLook` at a given processing scale (1 = the frame's own size);
+ * split out so the scaled path can be tested at any size.
  */
 export function drawCinemaLookAtScale(
   ctx: Ctx,
@@ -182,5 +184,5 @@ export function drawCinemaLookAtScale(
  * `t` (seconds) picks the grain, dust and glitch frame.
  */
 export function drawCinemaLook(ctx: Ctx, look: CinemaLook, t: number, opacity: number, width: number, height: number): void {
-  drawCinemaLookAtScale(ctx, look, t, opacity, width, height, LOOK_PROCESS_SCALE)
+  drawCinemaLookAtScale(ctx, look, t, opacity, width, height, Math.min(1, LOOK_PROCESS_WIDTH / width))
 }

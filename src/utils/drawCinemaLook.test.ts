@@ -47,8 +47,9 @@ function fakeCtx(canvas: { width: number; height: number }) {
     ctx[name] = (...args: number[]) => record(name, { args })
   }
   ctx.getImageData = (...args: number[]) => {
-    record('getImageData', { args })
-    return imageData(args[2], args[3])
+    const image = imageData(args[2], args[3])
+    record('getImageData', { args, data: image.data })
+    return image
   }
   ctx.createImageData = (w: number, h: number) => imageData(w, h)
   ctx.putImageData = (img: { data: Uint8ClampedArray }, ...args: number[]) => record('putImageData', { args, data: img.data })
@@ -79,11 +80,19 @@ describe('drawCinemaLook', () => {
   const calls = (name: string) => events.filter(e => e.call === name)
   const grainDraws = () => calls('drawImage').filter(e => e.op === 'overlay')
 
-  it('processes at half size by default', async () => {
-    const { LOOK_PROCESS_SCALE } = await import('./drawCinemaLook')
-    expect(LOOK_PROCESS_SCALE).toBe(0.5)
-    drawDefault(ctx, 'mono', 0, 1, W, H)
-    expect(calls('getImageData')[0].args).toEqual([0, 0, W / 2, H / 2])
+  it('processes every frame size at 540 wide: the preview as it is, the burn halved', () => {
+    drawDefault(ctx, 'glitch', 0, 1, 540, 960)
+    expect(calls('getImageData')[0].args).toEqual([0, 0, 540, 960])
+    events = []
+    drawDefault(ctx, 'glitch', 0, 1, 1080, 1920)
+    expect(calls('getImageData')[0].args).toEqual([0, 0, 540, 960])
+    const [into, back] = calls('drawImage')
+    expect(into.args).toEqual([0, 0, 1080, 1920, 0, 0, 540, 960])
+    expect(back.args).toEqual([0, 0, 540, 960, 0, 0, 1080, 1920])
+    // narrower than that is not scaled up
+    events = []
+    drawDefault(ctx, 'glitch', 0, 1, W, H)
+    expect(calls('getImageData')[0].args).toEqual([0, 0, W, H])
   })
 
   it('draws nothing at opacity 0', () => {
@@ -160,6 +169,12 @@ describe('drawCinemaLook', () => {
     draw(ctx, 'glitch', 0.5, 1, W, H)
     expect(calls('putImageData')).toHaveLength(1)
     expect(calls('putImageData')[0].data![3]).toBe(255)
+    expect(calls('putImageData')[0].data).not.toBe(calls('getImageData')[0].data)
+  })
+
+  it('grades the other looks in place', () => {
+    draw(ctx, 'mono', 0, 1, W, H)
+    expect(calls('putImageData')[0].data).toBe(calls('getImageData')[0].data)
   })
 
   it('holds a grain frame for a 1/12 s step and changes it on the next', () => {
