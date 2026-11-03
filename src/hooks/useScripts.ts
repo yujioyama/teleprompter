@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { CinemaLook } from '../../shared/cinemaLook'
 import { LineJapanese, Script, Shot, type VideoType } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
 import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
@@ -32,6 +33,7 @@ export function useScripts() {
     oneTake?: boolean,
     japanese?: LineJapanese[],
     videoType?: VideoType,
+    look?: CinemaLook,
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -42,6 +44,7 @@ export function useScripts() {
       ...(oneTake ? { oneTake } : {}),
       ...(japanese?.length ? { japanese } : {}),
       ...(videoType ? { videoType } : {}),
+      ...(look ? { look } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -54,7 +57,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
@@ -62,6 +65,7 @@ export function useScripts() {
       if (!next.caption) delete next.caption
       if (!next.oneTake) delete next.oneTake
       if (!next.videoType) delete next.videoType
+      if (!next.look) delete next.look
       return next
     })
     saveToStorage(updated)

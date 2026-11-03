@@ -1,9 +1,11 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CINEMA_LOOKS } from '../../shared/cinemaLook'
 import {
   LETTERBOX,
   hasOpening,
   letterboxBarHeight,
   letterboxHeight,
+  lookOpacity,
   openingActive,
   openingEnd,
   openingFilterStages,
@@ -13,6 +15,9 @@ import { hasFirstShotExtras, openingPlan, withVideoType, type HookOptions } from
 import { layoutCue, type MeasureText } from './subtitleLayout'
 import { clampedSubtitleY } from './subtitlePosition'
 import { drawOpening } from './webcodecs/pictureEffects'
+import { drawCinemaLook } from './drawCinemaLook'
+
+vi.mock('./drawCinemaLook', () => ({ drawCinemaLook: vi.fn() }))
 
 const cue = (en: string, start = 0.2, end = 2.2, ja: string | null = null) => ({ id: 'c', start, end, en, ja })
 
@@ -25,7 +30,7 @@ const HOOK: HookOptions = {
 // 30px a letter, so a line wraps past 30 letters.
 const measure: MeasureText = text => text.length * 30
 const top = (c: { en: string; ja: string | null }, position: number) => clampedSubtitleY(position, layoutCue(c, measure).height)
-const bars = (at: number, height: number = LETTERBOX.height) => ({ kind: 'letterbox' as const, at, height })
+const bars = (at: number, height: number = LETTERBOX.height) => ({ kind: 'letterbox' as const, at, height, grade: null })
 
 describe('hasOpening', () => {
   it('gives Type A and Type B the bars, and others nothing', () => {
@@ -38,19 +43,19 @@ describe('hasOpening', () => {
 
 describe('openingLookFor', () => {
   it('slides the bars away as line 1 ends, held long enough to be seen but not past the hook', () => {
-    expect(openingLookFor([cue('I eat toast every morning.', 0.2, 1.9)], 72, measure).at).toBe(1.9)
-    expect(openingLookFor([cue('Hi.', 0, 0.5)], 72, measure).at).toBe(LETTERBOX.minHold)
-    expect(openingLookFor([cue('A very long first line.', 0, 6)], 72, measure).at).toBe(LETTERBOX.maxHold)
-    expect(openingLookFor([], 72, measure)).toEqual(bars(LETTERBOX.minHold))
+    expect(openingLookFor([cue('I eat toast every morning.', 0.2, 1.9)], 72, null, measure).at).toBe(1.9)
+    expect(openingLookFor([cue('Hi.', 0, 0.5)], 72, null, measure).at).toBe(LETTERBOX.minHold)
+    expect(openingLookFor([cue('A very long first line.', 0, 6)], 72, null, measure).at).toBe(LETTERBOX.maxHold)
+    expect(openingLookFor([], 72, null, measure)).toEqual(bars(LETTERBOX.minHold))
   })
 
   it('keeps the full bars when the subtitles sit well below them', () => {
-    expect(openingLookFor([cue('Hi.', 0, 1, 'やあ')], 50, measure).height).toBe(LETTERBOX.height)
+    expect(openingLookFor([cue('Hi.', 0, 1, 'やあ')], 50, null, measure).height).toBe(LETTERBOX.height)
   })
 
   it('stops the top bar just above a high subtitle, its Japanese line included', () => {
     const line = cue('Hi.', 0, 1.5, 'やあ')
-    const { height } = openingLookFor([line], 22.5, measure)
+    const { height } = openingLookFor([line], 22.5, null, measure)
     expect(height).toBeLessThan(LETTERBOX.height)
     expect(height * 1920).toBeCloseTo(top(line, 22.5) - LETTERBOX.gap, 0)
     expect(height * 1920).toBeLessThan(top(line, 22.5))
@@ -59,8 +64,8 @@ describe('openingLookFor', () => {
   it('makes room for a line 1 that wraps', () => {
     const short = cue('I eat toast.', 0, 1.5, 'トースト')
     const long = cue('Every single morning I eat toast with honey and butter.', 0, 1.5, '毎朝トースト')
-    const shortBar = openingLookFor([short], 22.5, measure).height
-    const longBar = openingLookFor([long], 22.5, measure).height
+    const shortBar = openingLookFor([short], 22.5, null, measure).height
+    const longBar = openingLookFor([long], 22.5, null, measure).height
     expect(layoutCue(long, measure).en.lines.length).toBeGreaterThan(1)
     expect(longBar).toBeLessThan(shortBar)
     expect(longBar * 1920).toBeLessThan(top(long, 22.5))
@@ -70,12 +75,12 @@ describe('openingLookFor', () => {
     const first = cue('Hi.', 0, 0.5, 'やあ')
     const second = cue('Every single morning I eat toast with honey and butter.', 0.5, 1.5, '毎朝')
     const later = cue('Every single morning I eat toast with honey and butter, and jam.', 3, 4, '毎朝')
-    expect(openingLookFor([first, second], 22.5, measure).height * 1920).toBeCloseTo(top(second, 22.5) - LETTERBOX.gap, 0)
-    expect(openingLookFor([first, later], 22.5, measure).height * 1920).toBeCloseTo(top(first, 22.5) - LETTERBOX.gap, 0)
+    expect(openingLookFor([first, second], 22.5, null, measure).height * 1920).toBeCloseTo(top(second, 22.5) - LETTERBOX.gap, 0)
+    expect(openingLookFor([first, later], 22.5, null, measure).height * 1920).toBeCloseTo(top(first, 22.5) - LETTERBOX.gap, 0)
   })
 
   it('reads an emoji in line 1 as the sticker, not as text', () => {
-    expect(openingLookFor([cue('Hi 🧴', 0, 1, 'やあ')], 22.5, measure).height).toBe(openingLookFor([cue('Hi', 0, 1, 'やあ')], 22.5, measure).height)
+    expect(openingLookFor([cue('Hi 🧴', 0, 1, 'やあ')], 22.5, null, measure).height).toBe(openingLookFor([cue('Hi', 0, 1, 'やあ')], 22.5, null, measure).height)
   })
 })
 
@@ -105,6 +110,30 @@ describe('the look over time', () => {
   })
 })
 
+describe('the film look over time', () => {
+  it('is whole until the bars start to go, then fades with them, and is gone when they are', () => {
+    const look = bars(1.5, 0.15)
+    expect(lookOpacity(0, look)).toBe(1)
+    expect(lookOpacity(1.5, look)).toBe(1)
+    expect(lookOpacity(1.5 + 0.4, look)).toBeCloseTo(0.5)
+    expect(lookOpacity(openingEnd(look), look)).toBe(0)
+  })
+
+  it('is gone by the first shot’s end even when the opening is moved early', () => {
+    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)], 72, 'oldFilm')
+    const plan = openingPlan(typed, 1.5)!
+    expect(plan.grade).toBe('oldFilm')
+    expect(lookOpacity(1.5, plan)).toBe(0)
+  })
+})
+
+describe('openingLookFor with a look', () => {
+  it('carries the picked look, or none', () => {
+    expect(openingLookFor([], 72, 'mono', measure).grade).toBe('mono')
+    expect(openingLookFor([], 72, undefined, measure).grade).toBeNull()
+  })
+})
+
 describe('withVideoType', () => {
   it('swaps the zoom for the same bars on Type A and Type B', () => {
     const typed = withVideoType(HOOK, 'A', [], 72)
@@ -124,6 +153,14 @@ describe('withVideoType', () => {
 
   it('leaves an untyped script as set', () => {
     expect(withVideoType(HOOK, undefined, [], 72)).toBe(HOOK)
+    expect(withVideoType(HOOK, undefined, [], 72, 'oldFilm')).toBe(HOOK)
+  })
+
+  it('puts the picked look under the bars, or none', () => {
+    expect(withVideoType(HOOK, 'A', [], 72, 'oldFilm').opening!.grade).toBe('oldFilm')
+    expect(withVideoType(HOOK, 'B', [], 72, 'glitch').opening!.grade).toBe('glitch')
+    expect(withVideoType(HOOK, 'A', [], 72).opening!.grade).toBeNull()
+    expect(withVideoType(HOOK, 'A', [], 72, null).opening!.grade).toBeNull()
   })
 
   it('needs an encode for the first shot only', () => {
@@ -159,6 +196,29 @@ describe('openingFilterStages', () => {
   })
 })
 
+describe('openingFilterStages with a film look', () => {
+  it('grades the input first, until the bars are gone, and the bars read the graded picture', () => {
+    const look = { ...bars(1.5, 0.15), grade: 'mono' as const }
+    const plain = openingFilterStages(bars(1.5, 0.15), '[in]', '[out]', 1080, 1920)
+    const stages = openingFilterStages(look, '[in]', '[out]', 1080, 1920)
+    expect(stages).toHaveLength(plain.length + 1)
+    expect(stages[0]).toMatch(/^\[in\].*\[lookgraded\]$/)
+    expect(stages[0]).toContain(`enable='lt(t,${openingEnd(look)})'`)
+    expect(stages[1]).toBe(plain[0])
+    expect(stages[2]).toBe(plain[1].replace('[in]', '[lookgraded]'))
+    expect(stages[3]).toBe(plain[2])
+  })
+
+  it('has a short color stage for every look, and none when there is no look', () => {
+    for (const grade of CINEMA_LOOKS) {
+      const [stage] = openingFilterStages({ ...bars(1.5), grade }, '[in]', '[out]', 1080, 1920)
+      expect(stage).toMatch(/^\[in\][a-z]+=.*\[lookgraded\]$/)
+      expect(stage.length).toBeLessThan(200)
+    }
+    expect(openingFilterStages(bars(1.5), '[in]', '[out]', 1080, 1920).join(';')).not.toContain('lookgraded')
+  })
+})
+
 describe('drawOpening', () => {
   function fakeCtx() {
     const calls: string[] = []
@@ -186,5 +246,27 @@ describe('drawOpening', () => {
     const { ctx } = fakeCtx()
     drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 5, bars(0.15), 1080, 1920)
     expect(ctx.fillRect).not.toHaveBeenCalled()
+  })
+
+  describe('with a film look', () => {
+    beforeEach(() => vi.mocked(drawCinemaLook).mockClear())
+
+    it('draws the look over the picture, at its opacity, before the bars', () => {
+      const { ctx, calls } = fakeCtx()
+      const look = { ...bars(1.5, 0.15), grade: 'mono' as const }
+      vi.mocked(drawCinemaLook).mockImplementation(() => void calls.push('look'))
+      drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 1.9, look, 1080, 1920)
+      expect(drawCinemaLook).toHaveBeenCalledWith(ctx, 'mono', 1.9, lookOpacity(1.9, look), 1080, 1920)
+      expect(calls.indexOf('look')).toBeGreaterThanOrEqual(0)
+      expect(calls.indexOf('look')).toBeLessThan(calls.findIndex(c => c.startsWith('rect')))
+    })
+
+    it('draws no look without a grade, nor after the opening', () => {
+      const { ctx } = fakeCtx()
+      const c = ctx as unknown as OffscreenCanvasRenderingContext2D
+      drawOpening(c, 0, bars(1.5, 0.15), 1080, 1920)
+      drawOpening(c, 5, { ...bars(1.5, 0.15), grade: 'mono' }, 1080, 1920)
+      expect(drawCinemaLook).not.toHaveBeenCalled()
+    })
   })
 })

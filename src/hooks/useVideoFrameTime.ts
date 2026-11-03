@@ -37,6 +37,8 @@ export function useVideoFrameTime(video: HTMLVideoElement | null, onTime: (t: nu
     v.addEventListener('play', start)
     v.addEventListener('pause', stop)
     v.addEventListener('ended', stop)
+    // Subscribed after the 'play' event, as when a component mounts mid-play.
+    if (!v.paused && !v.ended) start()
     return () => {
       stop()
       v.removeEventListener('play', start)

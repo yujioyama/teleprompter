@@ -8,6 +8,7 @@ import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
 import { hasOpening, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { VideoType } from '../types'
+import type { CinemaLook } from '../../shared/cinemaLook'
 
 /**
  * Most viewers decide within the first second or two whether to keep
@@ -106,6 +107,7 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
  * A Type A/B script gets the opening look instead of the zoom, timed from
  * `cues` (as edited) and kept clear of them where they're shown: at the
  * hook position with the hook style, else at `position`, the subtitles'.
+ * `look` is the film look under the bars (none when absent).
  * Any other script keeps the hook as set.
  */
 export function withVideoType(
@@ -113,9 +115,10 @@ export function withVideoType(
   type: VideoType | null | undefined,
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  look?: CinemaLook | null,
 ): HookOptions {
   if (!hasOpening(type)) return hook
-  return { ...hook, punchIn: null, opening: openingLookFor(cues, hook.style ? hook.position : position) }
+  return { ...hook, punchIn: null, opening: openingLookFor(cues, hook.style ? hook.position : position, look ?? null) }
 }
 
 // A cue starting where the second shot does is not in the first one.

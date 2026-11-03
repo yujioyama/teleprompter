@@ -102,6 +102,15 @@ describe('burnRequest', () => {
     expect(at({ ...base, duration: 0.6 })).not.toBe(at(base))
   })
 
+  it('changes the first shot\'s key with the film look, and no other shot\'s', () => {
+    const opening = (grade: 'oldFilm' | 'mono') => ({ kind: 'letterbox' as const, at: 1.5, height: 0.2, grade })
+    const a = clip('a', 0, 4)
+    const keyOf = (grade: 'oldFilm' | 'mono', firstShotDuration: number | null) =>
+      burnRequest(a, [], look(50, { hook: { ...HOOK, opening: opening(grade) }, firstShotDuration })).key
+    expect(keyOf('oldFilm', 4)).not.toBe(keyOf('mono', 4))
+    expect(keyOf('oldFilm', null)).toBe(keyOf('mono', null))
+  })
+
   it('ignores the normal position when every cue in the shot is a hook cue', () => {
     const hookCue: StyledCue = { ...cue, variant: 'hook' }
     const HOOK = { style: true, position: 30, punchIn: null }

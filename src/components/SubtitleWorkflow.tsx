@@ -35,7 +35,9 @@ import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineJapanese, VideoType } from '../types'
-import { letterboxHeight } from '../utils/openingLook'
+import { letterboxHeight, openingActive } from '../utils/openingLook'
+import { CINEMA_LOOKS, CINEMA_LOOK_LABELS, type CinemaLook } from '../../shared/cinemaLook'
+import OpeningLookCanvas from './OpeningLookCanvas'
 import styles from './SubtitleWorkflow.module.css'
 
 // No 'error' stage: a failed generate/transcribe/burn reverts to the stage
@@ -111,6 +113,10 @@ interface SubtitleWorkflowProps {
   scriptJapanese?: LineJapanese[]
   /** Type A/B: the opening look replaces the zoom (see withVideoType). */
   videoType?: VideoType
+  /** Type A/B: the film look under the opening bars; null or absent = none. */
+  cinemaLook?: CinemaLook | null
+  /** The picker under the Type hint; null = none (the bars alone). */
+  onCinemaLookChange?: (look: CinemaLook | null) => void
 }
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
@@ -160,6 +166,8 @@ export default function SubtitleWorkflow({
   oneTake = false,
   scriptJapanese = [],
   videoType,
+  cinemaLook = null,
+  onCinemaLookChange,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
@@ -191,8 +199,8 @@ export default function SubtitleWorkflow({
   const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(
-    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, cues, position),
-    [hookSettings, oneTake, videoType, cues, position],
+    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, cues, position, cinemaLook),
+    [hookSettings, oneTake, videoType, cues, position, cinemaLook],
   )
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
@@ -431,6 +439,8 @@ export default function SubtitleWorkflow({
   // The opening look, also only while playing: the bars would cover the controls.
   const opening = previewPlaying ? openingPlan(hook, firstShotDuration) : null
   const previewBar = opening ? letterboxHeight(previewTime, opening) : 0
+  // The film look goes while the bars do; the canvas also hides itself per frame, as previewTime lags.
+  const previewLook = opening?.grade && openingActive(previewTime, opening) ? opening : null
   const previewVideoStyle: CSSProperties = {
     ...(previewZoom !== 1 ? { transform: `scale(${previewZoom})`, transformOrigin: `50% ${Math.round(ZOOM_ANCHOR_Y * 100)}%` } : {}),
   }
@@ -549,6 +559,7 @@ export default function SubtitleWorkflow({
                   onPause={() => setPreviewPlaying(false)}
                   onEnded={() => setPreviewPlaying(false)}
                 />
+                {previewLook && <OpeningLookCanvas video={previewVideo} opening={previewLook} />}
                 {previewBar > 0 && (
                   <>
                     <div className={styles.letterbox} data-testid="letterbox-top" style={{ top: 0, height: `${(previewBar * 100).toFixed(2)}%` }} />
@@ -603,9 +614,23 @@ export default function SubtitleWorkflow({
                 ))}
               </div>
               {videoType ? (
-                <p className={styles.hint}>
-                  Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
-                </p>
+                <>
+                  <p className={styles.hint}>
+                    Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
+                  </p>
+                  <div className={styles.lookGrid} role="group" aria-label="冒頭の色">
+                    {[null, ...CINEMA_LOOKS].map(look => (
+                      <button
+                        key={look ?? 'none'}
+                        className={`${styles.positionBtn} ${cinemaLook === look ? styles.positionBtnActive : ''}`}
+                        aria-pressed={cinemaLook === look}
+                        onClick={() => onCinemaLookChange?.(look)}
+                      >
+                        {look ? CINEMA_LOOK_LABELS[look] : 'なし'}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <>
                 <label className={styles.toggleRow}>

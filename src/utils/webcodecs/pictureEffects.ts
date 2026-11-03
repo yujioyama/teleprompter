@@ -1,6 +1,7 @@
 import type { VideoSample } from 'mediabunny'
 import { ZOOM_ANCHOR_Y } from '../subtitleHook'
-import { letterboxHeight, type OpeningLook } from '../openingLook'
+import { letterboxHeight, lookOpacity, type OpeningLook } from '../openingLook'
+import { drawCinemaLook } from '../drawCinemaLook'
 
 /**
  * The first shot's zoom, drawn with OffscreenCanvas 2D only (no WebGL).
@@ -16,8 +17,15 @@ export function drawZoomed(ctx: Ctx, sample: VideoSample, scale: number, width: 
   sample.draw(ctx, (width - w) / 2, ZOOM_ANCHOR_Y * (height - h), w, h)
 }
 
-/** The opening look's black bars over the picture already drawn on `ctx` (before the subtitles). */
+/**
+ * The opening look over the picture already drawn on `ctx` (before the
+ * subtitles): the film look, if one is picked, then the black bars on top.
+ */
 export function drawOpening(ctx: Ctx, t: number, look: OpeningLook, width: number, height: number): void {
+  if (look.grade) {
+    const opacity = lookOpacity(t, look)
+    if (opacity > 0) drawCinemaLook(ctx, look.grade, t, opacity, width, height)
+  }
   const bar = Math.round(letterboxHeight(t, look) * height)
   if (bar > 0) {
     ctx.save()

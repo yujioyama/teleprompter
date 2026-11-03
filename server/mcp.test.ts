@@ -87,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'look', 'japanese'])
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
   })
@@ -198,6 +198,44 @@ describe('handleMcpRequest', () => {
       const { result } = await res.json()
       expect(result.isError).toBe(true)
       expect(await store.list()).toEqual([])
+    })
+  })
+
+  describe('look', () => {
+    it('keeps the opening film look with the script and says so', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', look: 'oldFilm' }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・Type A・昔のフィルム）。teleprompterのホーム画面に届いています。')
+      expect((await store.list())[0].look).toBe('oldFilm')
+    })
+
+    it.each([{ look: 'none' }, {}])('stores no look for %o', async extra => {
+      await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', ...extra }), deps)
+      expect(await store.list()).toEqual([expect.not.objectContaining({ look: expect.anything() })])
+    })
+
+    it('refuses a look it does not know', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', look: 'sepia' }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(await store.list()).toEqual([])
+    })
+
+    it('is kept without a type but not announced, since only Type A/B has the opening to wear it', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', look: 'mono' }), deps)
+      const { result } = await res.json()
+      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行）。teleprompterのホーム画面に届いています。')
+      expect((await store.list())[0].look).toBe('mono')
+    })
+
+    it('is offered, with when to pick which in the description', async () => {
+      const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
+      const { result } = await res.json()
+      expect(Object.keys(result.tools[0].inputSchema.properties)).toContain('look')
+      for (const label of ['ハリウッド風', '昔のフィルム', '夜の青', '白黒', 'グリッチ']) {
+        expect(result.tools[0].description).toContain(label)
+      }
     })
   })
 

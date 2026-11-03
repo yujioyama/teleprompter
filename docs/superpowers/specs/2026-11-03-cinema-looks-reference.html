@@ -1,0 +1,566 @@
+<title>シネマルック比較</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a header strip, then a 3-up grid of 9:16 frames (2-up on phones), each split original | look, then the dials. */
+:root {
+  --bg: #f3f1ee;
+  --surface: #ffffff;
+  --fg: #1d1b19;
+  --muted: #6b655e;
+  --line: #ddd7cf;
+  --accent: #b5542c;
+  --on-accent: #ffffff;
+  --frame: #0d0c0b;
+  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141210; --surface: #1d1a17; --fg: #ede8e1; --muted: #a39b91; --line: #34302b; --accent: #e08a5f; --on-accent: #1d1a17; --frame: #000;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141210; --surface: #1d1a17; --fg: #ede8e1; --muted: #a39b91; --line: #34302b; --accent: #e08a5f; --on-accent: #1d1a17; --frame: #000;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.7;
+}
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 24px;
+}
+header { display: grid; gap: 10px; }
+h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+  text-wrap: balance;
+}
+.lead { margin: 0; max-width: 62ch; color: var(--muted); }
+.source { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.btn {
+  font: inherit;
+  font-weight: 700;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn:focus-visible, input:focus-visible, .frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.source-note { font-size: 0.85rem; color: var(--muted); }
+#file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.toggle input { accent-color: var(--accent); width: 18px; height: 18px; }
+.switches { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.playrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--accent); min-width: 4.5em; }
+.play-note { margin: 0; font-size: 0.8rem; color: var(--muted); max-width: 62ch; }
+
+.frames {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 14px;
+}
+@media (max-width: 640px) { .frames { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; } }
+figure { margin: 0; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.frame {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 9 / 16;
+  background: var(--frame);
+  border: 0;
+  padding: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.frame canvas { width: 100%; height: 100%; display: block; }
+figcaption { display: grid; gap: 2px; }
+.cap-name { font-weight: 700; font-size: 0.95rem; }
+.cap-name .no { font-family: var(--font-mono); color: var(--accent); margin-right: 6px; }
+.cap-what { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+
+.dials {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+.dials h2 { font-family: var(--font-display); font-size: 1.15rem; margin: 0; }
+.dial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; }
+.dial { display: grid; gap: 4px; min-width: 0; }
+.dial-head { display: flex; justify-content: space-between; gap: 8px; }
+.dial-head label { font-weight: 500; }
+.dial-head output { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--accent); }
+.dial input[type="range"] { width: 100%; accent-color: var(--accent); }
+.dial small { color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+.answer { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 0.9rem; }
+.answer p { margin: 0; color: var(--muted); }
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: grid;
+  place-items: center;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  z-index: 20;
+}
+.viewer-inner { display: grid; gap: 10px; justify-items: center; max-height: 100%; }
+.viewer canvas { max-height: calc(100vh - 150px); max-width: 100%; aspect-ratio: 9 / 16; height: auto; width: auto; border-radius: 4px; }
+.viewer p { margin: 0; color: #f3efe9; font-weight: 700; }
+.viewer-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.viewer .hold { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.viewer .close { background: transparent; color: #f3efe9; border-color: #f3efe9; }
+</style>
+
+<div class="page">
+  <header>
+    <h1>黒帯の間を、映画っぽく</h1>
+    <p class="lead">映画っぽさのいくつかの「型」を並べています（2番の「ビネットだけ」は外しました）。どの画像も<strong>左半分が元の映像、右半分が効果をかけた映像</strong>です。最初は仮の絵なので、撮った動画のスクショを選んで自分の顔で比べてください。画像はこの端末の中だけで処理され、どこにも送られません。</p>
+    <div class="source">
+      <label class="btn" for="file">スクショを選ぶ</label>
+      <input id="file" type="file" accept="image/*">
+      <span class="source-note" id="source-note">いまは仮の絵（顔のかわり）で表示しています</span>
+    </div>
+    <div class="switches">
+      <label class="toggle" for="split"><input id="split" type="checkbox" checked>左半分を元の映像にする</label>
+      <label class="toggle" for="bars"><input id="bars" type="checkbox" checked>黒帯を表示する</label>
+    </div>
+    <div class="playrow">
+      <button class="btn" id="play" type="button">冒頭の動きを再生</button>
+      <label class="toggle" for="fade"><input id="fade" type="checkbox" checked>効果も黒帯と一緒に消す</label>
+      <span class="clock" id="clock" aria-live="off">0.0秒</span>
+    </div>
+    <p class="play-note">再生すると、アプリと同じ動きをします。黒帯は1.8秒そのまま見えてから、0.8秒かけてスライドして消えます。再生中は左右に分けず、画面全体に効果がかかります。</p>
+  </header>
+
+  <section class="frames" aria-label="見比べ" id="frames"></section>
+
+  <section class="dials" aria-labelledby="dials-title">
+    <h2 id="dials-title">強さを調整</h2>
+    <div class="dial-grid">
+      <div class="dial">
+        <div class="dial-head"><label for="amount">効果の強さ</label><output id="amount-out" for="amount">100</output></div>
+        <input id="amount" type="range" min="0" max="150" value="100">
+        <small>3〜7 の色・粒子・ずれの強さ。100 が標準</small>
+      </div>
+      <div class="dial">
+        <div class="dial-head"><label for="vignette">ビネット</label><output id="vignette-out" for="vignette">60</output></div>
+        <input id="vignette" type="range" min="0" max="100" value="60">
+        <small>四隅の暗さ。3〜7 すべてにかかります</small>
+      </div>
+    </div>
+    <div class="answer">
+      <p>画像をタップすると大きく表示され、「押している間は元の映像」ボタンで切り替えて比べられます。</p>
+      <p>気に入った番号と、スライダーの数値をチャットで教えてください。</p>
+    </div>
+  </section>
+</div>
+
+<div class="viewer" id="viewer" hidden>
+  <div class="viewer-inner">
+    <canvas id="viewer-canvas" width="540" height="960"></canvas>
+    <p id="viewer-label"></p>
+    <div class="viewer-actions">
+      <button class="btn" id="viewer-play" type="button">再生</button>
+      <button class="btn hold" id="viewer-hold" type="button">押している間は元の映像</button>
+      <button class="btn close" id="viewer-close" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const W = 540, H = 960, BAR = 0.165
+const clamp = x => (x < 0 ? 0 : x > 1 ? 1 : x)
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t) }
+const luma = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b
+const sCurve = (x, c) => x + c * (x * x * (3 - 2 * x) - x)
+const saturate = (r, g, b, s) => { const L = luma(r, g, b); return [L + (r - L) * s, L + (g - L) * s, L + (b - L) * s] }
+
+// Each look's fn takes r, g, b in 0..1 and k, the strength (1 = as designed).
+// grain: film grain laid over with 'overlay' (re-rolled while playing);
+// dust: specks and scratches; glitch: drawn from the picture each frame.
+const LOOKS = [
+  { no: 1, name: 'いま', what: '黒帯だけ。映像はそのまま', plain: true },
+  {
+    no: 3, name: 'ハリウッド風', what: '肌はオレンジ寄り、影は青緑。コントラスト強め。大作映画の定番',
+    fn: (r, g, b, k) => {
+      ;[r, g, b] = saturate(r, g, b, 1 - 0.15 * k)
+      const L = luma(r, g, b), sh = (1 - L) ** 2, hi = L * L
+      r += k * (-0.12 * sh + 0.11 * hi); g += k * (0.03 * sh + 0.03 * hi); b += k * (0.12 * sh - 0.1 * hi)
+      const c = 0.4 * k
+      return [sCurve(clamp(r), c), sCurve(clamp(g), c), sCurve(clamp(b), c)]
+    },
+  },
+  {
+    no: 4, name: '昔のフィルム', what: '黄ばんで色あせ、黒が浮く。粒子が粗く、ホコリと傷が入る。古い映画を映写したような雰囲気',
+    grain: 1, dust: true,
+    fn: (r, g, b, k) => {
+      ;[r, g, b] = saturate(r, g, b, 1 - 0.45 * k)
+      const L = luma(r, g, b), sh = (1 - L) ** 2
+      r += k * 0.08; g += k * (0.04 + 0.03 * sh); b -= k * 0.1
+      const c = -0.15 * k // flatter: old prints lost their contrast
+      const lift = 0.15 * k, top = 1 - 0.1 * k
+      return [r, g, b].map(x => lift + sCurve(clamp(x), c) * (top - lift))
+    },
+  },
+  {
+    no: 5, name: '夜の青', what: '色を抜いて全体を青く、暗めに。サスペンスや夜の街の雰囲気', grain: 0.25,
+    fn: (r, g, b, k) => {
+      ;[r, g, b] = saturate(r, g, b, 1 - 0.45 * k)
+      const L = luma(r, g, b), sh = (1 - L) ** 2
+      r += k * (-0.06 - 0.03 * sh); g += k * 0.005; b += k * (0.07 + 0.05 * sh)
+      const c = 0.45 * k, gamma = 1 + 0.2 * k
+      return [sCurve(clamp(r), c) ** gamma, sCurve(clamp(g), c) ** gamma, sCurve(clamp(b), c) ** gamma]
+    },
+  },
+  {
+    no: 6, name: '白黒', what: '色を抜いてコントラストを上げる。粒子あり。いちばん「映画っぽさ」が強い', grain: 0.5,
+    fn: (r, g, b, k) => {
+      const L = luma(r, g, b), m = sCurve(clamp(L), 0.5 * Math.min(k, 1.5))
+      const s = Math.max(0, 1 - k)
+      return [m + (r - L) * s, m + (g - L) * s, m + (b - L) * s]
+    },
+  },
+  {
+    no: 7, name: 'グリッチ', what: '壊れたテレビのように、色が左右にずれ、横にちぎれ、走査線が入る。再生すると暴れます', glitch: true,
+  },
+]
+
+const framesEl = document.getElementById('frames')
+const frames = LOOKS.map((look, n) => {
+  const fig = document.createElement('figure')
+  fig.innerHTML = `<button class="frame" type="button" aria-label="${look.no} ${look.name}を大きく見る"><canvas width="${W}" height="${H}"></canvas></button>
+    <figcaption><span class="cap-name"><span class="no">${look.no}</span>${look.name}</span><span class="cap-what">${look.what}</span></figcaption>`
+  framesEl.append(fig)
+  fig.querySelector('button').addEventListener('click', () => openViewer(n))
+  return fig.querySelector('canvas')
+})
+
+const amountEl = document.getElementById('amount'), vignetteEl = document.getElementById('vignette')
+const splitBox = document.getElementById('split'), barsBox = document.getElementById('bars')
+let base = null // ImageData of the source, cropped to 9:16
+let mask = null
+let viewing = -1
+
+// A stand-in scene until a screenshot is picked: a lit room, a window, and a person.
+function drawStandIn(ctx) {
+  const wall = ctx.createLinearGradient(0, 0, W, H)
+  wall.addColorStop(0, '#e2d3bf'); wall.addColorStop(0.6, '#a8927a'); wall.addColorStop(1, '#4d4136')
+  ctx.fillStyle = wall; ctx.fillRect(0, 0, W, H)
+  const light = ctx.createRadialGradient(W * 0.15, H * 0.25, 10, W * 0.15, H * 0.25, W * 0.85)
+  light.addColorStop(0, 'rgba(255,244,222,0.8)'); light.addColorStop(1, 'rgba(255,244,222,0)')
+  ctx.fillStyle = light; ctx.fillRect(0, 0, W, H)
+  ctx.fillStyle = '#9fc0d8'; ctx.fillRect(W * 0.62, H * 0.12, W * 0.3, H * 0.28)
+  ctx.strokeStyle = '#f2ebe1'; ctx.lineWidth = 10; ctx.strokeRect(W * 0.62, H * 0.12, W * 0.3, H * 0.28)
+  ctx.fillStyle = '#3f6b3a'; ctx.beginPath(); ctx.ellipse(W * 0.12, H * 0.62, 60, 110, -0.2, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = '#b8473a'; ctx.fillRect(W * 0.04, H * 0.78, W * 0.2, H * 0.16)
+  ctx.fillStyle = '#2f4a6e'; ctx.beginPath(); ctx.ellipse(W * 0.5, H * 0.95, 230, 230, 0, Math.PI, 0); ctx.fill()
+  ctx.fillStyle = '#d39a7a'; ctx.fillRect(W * 0.44, H * 0.5, W * 0.12, H * 0.12)
+  const skin = ctx.createRadialGradient(W * 0.44, H * 0.39, 20, W * 0.5, H * 0.43, 150)
+  skin.addColorStop(0, '#f6cdb0'); skin.addColorStop(1, '#b97c5c')
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(W * 0.5, H * 0.43, 105, 140, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = '#211813'; ctx.beginPath(); ctx.ellipse(W * 0.5, H * 0.35, 115, 85, 0, Math.PI, 0); ctx.fill()
+  ctx.fillStyle = '#2e211b'; ctx.beginPath(); ctx.ellipse(W * 0.45, H * 0.42, 9, 6, 0, 0, Math.PI * 2); ctx.ellipse(W * 0.55, H * 0.42, 9, 6, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#a5443e'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(W * 0.5, H * 0.47, 24, 0.2, Math.PI - 0.2); ctx.stroke()
+}
+
+function setSource(draw) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  draw(ctx)
+  base = ctx.getImageData(0, 0, W, H)
+  render()
+}
+
+// Center-crop any picture to 9:16, as the video frame is.
+function drawCover(ctx, img) {
+  const s = Math.max(W / img.width, H / img.height)
+  const w = img.width * s, h = img.height * s
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+}
+
+function vignetteMask(strength) {
+  const m = new Float32Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const dy = (y - H * 0.45) / (H / 2)
+    for (let x = 0; x < W; x++) {
+      const dx = (x - W / 2) / (W / 2)
+      const d = Math.sqrt(dx * dx + dy * dy * 0.85)
+      m[y * W + x] = 1 - strength * 0.75 * smooth(0.35, 1.3, d)
+    }
+  }
+  return m
+}
+
+// Mulberry32: the same noise for the same seed, so a still doesn't shimmer.
+function rng(seed) {
+  return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+}
+
+const canvasOf = image => {
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  c.getContext('2d').putImageData(image, 0, 0)
+  return c
+}
+
+function applyLook(look, k) {
+  const out = new ImageData(new Uint8ClampedArray(base.data), W, H)
+  const d = out.data
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    let r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
+    ;[r, g, b] = look.fn(r, g, b, k)
+    const v = mask[p]
+    d[i] = clamp(r * v) * 255; d[i + 1] = clamp(g * v) * 255; d[i + 2] = clamp(b * v) * 255
+  }
+  return canvasOf(out)
+}
+
+// The broken-TV look, from the picture: red and blue pulled apart, a few
+// bands torn sideways and tinted, colors pushed, and scanlines. A new
+// `seed` each frame makes it jump about while playing.
+function glitchFrame(seed, k) {
+  const rand = rng(seed)
+  const src = base.data
+  const out = new ImageData(W, H)
+  const d = out.data
+  const split = Math.round((6 + rand() * 10) * k)
+  const shift = new Int16Array(H), tint = new Int8Array(H)
+  const bands = 3 + Math.floor(rand() * 4)
+  for (let i = 0; i < bands; i++) {
+    const y0 = Math.floor(rand() * H), h = 6 + Math.floor(rand() * 70)
+    const dx = Math.round((rand() - 0.5) * 120 * k), t = Math.floor(rand() * 3)
+    for (let y = y0; y < Math.min(H, y0 + h); y++) { shift[y] = dx; tint[y] = t }
+  }
+  const at = (x, y, c) => src[(y * W + Math.min(W - 1, Math.max(0, x))) * 4 + c] / 255
+  for (let y = 0; y < H; y++) {
+    const line = (y >> 1) & 1 ? 1 - 0.22 * k : 1
+    for (let x = 0; x < W; x++) {
+      const sx = x + shift[y]
+      let r = at(sx + split, y, 0), g = at(sx, y, 1), b = at(sx - split, y, 2)
+      ;[r, g, b] = saturate(r, g, b, 1 + 0.6 * k)
+      if (tint[y] === 1) { r += 0.25 * k; b += 0.3 * k }
+      else if (tint[y] === 2) { g += 0.25 * k; b += 0.3 * k }
+      const v = mask[y * W + x] * line
+      const i = (y * W + x) * 4
+      d[i] = clamp(sCurve(clamp(r), 0.3 * k) * v) * 255
+      d[i + 1] = clamp(sCurve(clamp(g), 0.3 * k) * v) * 255
+      d[i + 2] = clamp(sCurve(clamp(b), 0.3 * k) * v) * 255
+      d[i + 3] = 255
+    }
+  }
+  return canvasOf(out)
+}
+
+// Grain: mid-gray noise at half size, scaled up so it clumps like film's,
+// laid over the picture with 'overlay'. Several frames to flicker through.
+const GRAIN_FRAMES = 6
+const grainFrames = Array.from({ length: GRAIN_FRAMES }, (_, f) => {
+  const gw = W / 2, gh = H / 2
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh
+  const img = new ImageData(gw, gh)
+  const rand = rng(100 + f)
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 128 + (rand() + rand() + rand() - 1.5) * 150
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v
+    img.data[i + 3] = 255
+  }
+  c.getContext('2d').putImageData(img, 0, 0)
+  return c
+})
+
+// Dust and scratches for the old film: dark and pale specks, hairs, and a
+// vertical scratch or two, different on each frame.
+const dustFrames = Array.from({ length: GRAIN_FRAMES }, (_, f) => {
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const ctx = c.getContext('2d')
+  const rand = rng(500 + f)
+  for (let i = 0; i < 26; i++) {
+    ctx.fillStyle = rand() < 0.7 ? `rgba(20,14,8,${0.35 + rand() * 0.4})` : `rgba(255,250,235,${0.3 + rand() * 0.4})`
+    ctx.beginPath(); ctx.ellipse(rand() * W, rand() * H, 0.8 + rand() * 2.6, 0.8 + rand() * 2.2, rand() * 3, 0, Math.PI * 2); ctx.fill()
+  }
+  for (let i = 0; i < 2; i++) {
+    ctx.strokeStyle = `rgba(20,14,8,${0.25 + rand() * 0.3})`; ctx.lineWidth = 0.8
+    const x = rand() * W, y = rand() * H
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + 10, y + 6, x - 6, y + 14, x + 8, y + 22); ctx.stroke()
+  }
+  for (let i = 0, n = 1 + Math.floor(rand() * 2); i < n; i++) {
+    ctx.strokeStyle = `rgba(245,240,225,${0.25 + rand() * 0.25})`; ctx.lineWidth = 1 + rand()
+    const x = rand() * W
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + (rand() - 0.5) * 8, H); ctx.stroke()
+  }
+  return c
+})
+
+let baseLayer = null, layers = []
+function render() {
+  if (!base) return
+  const k = amountEl.value / 100
+  mask = vignetteMask(vignetteEl.value / 100)
+  baseLayer = canvasOf(base)
+  layers = LOOKS.map(look => (look.plain ? baseLayer : look.glitch ? glitchFrame(3, k) : applyLook(look, k)))
+  document.getElementById('amount-out').value = amountEl.value
+  document.getElementById('vignette-out').value = vignetteEl.value
+  if (playing) return
+  frames.forEach((c, n) => paint(c, n, { split: splitBox.checked && n > 0 }))
+  if (viewing >= 0) paint(viewerCanvas, viewing)
+}
+
+// One frame of look `n`: the look over the picture at `opacity`, its grain
+// and dust, then the bars `barScale` of their height.
+function paint(canvas, n, { split = false, original = false, opacity = 1, barScale = 1, f = 0, layer = null } = {}) {
+  const ctx = canvas.getContext('2d')
+  const look = LOOKS[n]
+  const k = amountEl.value / 100
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.drawImage(baseLayer, 0, 0)
+  if (!original && !look.plain && opacity > 0) {
+    ctx.globalAlpha = opacity
+    ctx.drawImage(layer ?? layers[n], 0, 0)
+    if (look.grain) {
+      ctx.globalCompositeOperation = 'overlay'
+      ctx.globalAlpha = opacity * Math.min(1, look.grain * k * 0.55)
+      ctx.drawImage(grainFrames[f % GRAIN_FRAMES], 0, 0, W, H)
+      ctx.globalCompositeOperation = 'source-over'
+    }
+    if (look.dust) {
+      ctx.globalAlpha = opacity * Math.min(1, k)
+      ctx.drawImage(dustFrames[f % GRAIN_FRAMES], 0, 0)
+    }
+    ctx.globalAlpha = 1
+  }
+  if (split) {
+    ctx.drawImage(baseLayer, 0, 0, W / 2, H, 0, 0, W / 2, H)
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(W / 2 - 1.5, 0, 3, H)
+  }
+  const bar = barsBox.checked ? Math.round(H * BAR * barScale) : 0
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, W, bar)
+  ctx.fillRect(0, H - bar, W, bar)
+  if (split) {
+    // Labels in the top bar (or a dark strip when the bars are off).
+    if (!bar) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, 64) }
+    ctx.fillStyle = '#fff'
+    ctx.font = '700 34px "Zen Kaku Gothic New", "Hiragino Sans", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const y = bar ? bar - 40 : 32
+    ctx.fillText('元', W / 4, y)
+    ctx.fillText('効果', (W * 3) / 4, y)
+  }
+}
+
+// The app's timing: the bars hold until AT (line 1's end, 1.8s here) and
+// slide away over DUR with the same smoothstep ease.
+const AT = 1.8, DUR = 0.8, END = AT + DUR + 0.8
+const ease = p => { const c = clamp(p); return c * c * (3 - 2 * c) }
+const fadeBox = document.getElementById('fade')
+const clock = document.getElementById('clock')
+let playing = 0
+
+function play(targets) {
+  if (!baseLayer) return
+  cancelAnimationFrame(playing)
+  const start = performance.now()
+  const k = amountEl.value / 100
+  let glitch = null, lastStep = -1
+  const tick = now => {
+    const t = Math.min((now - start) / 1000, END)
+    const p = ease((t - AT) / DUR)
+    // Grain and glitch change about 12 times a second, as on film.
+    const step = Math.floor(t * 12)
+    if (step !== lastStep) {
+      lastStep = step
+      if (targets().some(([, n]) => LOOKS[n].glitch)) glitch = glitchFrame(1000 + step, k)
+    }
+    for (const [canvas, n] of targets()) {
+      paint(canvas, n, { opacity: fadeBox.checked ? 1 - p : 1, barScale: 1 - p, f: step, layer: LOOKS[n].glitch ? glitch : null })
+    }
+    clock.textContent = `${t.toFixed(1)}秒`
+    if (t < END) {
+      playing = requestAnimationFrame(tick)
+    } else {
+      playing = 0
+      // Rest on the final frame briefly, then back to the still comparison.
+      setTimeout(() => { if (!playing) { clock.textContent = '0.0秒'; render() } }, 700)
+    }
+  }
+  playing = requestAnimationFrame(tick)
+}
+
+let pending = 0
+function schedule() { cancelAnimationFrame(pending); pending = requestAnimationFrame(render) }
+amountEl.addEventListener('input', schedule)
+vignetteEl.addEventListener('input', schedule)
+splitBox.addEventListener('change', schedule)
+barsBox.addEventListener('change', schedule)
+
+document.getElementById('file').addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const url = URL.createObjectURL(file)
+  const img = new Image()
+  img.onload = () => {
+    setSource(ctx => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); drawCover(ctx, img) })
+    URL.revokeObjectURL(url)
+    document.getElementById('source-note').textContent = `${file.name} で表示しています（縦長に切り抜き）`
+  }
+  img.onerror = () => {
+    URL.revokeObjectURL(url)
+    document.getElementById('source-note').textContent = 'この画像は読み込めませんでした。JPEG か PNG のスクショを選んでください'
+  }
+  img.src = url
+})
+
+const viewer = document.getElementById('viewer')
+const viewerCanvas = document.getElementById('viewer-canvas')
+const hold = document.getElementById('viewer-hold')
+function openViewer(n) {
+  viewing = n
+  paint(viewerCanvas, n)
+  document.getElementById('viewer-label').textContent = `${LOOKS[n].no} ${LOOKS[n].name}`
+  hold.hidden = n === 0
+  viewer.hidden = false
+  document.getElementById('viewer-close').focus()
+}
+function closeViewer() { viewer.hidden = true; viewing = -1; if (playing) { cancelAnimationFrame(playing); playing = 0; render() } }
+const showOriginal = on => { if (viewing >= 0 && !playing) paint(viewerCanvas, viewing, { original: on }) }
+hold.addEventListener('pointerdown', e => { e.preventDefault(); showOriginal(true) })
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) hold.addEventListener(ev, () => showOriginal(false))
+hold.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); showOriginal(true) } })
+hold.addEventListener('keyup', () => showOriginal(false))
+hold.addEventListener('contextmenu', e => e.preventDefault())
+document.getElementById('viewer-close').addEventListener('click', closeViewer)
+viewer.addEventListener('click', e => { if (e.target === viewer) closeViewer() })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !viewer.hidden) closeViewer() })
+
+document.getElementById('play').addEventListener('click', () => play(() => frames.map((c, n) => [c, n])))
+document.getElementById('viewer-play').addEventListener('click', () => play(() => (viewing >= 0 ? [[viewerCanvas, viewing]] : [])))
+
+setSource(drawStandIn)
+</script>

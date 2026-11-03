@@ -131,7 +131,7 @@ export default function ScriptEditPage() {
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined)
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, inboxItem?.look)
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If

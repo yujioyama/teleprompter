@@ -55,10 +55,27 @@ function build(changes: Partial<Parameters<typeof buildVideoRecord>[0]> = {}) {
 
 describe('buildVideoRecord', () => {
   it('records a Type A/B script’s type and opening look, for the weekly A/B comparison', () => {
-    const opening = { kind: 'letterbox' as const, at: 0.8, height: 0.18 }
+    const opening = { kind: 'letterbox' as const, at: 0.8, height: 0.18, grade: null }
     const record = build({ script: { ...SCRIPT, videoType: 'B' }, burn: { ...BURN, hook: { ...HOOK, punchIn: null, opening } } })
-    expect(record.effects).toMatchObject({ videoType: 'B', opening: { kind: 'letterbox', at: 0.8 }, zoom: null })
+    expect(record.effects).toMatchObject({ videoType: 'B', opening: { kind: 'letterbox', at: 0.8, look: null }, zoom: null })
     expect(parseVideoRecord(record)).toEqual(record)
+  })
+
+  it('records the picked film look under the opening bars', () => {
+    const opening = { kind: 'letterbox' as const, at: 0.8, height: 0.18, grade: 'nightBlue' as const }
+    const record = build({ script: { ...SCRIPT, videoType: 'A' }, burn: { ...BURN, hook: { ...HOOK, punchIn: null, opening } } })
+    expect(record.effects.opening).toEqual({ kind: 'letterbox', at: 0.8, look: 'nightBlue' })
+    expect(parseVideoRecord(record)).toEqual(record)
+  })
+
+  it('still reads the records from before the film looks', () => {
+    const rest: Record<string, unknown> = { ...build().effects }
+    delete rest.opening
+    const old = (opening: unknown) => ({ ...build(), effects: { ...rest, opening } })
+    for (const opening of [{ kind: 'letterbox', at: 0.8 }, { kind: 'colorPop', at: 1.2 }]) {
+      expect(parseVideoRecord(old(opening))).not.toBeNull()
+    }
+    expect(parseVideoRecord(old({ kind: 'letterbox', at: 0.8, look: 'sepia' }))).toBeNull()
   })
 
   it('records how a burned, mixed video was made', () => {

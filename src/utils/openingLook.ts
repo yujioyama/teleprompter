@@ -1,3 +1,4 @@
+import type { CinemaLook } from '../../shared/cinemaLook'
 import type { VideoType } from '../types'
 import type { SubtitleCue } from './subtitleCues'
 import { createCanvasMeasure, layoutCue, type MeasureText } from './subtitleLayout'
@@ -17,6 +18,8 @@ import { stripStickers } from './subtitleSticker'
  * The bars stop short of the subtitles shown meanwhile (2026-11-03): a cue
  * half on black and half on the picture reads as two backgrounds.
  * Only the picture gets them; subtitles and the sticker sit over them.
+ * A picked film look (`grade`) is on the picture from the first frame and
+ * fades away with the bars, over the same time and ease.
  */
 export interface OpeningLook {
   /** Kept for the video record, which still knows Type B's old 'colorPop'. */
@@ -25,6 +28,8 @@ export interface OpeningLook {
   at: number
   /** Each bar's height, as a fraction of the frame's (see letterboxBarHeight). */
   height: number
+  /** The film look under the bars; null = the picture as shot. */
+  grade: CinemaLook | null
 }
 
 export const LETTERBOX = {
@@ -74,17 +79,19 @@ export function letterboxBarHeight(tops: number[]): number {
  * The look timed and sized from `cues` (as edited): the bars slide away as
  * line 1 ends, and are kept clear of every cue starting before they're
  * gone, each laid out and centered on `position` as the burn places it.
+ * `grade` is the film look picked for it.
  */
 export function openingLookFor(
   cues: SubtitleCue[],
   position: SubtitlePosition,
+  grade: CinemaLook | null = null,
   measure: MeasureText = createCanvasMeasure(),
 ): OpeningLook {
   const at = clampTime(firstLineEnd(cues) ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold)
   const tops = cues
     .filter(c => c.start < at + LETTERBOX.duration)
     .map(c => clampedSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure).height))
-  return { kind: 'letterbox', at, height: letterboxBarHeight(tops) }
+  return { kind: 'letterbox', at, height: letterboxBarHeight(tops), grade }
 }
 
 /** When the bars are gone; from then on the picture is untouched. */
@@ -97,9 +104,26 @@ export function letterboxHeight(t: number, look: OpeningLook): number {
   return look.height * (1 - ease((t - look.at) / LETTERBOX.duration))
 }
 
+/** How much of the film look shows at `t`: all of it until `at`, then fading away as the bars slide. */
+export function lookOpacity(t: number, look: OpeningLook): number {
+  return 1 - ease((t - look.at) / LETTERBOX.duration)
+}
+
 /** Whether the look changes the picture at `t`. */
 export function openingActive(t: number, look: OpeningLook | null): look is OpeningLook {
   return look !== null && t < openingEnd(look)
+}
+
+/**
+ * Each film look's color as ffmpeg filters: a rough match to the canvas
+ * grade, with no grain, dust or motion. Only the last-resort path reads these.
+ */
+const LOOK_FILTERS: Record<CinemaLook, string[]> = {
+  hollywood: ['eq=saturation=0.85:contrast=1.15', 'colorbalance=rs=-0.1:bs=0.1:rh=0.1:bh=-0.1'],
+  oldFilm: ['eq=saturation=0.55:contrast=0.8:brightness=0.04', 'colorbalance=rm=0.08:bm=-0.1'],
+  nightBlue: ['eq=saturation=0.55:contrast=1.2', 'colorbalance=rs=-0.06:bs=0.1:rm=-0.04:bm=0.08'],
+  mono: ['hue=s=0', 'eq=contrast=1.3'],
+  glitch: ['rgbashift=rh=-6:bh=6'],
 }
 
 /**
@@ -108,6 +132,8 @@ export function openingActive(t: number, look: OpeningLook | null): look is Open
  * time) so they show letterboxHeight of the frame each.
  * burnSubtitlesFFmpeg gives every overlay eof_action=pass, so the bars'
  * own end lets the picture through.
+ * A film look adds one color stage under the bars, cut off at the end of
+ * the opening rather than faded: this path is the last resort.
  * Returns filtergraph stages.
  */
 export function openingFilterStages(look: OpeningLook, input: string, output: string, width: number, height: number): string[] {
@@ -117,9 +143,15 @@ export function openingFilterStages(look: OpeningLook, input: string, output: st
   const p = `clip((t-${at})/${duration},0,1)`
   const shown = `${height}*${look.height}*(1-${p}*${p}*(3-2*${p}))`
   const life = (look.at + duration + 0.2).toFixed(3)
+  // The stage works on `input`, so the bars' stages read its output instead.
+  const graded = look.grade
+    ? [`${input}${LOOK_FILTERS[look.grade].map(f => `${f}:enable='lt(t,${openingEnd(look)})'`).join(',')}[lookgraded]`]
+    : []
+  const barsIn = look.grade ? '[lookgraded]' : input
   return [
+    ...graded,
     `color=c=black:s=${width}x${half}:d=${life}[lbtop];color=c=black:s=${width}x${half}:d=${life}[lbbot]`,
-    `${input}[lbtop]overlay=x=0:y='-${half}+${shown}':eval=frame[lbmid]`,
+    `${barsIn}[lbtop]overlay=x=0:y='-${half}+${shown}':eval=frame[lbmid]`,
     `[lbmid][lbbot]overlay=x=0:y='H-(${shown})':eval=frame${output}`,
   ]
 }
