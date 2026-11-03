@@ -51,4 +51,17 @@ describe('useVideoFrameTime', () => {
     frames.forEach(cb => cb(0))
     expect(onTime.mock.calls.length).toBe(calls)
   })
+
+  it('starts at once for a video already playing when it is subscribed to', () => {
+    const onTime = vi.fn()
+    const video = document.createElement('video')
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+    setTime(video, 0.7)
+    function Late() {
+      useVideoFrameTime(video, onTime)
+      return null
+    }
+    render(<Late />)
+    expect(onTime).toHaveBeenLastCalledWith(0.7)
+  })
 })

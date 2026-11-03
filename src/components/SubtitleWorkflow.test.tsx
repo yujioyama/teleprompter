@@ -8,9 +8,12 @@ import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import type { LineJapanese, VideoType } from '../types'
+import type { CinemaLook } from '../../shared/cinemaLook'
 import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
 
 vi.mock('../utils/burnSubtitles')
+// jsdom has no canvas: the look's pixels aren't under test here, only when it is on.
+vi.mock('../utils/drawCinemaLook', () => ({ drawCinemaLook: vi.fn() }))
 vi.mock('../utils/subtitleRequest', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/subtitleRequest')>()),
   fetchSubtitles: vi.fn(async () => null),
@@ -54,6 +57,7 @@ function ControlledSubtitleWorkflow({
   scriptJapanese,
   oneTake,
   videoType,
+  cinemaLook,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -65,6 +69,7 @@ function ControlledSubtitleWorkflow({
   scriptJapanese?: LineJapanese[]
   oneTake?: boolean
   videoType?: VideoType
+  cinemaLook?: CinemaLook | null
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -92,6 +97,7 @@ function ControlledSubtitleWorkflow({
       scriptJapanese={scriptJapanese}
       oneTake={oneTake}
       videoType={videoType}
+      cinemaLook={cinemaLook}
     />
   )
 }
@@ -522,7 +528,7 @@ describe('SubtitleWorkflow hook controls', () => {
 })
 
 describe('SubtitleWorkflow punch-in', () => {
-  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>, videoType?: VideoType) {
+  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>, videoType?: VideoType, cinemaLook?: CinemaLook | null) {
     seedBurnMock()
     render(
       <ControlledSubtitleWorkflow
@@ -532,6 +538,7 @@ describe('SubtitleWorkflow punch-in', () => {
         onHookSettingsChange={onHookSettingsChange}
         initialHookSettings={initialHookSettings}
         videoType={videoType}
+        cinemaLook={cinemaLook}
       />,
     )
     await screen.findByDisplayValue('Hello')
@@ -584,6 +591,47 @@ describe('SubtitleWorkflow punch-in', () => {
     setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
+  })
+
+  it('previews the picked film look under the bars, only while the opening plays', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    await renderTranslated(vi.fn(), undefined, 'A', 'oldFilm')
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.timeUpdate(video)
+    expect(screen.queryByTestId('opening-look')).toBeNull()
+
+    fireEvent.play(video)
+    const canvas = screen.getByTestId('opening-look')
+    // Over the picture, under the bars.
+    expect(video.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(canvas.compareDocumentPosition(screen.getByTestId('letterbox-top')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.pause(video)
+    expect(screen.queryByTestId('opening-look')).toBeNull()
+
+    // Line 1 runs the whole 2s first shot, so the opening is over by 2s.
+    fireEvent.play(video)
+    setTime(video, 2)
+    fireEvent.timeUpdate(video)
+    expect(screen.queryByTestId('opening-look')).toBeNull()
+    vi.restoreAllMocks()
+  })
+
+  it('shows no film look canvas when none is picked', async () => {
+    await renderTranslated(vi.fn(), undefined, 'A')
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.play(video)
+    expect(screen.getByTestId('letterbox-top')).toBeInTheDocument()
+    expect(screen.queryByTestId('opening-look')).toBeNull()
+  })
+
+  it('ignores a film look on a script without the opening', async () => {
+    await renderTranslated(vi.fn(), undefined, undefined, 'oldFilm')
+    const video = document.querySelector('video') as HTMLVideoElement
+    fireEvent.play(video)
+    expect(screen.queryByTestId('opening-look')).toBeNull()
   })
 
   it('shows the preview at 1x when paused, even inside the zoom, so the controls stay reachable', async () => {
