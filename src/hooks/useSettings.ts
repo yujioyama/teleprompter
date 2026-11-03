@@ -52,6 +52,10 @@ export interface AppSettings {
   fairyEnabled: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム). */
   midZoomEnabled: boolean
+  /** Type A/B: the opening's film look stays on to the end, after the bars have gone (2026-11-03). */
+  cinemaLookThrough: boolean
+  /** How strong the film look is, 0.2-1 (色の強さ; lower for night takes). */
+  cinemaLookStrength: number
   /** Seconds of silence auto-trim keeps before the first shot's speech. */
   firstShotPaddingStart: number
   /** Seconds of silence auto-trim keeps after the last shot's speech. */
@@ -99,6 +103,8 @@ const DEFAULTS: AppSettings = {
   stickerRoute: 0,
   fairyEnabled: true,
   midZoomEnabled: true,
+  cinemaLookThrough: true,
+  cinemaLookStrength: 1,
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   coverTextPosition: COVER_TEXT_POSITION_DEFAULT,

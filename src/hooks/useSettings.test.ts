@@ -25,6 +25,8 @@ const DEFAULTS = {
   stickerRoute: 0,
   fairyEnabled: true,
   midZoomEnabled: true,
+  cinemaLookThrough: true,
+  cinemaLookStrength: 1,
   firstShotPaddingStart: 0.05,
   lastShotPaddingEnd: 0.1,
   coverTextPosition: 68,

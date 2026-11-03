@@ -639,6 +639,31 @@ export default function SubtitleWorkflow({
                       </button>
                     ))}
                   </div>
+                  {cinemaLook && (
+                    <>
+                      <label className={styles.toggleRow}>
+                        <input
+                          type="checkbox"
+                          checked={hookSettings.cinemaLookThrough}
+                          onChange={e => onHookSettingsChange({ cinemaLookThrough: e.target.checked })}
+                        />
+                        色は最後まで残す（黒帯だけ開く）
+                      </label>
+                      <div className={styles.fineTuneRow}>
+                        <label htmlFor="cinema-look-strength">色の強さ {Math.round(hookSettings.cinemaLookStrength * 100)}%</label>
+                        <input
+                          id="cinema-look-strength"
+                          aria-label="色の強さ"
+                          type="range"
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          value={hookSettings.cinemaLookStrength}
+                          onChange={e => onHookSettingsChange({ cinemaLookStrength: Number(e.target.value) })}
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <>

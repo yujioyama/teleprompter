@@ -6,7 +6,7 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
-import { hasOpening, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
+import { LETTERBOX, hasOpening, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { VideoType } from '../types'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
@@ -57,6 +57,10 @@ export interface HookOptions {
   midZoom?: boolean
   /** Type A/B's opening look (black bars); null/absent = none. */
   opening?: OpeningLook | null
+  /** Type A/B: the film look stays on after the bars (default: off). */
+  lookThrough?: boolean
+  /** Type A/B: the film look's strength, 0-1 (default: 1). */
+  lookStrength?: number
 }
 
 export type HookSettings = Pick<
@@ -73,6 +77,8 @@ export type HookSettings = Pick<
   | 'stickerRoute'
   | 'fairyEnabled'
   | 'midZoomEnabled'
+  | 'cinemaLookThrough'
+  | 'cinemaLookStrength'
 >
 
 /**
@@ -100,6 +106,8 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
     stickerRoute: settings.stickerRoute ?? 0,
     fairies: settings.fairyEnabled ?? true,
     midZoom: settings.midZoomEnabled ?? true,
+    lookThrough: settings.cinemaLookThrough ?? false,
+    lookStrength: settings.cinemaLookStrength ?? 1,
   }
 }
 
@@ -107,7 +115,8 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
  * A Type A/B script gets the opening look instead of the zoom, timed from
  * `cues` (as edited) and kept clear of them where they're shown: at the
  * hook position with the hook style, else at `position`, the subtitles'.
- * `look` is the film look under the bars (none when absent).
+ * `look` is the film look under the bars (none when absent); the hook's
+ * lookThrough and lookStrength say whether it outlasts them, and how strong.
  * Any other script keeps the hook as set.
  */
 export function withVideoType(
@@ -118,7 +127,10 @@ export function withVideoType(
   look?: CinemaLook | null,
 ): HookOptions {
   if (!hasOpening(type)) return hook
-  return { ...hook, punchIn: null, opening: openingLookFor(cues, hook.style ? hook.position : position, look ?? null) }
+  const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null)
+  // Bars alone have no color to keep on or soften.
+  const graded = opening.grade ? { ...opening, through: hook.lookThrough ?? false, strength: hook.lookStrength ?? 1 } : opening
+  return { ...hook, punchIn: null, opening: graded }
 }
 
 // A cue starting where the second shot does is not in the first one.
@@ -243,9 +255,14 @@ export function punchInPlan(hook: HookOptions, firstShotDuration: number | null)
  * Only a video starting with the first shot gets the opening look, moved
  * earlier when needed so it has finished by the first shot's end: it's
  * drawn on that shot alone, and would snap off at the cut.
+ * A film look kept to the end (`through`) is the exception: any other shot
+ * gets it too, with the bars already gone, so the color runs unbroken.
  */
 export function openingPlan(hook: HookOptions, firstShotDuration: number | null): OpeningLook | null {
-  if (!hook.opening || firstShotDuration === null) return null
+  if (!hook.opening) return null
+  if (firstShotDuration === null) {
+    return hook.opening.grade && hook.opening.through ? { ...hook.opening, at: -LETTERBOX.duration, height: 0 } : null
+  }
   const late = openingEnd(hook.opening) - firstShotDuration
   return late > 0 ? { ...hook.opening, at: Math.max(0, hook.opening.at - late) } : hook.opening
 }

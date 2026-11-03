@@ -61,6 +61,8 @@ describe('hookOptionsOf', () => {
     stickerRoute: 2,
     fairyEnabled: true,
     midZoomEnabled: true,
+    cinemaLookThrough: false,
+    cinemaLookStrength: 1,
   }
 
   it('reads the hook settings into a punch-in', () => {
@@ -73,6 +75,8 @@ describe('hookOptionsOf', () => {
       stickerRoute: 2,
       fairies: true,
       midZoom: true,
+      lookThrough: false,
+      lookStrength: 1,
     })
   })
 

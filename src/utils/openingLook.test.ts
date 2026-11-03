@@ -127,6 +127,43 @@ describe('the film look over time', () => {
   })
 })
 
+describe('the film look kept to the end', () => {
+  it('stays at its strength after the bars have gone, and the look stays active', () => {
+    const look = { ...bars(1.5, 0.15), grade: 'hollywood' as const, through: true, strength: 0.6 }
+    expect(lookOpacity(0, look)).toBeCloseTo(0.6)
+    expect(lookOpacity(openingEnd(look) + 30, look)).toBeCloseTo(0.6)
+    expect(openingActive(openingEnd(look) + 30, look)).toBe(true)
+    expect(letterboxHeight(openingEnd(look), look)).toBe(0)
+  })
+
+  it('fades at its strength with the bars when not kept', () => {
+    const look = { ...bars(1.5, 0.15), grade: 'hollywood' as const, strength: 0.5 }
+    expect(lookOpacity(0, look)).toBeCloseTo(0.5)
+    expect(lookOpacity(openingEnd(look), look)).toBe(0)
+    expect(openingActive(openingEnd(look), look)).toBe(false)
+  })
+
+  it('needs a film look: bars alone are still gone after the opening', () => {
+    const look = { ...bars(1.5, 0.15), through: true }
+    expect(openingActive(openingEnd(look), look)).toBe(false)
+  })
+
+  it('goes on every later shot too, with the bars already gone', () => {
+    const typed = withVideoType({ ...HOOK, punchIn: null, lookThrough: true, lookStrength: 0.7 }, 'A', [cue('Line one.', 0, 1.5)], 72, 'hollywood')
+    const later = openingPlan(typed, null)!
+    expect(later.grade).toBe('hollywood')
+    expect(later.height).toBe(0)
+    expect(lookOpacity(0, later)).toBeCloseTo(0.7)
+    expect(openingActive(0, later)).toBe(true)
+    expect(hasFirstShotExtras(typed, null)).toBe(true)
+  })
+
+  it('leaves later shots alone when the look fades with the bars', () => {
+    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('Line one.', 0, 1.5)], 72, 'hollywood')
+    expect(openingPlan(typed, null)).toBeNull()
+  })
+})
+
 describe('openingLookFor with a look', () => {
   it('carries the picked look, or none', () => {
     expect(openingLookFor([], 72, 'mono', measure).grade).toBe('mono')
