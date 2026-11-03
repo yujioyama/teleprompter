@@ -1,4 +1,5 @@
 import type { CinemaLook } from '../../shared/cinemaLook'
+import { random as rng } from './seededRandom'
 
 /**
  * The math of the film looks (2026-11-03), ported from the comparison page
@@ -27,17 +28,6 @@ const sCurve = (x: number, c: number) => x + c * (x * x * (3 - 2 * x) - x)
 const saturate = (r: number, g: number, b: number, s: number): [number, number, number] => {
   const L = luma(r, g, b)
   return [L + (r - L) * s, L + (g - L) * s, L + (b - L) * s]
-}
-
-/** Mulberry32: the same numbers for the same seed, so a re-encode gives the same frames. */
-function rng(seed: number): () => number {
-  return () => {
-    seed |= 0
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 /** One color look at full strength: r, g, b in 0-1 in and out. */
