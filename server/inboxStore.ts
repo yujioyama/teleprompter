@@ -1,3 +1,4 @@
+import type { CinemaLook } from '../shared/cinemaLook.js'
 import type { InboxItem, VideoType } from '../shared/inbox.js'
 import { redisFromEnv, type RedisLike } from './redis.js'
 
@@ -10,7 +11,7 @@ export interface InboxStore {
    * Waiting items with the same title are older versions of this script
    * (Claude resent it after a fix), so they are replaced: `replaced` counts them.
    */
-  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType }): Promise<{ item: InboxItem; replaced: number }>
+  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType; look?: CinemaLook }): Promise<{ item: InboxItem; replaced: number }>
   /** Newest first. */
   list(): Promise<InboxItem[]>
   /** Succeeds when the item is already gone. */
@@ -40,7 +41,7 @@ export function createInboxStore(
   }
 
   return {
-    async add({ title, body, caption, japanese, videoType }) {
+    async add({ title, body, caption, japanese, videoType, look }) {
       const stale = (await list()).filter(old => old.title === title)
       const item: InboxItem = {
         id: newId(),
@@ -49,6 +50,7 @@ export function createInboxStore(
         caption,
         ...(japanese ? { japanese } : {}),
         ...(videoType ? { videoType } : {}),
+        ...(look ? { look } : {}),
         createdAt: now().toISOString(),
       }
       // The new version is saved before the old ones go, so a failure in

@@ -104,6 +104,22 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(stored()[0].videoType).toBe('A')
   })
 
+  it('keeps the film look Claude sent', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A', look: 'glitch' } } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).toMatchObject({ videoType: 'A', look: 'glitch' })
+  })
+
+  it('stores no film look when none was sent', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A' } } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).not.toHaveProperty('look')
+  })
+
   it('stores no type when none was picked', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     expect(screen.getByLabelText('なし（設定のズーム）')).toBeChecked()
@@ -212,5 +228,24 @@ describe('ScriptEditPage caption', () => {
 
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
     expect(stored()[0].caption).toBe('新しいキャプション')
+  })
+
+  it('keeps the film look of an existing script when it is edited', async () => {
+    const script: Script = {
+      id: 's1',
+      title: '既存',
+      shots: [{ id: 'a', text: 'a' }],
+      videoType: 'B',
+      look: 'nightBlue',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderAt('/scripts/s1/edit')
+    fireEvent.change(screen.getByLabelText('タイトル'), { target: { value: '直した' } })
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).toMatchObject({ title: '直した', videoType: 'B', look: 'nightBlue' })
   })
 })

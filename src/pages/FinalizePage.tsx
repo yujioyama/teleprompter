@@ -542,9 +542,10 @@ export default function FinalizePage() {
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
   // A Type A/B script gets the opening look instead of the zoom.
   const videoType = script?.videoType
+  const cinemaLook = script?.look
   const hook = useMemo(
-    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, subtitleCues, subtitlePosition),
-    [hookSettings, oneTake, videoType, subtitleCues, subtitlePosition],
+    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, subtitleCues, subtitlePosition, cinemaLook),
+    [hookSettings, oneTake, videoType, subtitleCues, subtitlePosition, cinemaLook],
   )
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
@@ -1056,6 +1057,9 @@ export default function FinalizePage() {
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
                 videoType={videoType}
+                cinemaLook={cinemaLook}
+                // Saved to the script, so leaving the step and coming back keeps the pick.
+                onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? undefined })}
                 burn={async (cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null

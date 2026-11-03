@@ -36,7 +36,7 @@ import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineJapanese, VideoType } from '../types'
 import { letterboxHeight, openingActive } from '../utils/openingLook'
-import type { CinemaLook } from '../../shared/cinemaLook'
+import { CINEMA_LOOKS, CINEMA_LOOK_LABELS, type CinemaLook } from '../../shared/cinemaLook'
 import OpeningLookCanvas from './OpeningLookCanvas'
 import styles from './SubtitleWorkflow.module.css'
 
@@ -115,6 +115,8 @@ interface SubtitleWorkflowProps {
   videoType?: VideoType
   /** Type A/B: the film look under the opening bars; null or absent = none. */
   cinemaLook?: CinemaLook | null
+  /** The picker under the Type hint; null = none (the bars alone). */
+  onCinemaLookChange?: (look: CinemaLook | null) => void
 }
 
 const ZOOM_DIRECTIONS: { label: string; value: ZoomDirection }[] = [
@@ -165,6 +167,7 @@ export default function SubtitleWorkflow({
   scriptJapanese = [],
   videoType,
   cinemaLook = null,
+  onCinemaLookChange,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
@@ -611,9 +614,23 @@ export default function SubtitleWorkflow({
                 ))}
               </div>
               {videoType ? (
-                <p className={styles.hint}>
-                  Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
-                </p>
+                <>
+                  <p className={styles.hint}>
+                    Type {videoType}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）
+                  </p>
+                  <div className={styles.positionRow} role="group" aria-label="冒頭の色">
+                    {[null, ...CINEMA_LOOKS].map(look => (
+                      <button
+                        key={look ?? 'none'}
+                        className={`${styles.positionBtn} ${cinemaLook === look ? styles.positionBtnActive : ''}`}
+                        aria-pressed={cinemaLook === look}
+                        onClick={() => onCinemaLookChange?.(look)}
+                      >
+                        {look ? CINEMA_LOOK_LABELS[look] : 'なし'}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <>
                 <label className={styles.toggleRow}>

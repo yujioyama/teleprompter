@@ -1,4 +1,5 @@
 import type { VideoType } from '../shared/inbox'
+import type { CinemaLook } from '../shared/cinemaLook'
 
 export type { VideoType }
 
@@ -40,6 +41,8 @@ export interface Script {
    * opening look on its own; absent = the settings' zoom as before.
    */
   videoType?: VideoType
+  /** The film look under a Type A/B opening's bars; absent = the bars alone. */
+  look?: CinemaLook
   createdAt: string
   updatedAt: string
 }

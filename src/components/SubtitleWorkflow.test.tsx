@@ -58,6 +58,7 @@ function ControlledSubtitleWorkflow({
   oneTake,
   videoType,
   cinemaLook,
+  onCinemaLookChange,
 }: {
   combinedBlob: Blob
   shotCueInputs: ShotCueInput[]
@@ -70,6 +71,7 @@ function ControlledSubtitleWorkflow({
   oneTake?: boolean
   videoType?: VideoType
   cinemaLook?: CinemaLook | null
+  onCinemaLookChange?: (look: CinemaLook | null) => void
 }) {
   const [state, setState] = useState<SubtitleState>(INITIAL_SUBTITLE_STATE)
   const [hookSettings, setHookSettings] = useState<HookSettings>({ ...DEFAULT_HOOK_SETTINGS, ...initialHookSettings })
@@ -98,6 +100,7 @@ function ControlledSubtitleWorkflow({
       oneTake={oneTake}
       videoType={videoType}
       cinemaLook={cinemaLook}
+      onCinemaLookChange={onCinemaLookChange}
     />
   )
 }
@@ -625,6 +628,62 @@ describe('SubtitleWorkflow punch-in', () => {
     fireEvent.play(video)
     expect(screen.getByTestId('letterbox-top')).toBeInTheDocument()
     expect(screen.queryByTestId('opening-look')).toBeNull()
+  })
+
+  it('picks the film look under the Type hint, none included, and reports the choice', async () => {
+    const onLook = vi.fn()
+    seedBurnMock()
+    render(
+      <ControlledSubtitleWorkflow
+        combinedBlob={BLOB}
+        shotCueInputs={SHOT_CUE_INPUTS}
+        onBurned={vi.fn()}
+        videoType="B"
+        cinemaLook="oldFilm"
+        onCinemaLookChange={onLook}
+      />,
+    )
+    await screen.findByDisplayValue('Hello')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), { target: { value: '1. こんにちは' } })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    const group = within(screen.getByRole('group', { name: '冒頭の色' }))
+    for (const label of ['なし', 'ハリウッド風', '昔のフィルム', '夜の青', '白黒', 'グリッチ']) {
+      expect(group.getByText(label)).toBeInTheDocument()
+    }
+    expect(group.getByText('昔のフィルム')).toHaveAttribute('aria-pressed', 'true')
+    expect(group.getByText('なし')).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(group.getByText('白黒'))
+    expect(onLook).toHaveBeenLastCalledWith('mono')
+    fireEvent.click(group.getByText('なし'))
+    expect(onLook).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows なし as picked when no film look is', async () => {
+    await renderTranslated(vi.fn(), undefined, 'A', null)
+    const group = within(screen.getByRole('group', { name: '冒頭の色' }))
+    expect(group.getByText('なし')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('has no film look picker without a type, and ignores a look it was given (Review Focus 1)', async () => {
+    await renderTranslated(vi.fn(), undefined, undefined, 'mono')
+    expect(screen.queryByRole('group', { name: '冒頭の色' })).toBeNull()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.play(video)
+    expect(screen.queryByTestId('opening-look')).toBeNull()
+  })
+
+  it('shows the picker and the film look canvas for a Type A script given the same look (Review Focus 1)', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    await renderTranslated(vi.fn(), undefined, 'A', 'mono')
+    expect(screen.getByRole('group', { name: '冒頭の色' })).toBeInTheDocument()
+    const video = document.querySelector('video') as HTMLVideoElement
+    setTime(video, 0)
+    fireEvent.play(video)
+    expect(screen.getByTestId('opening-look')).toBeInTheDocument()
+    vi.restoreAllMocks()
   })
 
   it('ignores a film look on a script without the opening', async () => {
