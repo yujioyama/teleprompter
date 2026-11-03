@@ -115,11 +115,25 @@ export function openingActive(t: number, look: OpeningLook | null): look is Open
 }
 
 /**
+ * Each film look's color as ffmpeg filters: a rough match to the canvas
+ * grade, with no grain, dust or motion. Only the last-resort path reads these.
+ */
+const LOOK_FILTERS: Record<CinemaLook, string[]> = {
+  hollywood: ['eq=saturation=0.85:contrast=1.15', 'colorbalance=rs=-0.1:bs=0.1:rh=0.1:bh=-0.1'],
+  oldFilm: ['eq=saturation=0.55:contrast=0.8:brightness=0.04', 'colorbalance=rm=0.08:bm=-0.1'],
+  nightBlue: ['eq=saturation=0.55:contrast=1.2', 'colorbalance=rs=-0.06:bs=0.1:rm=-0.04:bm=0.08'],
+  mono: ['hue=s=0', 'eq=contrast=1.3'],
+  glitch: ['rgbashift=rh=-6:bh=6'],
+}
+
+/**
  * ffmpeg's version of the look, from `input` to `output` labels: the bars
  * as two half-frame black boxes slid by `overlay` (drawbox can't move over
  * time) so they show letterboxHeight of the frame each.
  * burnSubtitlesFFmpeg gives every overlay eof_action=pass, so the bars'
  * own end lets the picture through.
+ * A film look adds one color stage under the bars, cut off at the end of
+ * the opening rather than faded: this path is the last resort.
  * Returns filtergraph stages.
  */
 export function openingFilterStages(look: OpeningLook, input: string, output: string, width: number, height: number): string[] {
@@ -129,9 +143,15 @@ export function openingFilterStages(look: OpeningLook, input: string, output: st
   const p = `clip((t-${at})/${duration},0,1)`
   const shown = `${height}*${look.height}*(1-${p}*${p}*(3-2*${p}))`
   const life = (look.at + duration + 0.2).toFixed(3)
+  // The stage works on `input`, so the bars' stages read its output instead.
+  const graded = look.grade
+    ? [`${input}${LOOK_FILTERS[look.grade].map(f => `${f}:enable='lt(t,${openingEnd(look)})'`).join(',')}[lookgraded]`]
+    : []
+  const barsIn = look.grade ? '[lookgraded]' : input
   return [
+    ...graded,
     `color=c=black:s=${width}x${half}:d=${life}[lbtop];color=c=black:s=${width}x${half}:d=${life}[lbbot]`,
-    `${input}[lbtop]overlay=x=0:y='-${half}+${shown}':eval=frame[lbmid]`,
+    `${barsIn}[lbtop]overlay=x=0:y='-${half}+${shown}':eval=frame[lbmid]`,
     `[lbmid][lbbot]overlay=x=0:y='H-(${shown})':eval=frame${output}`,
   ]
 }

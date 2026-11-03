@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CINEMA_LOOKS } from '../../shared/cinemaLook'
 import {
   LETTERBOX,
   hasOpening,
@@ -14,6 +15,9 @@ import { hasFirstShotExtras, openingPlan, withVideoType, type HookOptions } from
 import { layoutCue, type MeasureText } from './subtitleLayout'
 import { clampedSubtitleY } from './subtitlePosition'
 import { drawOpening } from './webcodecs/pictureEffects'
+import { drawCinemaLook } from './drawCinemaLook'
+
+vi.mock('./drawCinemaLook', () => ({ drawCinemaLook: vi.fn() }))
 
 const cue = (en: string, start = 0.2, end = 2.2, ja: string | null = null) => ({ id: 'c', start, end, en, ja })
 
@@ -192,6 +196,29 @@ describe('openingFilterStages', () => {
   })
 })
 
+describe('openingFilterStages with a film look', () => {
+  it('grades the input first, until the bars are gone, and the bars read the graded picture', () => {
+    const look = { ...bars(1.5, 0.15), grade: 'mono' as const }
+    const plain = openingFilterStages(bars(1.5, 0.15), '[in]', '[out]', 1080, 1920)
+    const stages = openingFilterStages(look, '[in]', '[out]', 1080, 1920)
+    expect(stages).toHaveLength(plain.length + 1)
+    expect(stages[0]).toMatch(/^\[in\].*\[lookgraded\]$/)
+    expect(stages[0]).toContain(`enable='lt(t,${openingEnd(look)})'`)
+    expect(stages[1]).toBe(plain[0])
+    expect(stages[2]).toBe(plain[1].replace('[in]', '[lookgraded]'))
+    expect(stages[3]).toBe(plain[2])
+  })
+
+  it('has a short color stage for every look, and none when there is no look', () => {
+    for (const grade of CINEMA_LOOKS) {
+      const [stage] = openingFilterStages({ ...bars(1.5), grade }, '[in]', '[out]', 1080, 1920)
+      expect(stage).toMatch(/^\[in\][a-z]+=.*\[lookgraded\]$/)
+      expect(stage.length).toBeLessThan(200)
+    }
+    expect(openingFilterStages(bars(1.5), '[in]', '[out]', 1080, 1920).join(';')).not.toContain('lookgraded')
+  })
+})
+
 describe('drawOpening', () => {
   function fakeCtx() {
     const calls: string[] = []
@@ -219,5 +246,27 @@ describe('drawOpening', () => {
     const { ctx } = fakeCtx()
     drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 5, bars(0.15), 1080, 1920)
     expect(ctx.fillRect).not.toHaveBeenCalled()
+  })
+
+  describe('with a film look', () => {
+    beforeEach(() => vi.mocked(drawCinemaLook).mockClear())
+
+    it('draws the look over the picture, at its opacity, before the bars', () => {
+      const { ctx, calls } = fakeCtx()
+      const look = { ...bars(1.5, 0.15), grade: 'mono' as const }
+      vi.mocked(drawCinemaLook).mockImplementation(() => void calls.push('look'))
+      drawOpening(ctx as unknown as OffscreenCanvasRenderingContext2D, 1.9, look, 1080, 1920)
+      expect(drawCinemaLook).toHaveBeenCalledWith(ctx, 'mono', 1.9, lookOpacity(1.9, look), 1080, 1920)
+      expect(calls.indexOf('look')).toBeGreaterThanOrEqual(0)
+      expect(calls.indexOf('look')).toBeLessThan(calls.findIndex(c => c.startsWith('rect')))
+    })
+
+    it('draws no look without a grade, nor after the opening', () => {
+      const { ctx } = fakeCtx()
+      const c = ctx as unknown as OffscreenCanvasRenderingContext2D
+      drawOpening(c, 0, bars(1.5, 0.15), 1080, 1920)
+      drawOpening(c, 5, { ...bars(1.5, 0.15), grade: 'mono' }, 1080, 1920)
+      expect(drawCinemaLook).not.toHaveBeenCalled()
+    })
   })
 })
