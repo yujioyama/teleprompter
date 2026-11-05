@@ -129,21 +129,23 @@ export interface LineImageSlot {
 }
 
 /**
- * Where an image may go on the 1080×1920 output. The face fills the frame
- * from about 31% down, and feeds cover the top 15%, so `top` is the band
- * between them. `side` is beside the face, for lines whose subtitle sits in
- * that band: right of the zoom's face area, above the TikTok/Reels buttons.
+ * Where an image may go on the 1080×1920 output. `chest` is the usual place:
+ * below the face (which ends about 55% down), where only hands and a mic are,
+ * and above what Instagram's 4:5 feed crops off. `top` is the band between the
+ * feeds' header and the head, for a subtitle that sits on the chest. Both stay
+ * 10% in from the sides, since TikTok zooms the video in on a tall phone and
+ * cuts them off.
  */
 export const LINE_IMAGE_SLOTS = {
+  chest: { left: 130, top: 1130, width: 820, height: 430 },
   top: { left: 230, top: 298, width: 620, height: 297 },
-  side: { left: 778, top: 634, width: 280, height: 326 },
 } satisfies Record<string, LineImageSlot>
 
-/** A subtitle centered above this percent is in the top slot's way. */
-const SUBTITLE_IN_TOP_SLOT = 40
+/** A subtitle centered below this percent is in the chest slot's way. */
+const SUBTITLE_IN_CHEST_SLOT = 50
 
 export function lineImageSlot(subtitlePosition: number): LineImageSlot {
-  return subtitlePosition < SUBTITLE_IN_TOP_SLOT ? LINE_IMAGE_SLOTS.side : LINE_IMAGE_SLOTS.top
+  return subtitlePosition > SUBTITLE_IN_CHEST_SLOT ? LINE_IMAGE_SLOTS.top : LINE_IMAGE_SLOTS.chest
 }
 
 export const LINE_IMAGE_FRAME = { width: 1080, height: 1920 }
