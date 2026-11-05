@@ -141,20 +141,24 @@ describe('withLineImages', () => {
 })
 
 describe('lineImageSlot', () => {
-  it('goes above the face, unless the subtitle is up there', () => {
+  it('goes on the chest, unless the subtitle is down there', () => {
+    expect(lineImageSlot(22.5)).toBe(LINE_IMAGE_SLOTS.chest)
+    expect(lineImageSlot(50)).toBe(LINE_IMAGE_SLOTS.chest)
     expect(lineImageSlot(72.3)).toBe(LINE_IMAGE_SLOTS.top)
-    expect(lineImageSlot(50)).toBe(LINE_IMAGE_SLOTS.top)
-    expect(lineImageSlot(22.5)).toBe(LINE_IMAGE_SLOTS.side)
   })
 
-  it('stays out of the feed header, off the face and clear of the button column', () => {
-    const { top, side } = LINE_IMAGE_SLOTS
+  it('stays out of the feed header, off the face and inside what TikTok keeps of the sides', () => {
+    const { top, chest } = LINE_IMAGE_SLOTS
     expect(top.top / 1920).toBeGreaterThanOrEqual(0.15)
     expect((top.top + top.height) / 1920).toBeLessThanOrEqual(0.31)
-    // onFace's ellipse reaches 72% across; the buttons start at 50% down.
-    expect(side.left / 1080).toBeGreaterThanOrEqual(0.72)
-    expect(side.left + side.width).toBeLessThanOrEqual(1080)
-    expect((side.top + side.height) / 1920).toBeLessThanOrEqual(0.5)
+    // onFace's ellipse ends at 55% down; Instagram's 4:5 feed keeps up to 85%.
+    expect(chest.top / 1920).toBeGreaterThanOrEqual(0.55)
+    expect((chest.top + chest.height) / 1920).toBeLessThanOrEqual(0.85)
+    // TikTok zooms the video in on a tall phone, cutting the sides.
+    for (const { left, width } of [top, chest]) {
+      expect(left / 1080).toBeGreaterThanOrEqual(0.1)
+      expect((left + width) / 1080).toBeLessThanOrEqual(0.9)
+    }
   })
 })
 
@@ -174,8 +178,8 @@ describe('layoutLineImage', () => {
   })
 
   it('fits a tall image in the slot, keeping its shape', () => {
-    const { image: box } = layoutLineImage(600, 1280, 0, LINE_IMAGE_SLOTS.side)
-    inside(box, LINE_IMAGE_SLOTS.side)
+    const { image: box } = layoutLineImage(600, 1280, 0, LINE_IMAGE_SLOTS.chest)
+    inside(box, LINE_IMAGE_SLOTS.chest)
     expect(box.width / box.height).toBeCloseTo(600 / 1280)
   })
 

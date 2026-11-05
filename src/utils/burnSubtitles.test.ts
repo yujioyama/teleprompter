@@ -198,11 +198,11 @@ describe('renderSubtitleOverlays with line images', () => {
     expect(stroked.some(d => d.text === 'Ann / CC BY 4.0' && d.color === '#000')).toBe(true)
   })
 
-  it('moves beside the face when the subtitle is in the top slot, as the hook is', async () => {
+  it('goes on the chest when the subtitle is up top, as the hook is', async () => {
     stubCanvas()
     stubBitmap()
     const [image] = await renderSubtitleOverlays([hookCue], withImage({ ...IMAGE, cueId: 'a' }))
-    expect(image.y).toBe(LINE_IMAGE_SLOTS.side.top)
+    expect(image.y).toBe(LINE_IMAGE_SLOTS.chest.top)
   })
 
   it('leaves out the image of an untranslated cue, as its subtitle is', async () => {
