@@ -51,7 +51,7 @@ import {
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
  * through the filter string itself. `baseFilter` (the zoom in) is applied
- * to the video first, then `opening` (Type A/B's look), both under the overlays.
+ * to the video first, then `opening` (the bars and film look), both under the overlays.
  */
 export function buildOverlayFilterGraph(
   ys: number[],

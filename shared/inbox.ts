@@ -2,8 +2,9 @@ import type { CinemaLook } from './cinemaLook.js'
 
 /**
  * Which of the two daily formats a script is (from 2026-11-02): 'A' is the
- * short 2021-style daily thing, 'B' the expression-note story. Both get the
- * opening bars (see openingLookFor).
+ * short 2021-style daily thing, 'B' the expression-note story. It only labels
+ * the video for the weekly comparison: every script gets the opening bars
+ * (see withOpening).
  */
 export type VideoType = 'A' | 'B'
 
@@ -20,7 +21,7 @@ export interface InboxItem {
   japanese?: string[]
   /** Type A or B; absent when Claude sent none. */
   videoType?: VideoType
-  /** The film look under the opening bars of a Type A/B script; absent = the bars alone. */
+  /** The film look under the opening bars; absent = the bars alone. */
   look?: CinemaLook
   /** ISO timestamp of when it arrived. */
   createdAt: string

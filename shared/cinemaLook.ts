@@ -1,5 +1,5 @@
 /**
- * The film looks a Type A/B opening can wear under its black bars
+ * The film looks the opening can wear under its black bars
  * (2026-11-03). Shared so the inbox can carry one with a script, and the
  * subtitle step can pick one.
  */

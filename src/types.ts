@@ -37,11 +37,11 @@ export interface Script {
    */
   japanese?: LineJapanese[]
   /**
-   * Type A (short daily thing) or B (expression-note story). Picks the
-   * opening look on its own; absent = the settings' zoom as before.
+   * Type A (short daily thing) or B (expression-note story). Only labels the
+   * video for the weekly comparison; every script gets the opening bars.
    */
   videoType?: VideoType
-  /** The film look under a Type A/B opening's bars; absent = the bars alone. */
+  /** The film look under the opening's bars; absent = the bars alone. */
   look?: CinemaLook
   createdAt: string
   updatedAt: string

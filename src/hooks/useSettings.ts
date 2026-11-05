@@ -52,7 +52,7 @@ export interface AppSettings {
   fairyEnabled: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム). */
   midZoomEnabled: boolean
-  /** Type A/B: the opening's film look stays on to the end, after the bars have gone (2026-11-03). */
+  /** The opening's film look stays on to the end, after the bars have gone (2026-11-03). */
   cinemaLookThrough: boolean
   /** How strong the film look is, 0.2-1 (色の強さ; lower for night takes). */
   cinemaLookStrength: number

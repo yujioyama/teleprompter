@@ -222,10 +222,10 @@ describe('handleMcpRequest', () => {
       expect(await store.list()).toEqual([])
     })
 
-    it('is kept without a type but not announced, since only Type A/B has the opening to wear it', async () => {
+    it('is kept and announced without a type, since every script has the opening to wear it', async () => {
       const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', look: 'mono' }), deps)
       const { result } = await res.json()
-      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行）。teleprompterのホーム画面に届いています。')
+      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・白黒）。teleprompterのホーム画面に届いています。')
       expect((await store.list())[0].look).toBe('mono')
     })
 

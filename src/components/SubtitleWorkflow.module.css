@@ -151,7 +151,7 @@
   opacity: 0.4;
 }
 
-/* Type A/B's cinema bars in the preview, as burned in (over the picture, under the subtitles). */
+/* The opening's cinema bars in the preview, as burned in (over the picture, under the subtitles). */
 .letterbox {
   position: absolute;
   left: 0;

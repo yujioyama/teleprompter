@@ -67,7 +67,7 @@ export default function ScriptEditPage() {
   )
   // 一発撮り is the usual way to film now (2026-10-21), so new scripts start with it.
   const [oneTake, setOneTake] = useState<boolean>(() => existingScript ? Boolean(existingScript.oneTake) : true)
-  // Type A/B picks the opening look on its own (2026-11-02); Claude sends it with the script.
+  // Type A/B only labels the video for the weekly comparison now (2026-11-05); Claude sends it with the script.
   const [videoType, setVideoType] = useState<VideoType | null>(
     () => (existingScript ? existingScript.videoType : inboxItem?.videoType) ?? null,
   )
@@ -196,10 +196,10 @@ export default function ScriptEditPage() {
         </label>
 
         <div className={styles.splitOptions} role="group" aria-label="動画の型">
-          <span className={styles.splitOptionsLabel}>動画の型（冒頭の演出が自動で決まります）</span>
+          <span className={styles.splitOptionsLabel}>動画の型（分析用の記録です。冒頭の演出は変わりません）</span>
           <div className={styles.splitOptionsList}>
             {([
-              [null, 'なし（設定のズーム）'],
+              [null, 'なし'],
               ['A', 'A: 2021年型'],
               ['B', 'B: 表現ノート型'],
             ] as const).map(([value, label]) => (
