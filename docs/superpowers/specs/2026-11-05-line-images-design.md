@@ -12,7 +12,7 @@
 
 ## 実装の形
 - **受け取り**: `images: [{ line, url, credit?, source? }]`。サーバーは行番号・重複を検証し、`credit` のある画像だけ `画像: <credit> <source>` をキャプション末尾に足す。
-- **保存**: ホームが受け取り箱を読んだ時点でダウンロードし、長辺 1280px に縮小して専用の IndexedDB に入れる。キーは URL（端末から選んだ画像は uuid）。Wikimedia のように CORS を許すサイトは直接、それ以外は `/api/image`（`Bearer` 認証、https のみ、プライベートアドレス不可、4MB まで）を経由する。アプリは COEP: require-corp なので外部画像を `<img>` で直接は出せない。
+- **保存**: ホームが受け取り箱を読んだ時点でダウンロードし、長辺 1280px に縮小して専用の IndexedDB に入れる。キーは URL（端末から選んだ画像は uuid）。Wikimedia のように CORS を許すサイトは直接、それ以外は `/api/image`（`Bearer` 認証、https のみ、名前解決の結果が公開アドレスのときだけ、4MB まで）を経由する。アプリは COEP: require-corp なので外部画像を `<img>` で直接は出せない。
 - **台本**: `Script.lineImages: { en, imageId, url?, credit? }[]`。行番号ではなく行の文章に紐づける（`LineJapanese` と同じ考え方）。文章を直したときは `textSimilarity` で追いかける。
 - **字幕との対応**: 字幕の数が台本の行数と同じなら順番で、違えば（文字起こしの字幕など）文章が一番近い字幕に対応させる。どの字幕にも対応しない画像は表示せず警告を出す。
 - **書き出し**: `HookOptions.lineImages` に載せ、`withLineImages` がステッカーと妖精を切る。`renderSubtitleOverlays` が画像とクレジットを動画幅の透明 PNG にして字幕の下の層に足す。WebCodecs と ffmpeg のどちらの経路でも同じように動き、黒帯・look の上に出る（画像自体には色をかけない）。
