@@ -24,6 +24,7 @@ import { midZoomScale, planMidZoom } from '../utils/midZoom'
 import { reapplyStickers, type StickerPlacement } from '../utils/subtitleSticker'
 import { placeSticker, type StickerMotion } from '../utils/stickerMotion'
 import { useVideoFrameTime } from '../hooks/useVideoFrameTime'
+import { holdEncodes } from '../utils/webcodecs/encodeHold'
 import SubtitleEditor from './SubtitleEditor'
 import CueCheckPlayer from './CueCheckPlayer'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
@@ -166,6 +167,10 @@ export default function SubtitleWorkflow({
   const [previewTime, setPreviewTime] = useState(0)
   // The zoom in is only shown while playing: it would scale (and clip) the native controls.
   const [previewPlaying, setPreviewPlaying] = useState(false)
+  // A burn the user is waiting on must not wait for the player to report its pause.
+  const previewHoldsEncodes = previewPlaying && stage !== 'burning'
+  // The encodes running ahead make a playing preview drop frames (see encodeHold).
+  useEffect(() => (previewHoldsEncodes ? holdEncodes() : undefined), [previewHoldsEncodes])
   const previewUrl = useObjectUrl(combinedBlob)
   const [burnProgress, setBurnProgress] = useState(0)
   const [transcribeProgress, setTranscribeProgress] = useState<WhisperProgress | null>(null)
@@ -575,6 +580,12 @@ export default function SubtitleWorkflow({
                   firstClipDuration={firstClipDuration}
                   fairies={fairies}
                 />
+                {/* The film look and the bars cover the player's controls while it plays; paused, they're back. */}
+                {previewHoldsEncodes && (
+                  <button type="button" className={styles.previewStop} aria-label="プレビューを止める" onClick={() => previewRef.current?.pause()}>
+                    <span className={styles.previewStopIcon} />
+                  </button>
+                )}
               </div>
 
               <p className={styles.sectionTitle}>字幕の位置</p>

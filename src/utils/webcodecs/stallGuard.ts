@@ -24,7 +24,16 @@ export class StallError extends Error {}
  */
 export function guardAgainstStall<T>(
   task: (poke: () => void) => Promise<T>,
-  { timeoutMs = STALL_TIMEOUT_MS, onStall }: { timeoutMs?: number; onStall?: () => void } = {},
+  {
+    timeoutMs = STALL_TIMEOUT_MS,
+    onStall,
+    paused,
+  }: {
+    timeoutMs?: number
+    onStall?: () => void
+    /** Whether the task is being made to wait right now, which is not a stall either. */
+    paused?: () => boolean
+  } = {},
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let idle = 0
@@ -33,7 +42,7 @@ export function guardAgainstStall<T>(
       const now = Date.now()
       // A long gap between ticks means the page was asleep; count it as at
       // most a couple of ticks.
-      if (!document.hidden) idle += Math.min(now - last, TICK_MS * 2)
+      if (!document.hidden && !paused?.()) idle += Math.min(now - last, TICK_MS * 2)
       last = now
       if (idle < timeoutMs) return
       clearInterval(timer)
