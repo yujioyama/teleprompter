@@ -32,6 +32,8 @@ import { useYoutubeExport } from '../hooks/useYoutubeExport'
 import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
+import { withLineImages } from '../utils/lineImages'
+import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
@@ -545,9 +547,24 @@ export default function FinalizePage() {
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
   // Every script gets the opening look instead of the zoom.
   const cinemaLook = script?.look
+  // A script with line images shows those instead of any sticker.
+  const hasLineImages = Boolean(script?.lineImages?.length)
+  const { stored: storedLineImages, loading: lineImagesLoading } = useLineImages(script?.lineImages, settings.inboxKey)
+  const lineImages = useMemo(
+    () => ({
+      images: script?.lineImages ?? [],
+      stored: storedLineImages,
+      lines: (script?.shots ?? []).flatMap(s => takeLinesOf(s.text)),
+      loading: lineImagesLoading,
+    }),
+    [script, storedLineImages, lineImagesLoading],
+  )
   const hook = useMemo(
-    () => withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), subtitleCues, subtitlePosition, cinemaLook),
-    [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook],
+    () => withLineImages(
+      withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), subtitleCues, subtitlePosition, cinemaLook),
+      { ...lineImages, cues: subtitleCues },
+    ),
+    [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook, lineImages],
   )
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
@@ -567,7 +584,7 @@ export default function FinalizePage() {
   const burnCoverFor = useCallback(
     async (cues: SubtitleCue[]): Promise<BurnCover | undefined> => {
       if (!coverInBurn || !combinedBlob || !script) return undefined
-      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja))
+      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length))
       const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
       const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker])
       if (burnCoverRef.current?.key !== key) {
@@ -726,7 +743,7 @@ export default function FinalizePage() {
     setAutoCover('making')
     makeCover(
       combinedBlob,
-      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja)),
+      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja), hasLineImages),
       settings.coverTextPosition,
       coverStickerSpot(stickerPlacement, settings.coverStickerSpot),
     ).then(
@@ -1058,6 +1075,7 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
+                lineImages={lineImages}
                 cinemaLook={cinemaLook}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
                 onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? undefined })}
@@ -1246,6 +1264,7 @@ export default function FinalizePage() {
                   initialWords={coverWordsOf(
                     script.shots.map(s => s.text),
                     subtitleCues.map(c => c.ja),
+                    hasLineImages,
                   )}
                   filenameBase={script.title}
                   initialPosition={settings.coverTextPosition}

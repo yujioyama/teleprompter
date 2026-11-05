@@ -40,3 +40,20 @@
   height: 100%;
   pointer-events: none;
 }
+
+/* A line's image, under the subtitle; left and top are its corner, as the burn draws it. */
+.lineImage {
+  position: absolute;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.lineImageCredit {
+  position: absolute;
+  transform: translateX(-50%);
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  paint-order: stroke fill;
+  pointer-events: none;
+}

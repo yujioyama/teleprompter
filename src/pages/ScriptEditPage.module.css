@@ -147,6 +147,11 @@
   margin-top: 2px;
 }
 
+.previewLine {
+  flex: 1;
+  min-width: 0;
+}
+
 .previewText {
   font-size: 0.9rem;
   line-height: 1.5;

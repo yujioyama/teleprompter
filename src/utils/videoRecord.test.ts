@@ -147,4 +147,13 @@ describe('buildVideoRecord for a one-take script', () => {
   it('marks a usual script as not one-take', () => {
     expect(build().effects.oneTake).toBe(false)
   })
+
+  it('counts the line images, on a video with no sticker or fairies', () => {
+    const lineImages = [{ cueId: '2', imageId: 'i', blob: new Blob(['i']), width: 8, height: 6 }]
+    const { effects } = build({ burn: { ...BURN, hook: { ...HOOK, sticker: 'off', fairies: false, lineImages } } })
+    expect(effects.lineImages).toBe(1)
+    expect(effects.sticker).toBeNull()
+    expect(effects.fairies).toEqual({ enabled: false, cameoEmojis: [], finale: false })
+    expect(build({ burn: BURN }).effects).not.toHaveProperty('lineImages')
+  })
 })

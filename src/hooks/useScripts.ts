@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { CinemaLook } from '../../shared/cinemaLook'
-import { LineJapanese, Script, Shot, type VideoType } from '../types'
+import { LineImage, LineJapanese, Script, Shot, type VideoType } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
+import { pruneLineImages } from '../utils/lineImageStore'
 import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
 
 const STORAGE_KEY = 'teleprompter_scripts'
@@ -34,6 +35,7 @@ export function useScripts() {
     japanese?: LineJapanese[],
     videoType?: VideoType,
     look?: CinemaLook,
+    lineImages?: LineImage[],
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -45,6 +47,7 @@ export function useScripts() {
       ...(japanese?.length ? { japanese } : {}),
       ...(videoType ? { videoType } : {}),
       ...(look ? { look } : {}),
+      ...(lineImages?.length ? { lineImages } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -57,7 +60,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
@@ -66,6 +69,7 @@ export function useScripts() {
       if (!next.oneTake) delete next.oneTake
       if (!next.videoType) delete next.videoType
       if (!next.look) delete next.look
+      if (!next.lineImages?.length) delete next.lineImages
       return next
     })
     saveToStorage(updated)
@@ -79,6 +83,9 @@ export function useScripts() {
     // Fire-and-forget: clean up orphaned IndexedDB blobs without making
     // deleteScript async.
     clearShotVideos(id).catch(err => console.error('Failed to clear stored shot videos', err))
+    // Another script may use the same image; one still in the inbox is fetched again.
+    pruneLineImages(new Set(updated.flatMap(s => (s.lineImages ?? []).map(image => image.imageId))))
+      .catch(err => console.error('Failed to clear stored images', err))
   }
 
   // A backup's scripts, merged in without losing anything (see mergeScripts).

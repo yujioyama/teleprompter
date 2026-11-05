@@ -42,16 +42,17 @@ function firstMatch(texts: (string | null | undefined)[], pattern: RegExp): stri
  * The words for the cover, taken from the shots' text and (for the kana)
  * the Japanese subtitle lines, where the translator marks the same word in
  * `{…}`. Either is an empty string when the script has no such marker, and
- * the sticker is one when the first line has no emoji.
+ * the sticker is one when the first line has no emoji, or when the script has
+ * line images, whose videos show no stickers (the cover goes in as frames too).
  */
-export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = []): CoverWords {
+export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = [], hasLineImages = false): CoverWords {
   const en = firstMatch(shotTexts, STAR) ?? ''
   const romaji = firstMatch(shotTexts, BRACE) ?? ''
   const kana = firstMatch(jaLines, BRACE) ?? ''
   // Show the kana only when it adds something: not when the translator
   // left the romaji as it was.
   const ja = kana && kana.toLowerCase() !== romaji.toLowerCase() ? [romaji, kana].filter(Boolean).join(' ') : romaji
-  const sticker = findSticker(shotTexts[0] ?? '') ?? ''
+  const sticker = hasLineImages ? '' : (findSticker(shotTexts[0] ?? '') ?? '')
   return { en, ja, sticker }
 }
 

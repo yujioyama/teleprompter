@@ -28,7 +28,7 @@ describe('ClaudeInbox', () => {
   it('lists what arrived and opens one when tapped', async () => {
     vi.mocked(fetchInbox).mockResolvedValue([ITEM])
     const onOpen = vi.fn()
-    render(<ClaudeInbox inboxKey="secret" onOpen={onOpen} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={onOpen} />)
 
     expect(await screen.findByText('Claudeから届いたスクリプト')).toBeInTheDocument()
     expect(fetchInbox).toHaveBeenCalledWith('secret')
@@ -41,7 +41,7 @@ describe('ClaudeInbox', () => {
     vi.mocked(deleteInboxItem).mockResolvedValue()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const onOpen = vi.fn()
-    render(<ClaudeInbox inboxKey="secret" onOpen={onOpen} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={onOpen} />)
 
     fireEvent.click(await screen.findByRole('button', { name: '「夜のルーティン」を消す' }))
 
@@ -56,7 +56,7 @@ describe('ClaudeInbox', () => {
     vi.mocked(fetchInbox).mockResolvedValue([ITEM])
     vi.mocked(deleteInboxItem).mockResolvedValue()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const { container } = render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    const { container } = render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
 
     fireEvent.click(await screen.findByRole('button', { name: '「朝のルーティン」を消す' }))
     expect(container).toBeEmptyDOMElement()
@@ -65,7 +65,7 @@ describe('ClaudeInbox', () => {
   it('keeps the item when the confirmation is cancelled', async () => {
     vi.mocked(fetchInbox).mockResolvedValue([ITEM])
     vi.spyOn(window, 'confirm').mockReturnValue(false)
-    render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
 
     fireEvent.click(await screen.findByRole('button', { name: '「朝のルーティン」を消す' }))
     expect(deleteInboxItem).not.toHaveBeenCalled()
@@ -78,7 +78,7 @@ describe('ClaudeInbox', () => {
     vi.mocked(fetchInbox).mockResolvedValue([ITEM, OLDER])
     vi.mocked(deleteInboxItem).mockRejectedValue(new Error('offline'))
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
 
     const discard = await screen.findByRole('button', { name: '「朝のルーティン」を消す' })
     await act(async () => {
@@ -91,14 +91,14 @@ describe('ClaudeInbox', () => {
   })
 
   it('shows nothing and asks nothing without a key', () => {
-    const { container } = render(<ClaudeInbox inboxKey="" onOpen={vi.fn()} />)
+    const { container } = render(<ClaudeInbox scripts={[]} inboxKey="" onOpen={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
     expect(fetchInbox).not.toHaveBeenCalled()
   })
 
   it('shows nothing when the inbox is empty', async () => {
     vi.mocked(fetchInbox).mockResolvedValue([])
-    const { container } = render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    const { container } = render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
     await act(async () => {})
     expect(container).toBeEmptyDOMElement()
   })
@@ -106,14 +106,14 @@ describe('ClaudeInbox', () => {
   it('shows nothing when the inbox cannot be reached', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(fetchInbox).mockRejectedValue(new Error('offline'))
-    const { container } = render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    const { container } = render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
     await act(async () => {})
     expect(container).toBeEmptyDOMElement()
   })
 
   it('checks again when the app comes back to the foreground', async () => {
     vi.mocked(fetchInbox).mockResolvedValueOnce([]).mockResolvedValueOnce([ITEM])
-    render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
     await act(async () => {})
     expect(screen.queryByText('Claudeから届いたスクリプト')).not.toBeInTheDocument()
 
@@ -129,7 +129,7 @@ describe('ClaudeInbox', () => {
     vi.mocked(fetchInbox)
       .mockReturnValueOnce(new Promise(resolve => (finishFirst = resolve)))
       .mockResolvedValueOnce([])
-    render(<ClaudeInbox inboxKey="secret" onOpen={vi.fn()} />)
+    render(<ClaudeInbox scripts={[]} inboxKey="secret" onOpen={vi.fn()} />)
 
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     await act(async () => {

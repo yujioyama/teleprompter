@@ -8,6 +8,23 @@ import type { CinemaLook } from './cinemaLook.js'
  */
 export type VideoType = 'A' | 'B'
 
+/** An image Claude picked for one line of a script. */
+export interface InboxImage {
+  /** Which line of `body`, counting non-empty lines from 1. */
+  line: number
+  url: string
+  /** Shown small under the image; absent when its license asks for none. */
+  credit?: string
+  /** The page it came from, for the caption's credit line. */
+  source?: string
+}
+
+/** The caption with a line for each image whose license asks for a credit. */
+export function captionWithCredits(caption: string, images: InboxImage[]): string {
+  const credits = images.flatMap(image => (image.credit ? [`画像: ${[image.credit, image.source].filter(Boolean).join(' ')}`] : []))
+  return [caption, credits.join('\n')].filter(Boolean).join('\n\n')
+}
+
 // A script Claude chat sent to the teleprompter, waiting in the inbox
 // until a device turns it into a script (or it expires).
 export interface InboxItem {
@@ -23,6 +40,8 @@ export interface InboxItem {
   videoType?: VideoType
   /** The film look under the opening bars; absent = the bars alone. */
   look?: CinemaLook
+  /** Images for some of the lines; absent when none were sent. */
+  images?: InboxImage[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }
