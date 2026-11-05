@@ -31,7 +31,8 @@ import CancelProcessing from './CancelProcessing'
 import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
-import type { LineJapanese } from '../types'
+import type { LineImage, LineJapanese } from '../types'
+import { withLineImages, type StoredLineImage } from '../utils/lineImages'
 import { letterboxHeight, openingActive } from '../utils/openingLook'
 import { CINEMA_LOOKS, CINEMA_LOOK_LABELS, type CinemaLook } from '../../shared/cinemaLook'
 import OpeningLookCanvas from './OpeningLookCanvas'
@@ -108,6 +109,8 @@ interface SubtitleWorkflowProps {
   oneTake?: boolean
   /** The Japanese Claude sent with the script, put on the script's cues as they are made. */
   scriptJapanese?: LineJapanese[]
+  /** The script's line images, as this device has them; absent = none. */
+  lineImages?: { images: LineImage[]; stored: Map<string, StoredLineImage>; lines: string[]; loading: boolean }
   /** The film look under the opening bars; null or absent = none. */
   cinemaLook?: CinemaLook | null
   /** The picker under the bars' hint; null = none (the bars alone). */
@@ -149,6 +152,7 @@ export default function SubtitleWorkflow({
   inboxKey = '',
   oneTake = false,
   scriptJapanese = [],
+  lineImages,
   cinemaLook = null,
   onCinemaLookChange,
 }: SubtitleWorkflowProps) {
@@ -181,10 +185,13 @@ export default function SubtitleWorkflow({
   // bumped to play it again.
   const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
-  const hook = useMemo(
-    () => withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook),
-    [hookSettings, oneTake, cues, position, cinemaLook],
-  )
+  const hook = useMemo(() => {
+    const opened = withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook)
+    return lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened
+  }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages])
+  const hasLineImages = Boolean(lineImages?.images.length)
+  // Picked but not going to show: not on this device, or no subtitle matches its line.
+  const lineImagesLeftOut = !lineImages || lineImages.loading || cues.length === 0 ? 0 : lineImages.images.length - (hook.lineImages?.length ?? 0)
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
   const firstShotDuration = oneTake ? (cues[0]?.end ?? null) : (shotCueInputs[0]?.duration ?? null)
@@ -505,7 +512,14 @@ export default function SubtitleWorkflow({
               )}
             />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
-            <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
+            {hasLineImages ? (
+              <p className={styles.hint}>この台本には行ごとの画像があるので、ステッカーと妖精は出ません（画像は台本の編集画面で変えられます）</p>
+            ) : (
+              <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
+            )}
+            {lineImagesLeftOut > 0 && (
+              <p className={styles.error} role="alert">画像{lineImagesLeftOut}枚を表示できません（取得できなかったか、合う字幕がありません）。その行は画像なしで書き出されます。台本の編集画面で確認してください</p>
+            )}
           </div>
 
           {!allTranslated && (
@@ -653,6 +667,8 @@ export default function SubtitleWorkflow({
                   <p className={styles.hint}>途中の山場（英語字幕に絵文字がある行）でじわっと寄り、最後のオチはカットの瞬間に寄ります（字幕は拡大しません）</p>
                 </>
               )}
+              {!hasLineImages && (
+              <>
               <p className={styles.sectionTitle}>ステッカーの位置</p>
               <div className={styles.positionRow} role="group" aria-label="ステッカーの位置">
                 {STICKER_PLACEMENT_OPTIONS.map(o => (
@@ -712,6 +728,8 @@ export default function SubtitleWorkflow({
                     </button>
                   )}
                 </>
+              )}
+              </>
               )}
 
               <button className={styles.copyBtn} onClick={() => setFineTune(v => !v)}>

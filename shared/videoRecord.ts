@@ -57,6 +57,8 @@ export const videoRecordSchema = z.object({
       .object({ kind: z.enum(['letterbox', 'colorPop']), at: z.number(), look: z.enum(CINEMA_LOOKS).nullable().optional() })
       .nullable()
       .optional(),
+    /** How many line images were shown (that video has no sticker or fairies); absent = none, or before them. */
+    lineImages: z.number().int().positive().optional(),
   }),
 })
 

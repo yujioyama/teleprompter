@@ -6,6 +6,7 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
+import type { CueImage } from './lineImages'
 import { LETTERBOX, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
@@ -60,6 +61,8 @@ export interface HookOptions {
   lookThrough?: boolean
   /** The film look's strength, 0-1 (default: 1). */
   lookStrength?: number
+  /** Each line's image, on the cue that times it (see withLineImages); default none. */
+  lineImages?: CueImage[]
 }
 
 export type HookSettings = Pick<

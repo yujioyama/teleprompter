@@ -72,6 +72,7 @@ export function buildVideoRecord(input: {
       oneTake: Boolean(script.oneTake),
       ...(script.videoType ? { videoType: script.videoType } : {}),
       opening: burn?.hook.opening ? { kind: burn.hook.opening.kind, at: burn.hook.opening.at, look: burn.hook.opening.grade } : null,
+      ...(burn?.hook.lineImages?.length ? { lineImages: burn.hook.lineImages.length } : {}),
     },
   }
 }

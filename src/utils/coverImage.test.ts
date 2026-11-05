@@ -18,6 +18,12 @@ import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
 const measure: MeasureWidth = (text, font) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.6
 
 describe('coverWordsOf', () => {
+  it('has no sticker for a script with line images, keeping the words', () => {
+    const words = coverWordsOf(['I put *Vaseline*🧴 on'], [], true)
+    expect(words.sticker).toBe('')
+    expect(words.en).toBe('Vaseline')
+  })
+
   it('takes the first *phrase* and {word} from the shots, and the kana from the Japanese lines', () => {
     const words = coverWordsOf(
       ['Every time an Australian says *reckon*,', 'I see {renkon}. That is lotus root.', 'And *later* {again}'],

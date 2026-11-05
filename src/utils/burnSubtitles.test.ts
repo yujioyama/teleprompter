@@ -17,6 +17,7 @@ import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLay
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
 import type { FairyAppearance } from './fairyPlan'
+import { LINE_IMAGE_SLOTS } from './lineImages'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -73,6 +74,7 @@ function stubCanvas() {
       boxes.push(1)
     },
     beginPath() {},
+    clip() {},
     fill() {},
     translate() {},
     rotate() {},
@@ -161,6 +163,62 @@ describe('renderCueImage', () => {
     expect(drawn[1]).toMatchObject({ text: 'やあ', color: '#ffffff' })
   })
 
+})
+
+describe('renderSubtitleOverlays with line images', () => {
+  const IMAGE = { cueId: 'b', imageId: 'i', blob: new Blob(['i']), width: 800, height: 600, credit: 'Ann / CC BY 4.0' }
+  const stubBitmap = () => {
+    const close = vi.fn()
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 800, height: 600, close })))
+    return close
+  }
+  const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
+  const normalCue: StyledCue = { id: 'b', start: 2, end: 3, en: 'Bye', ja: 'じゃあ', variant: 'normal' }
+  const withImage = (image = IMAGE): SubtitleLook => ({ ...LOOK, hook: { ...LOOK.hook, position: 22.5, sticker: 'off', fairies: false, lineImages: [image] } })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows the image over its cue window, under the subtitles, letting go of the decoded image', async () => {
+    stubCanvas()
+    const close = stubBitmap()
+    const overlays = await renderSubtitleOverlays([hookCue, normalCue], withImage())
+    expect(overlays).toHaveLength(3)
+    expect(overlays[0]).toMatchObject({ start: 2, end: 3, y: LINE_IMAGE_SLOTS.top.top })
+    expect(overlays[0].sprite).toBeUndefined()
+    expect(close).toHaveBeenCalled()
+  })
+
+  it('draws the credit in white over a black outline', async () => {
+    const { drawn, stroked } = stubCanvas()
+    stubBitmap()
+    await renderSubtitleOverlays([normalCue], withImage())
+    expect(drawn.some(d => d.text === 'Ann / CC BY 4.0' && d.color === '#fff')).toBe(true)
+    expect(stroked.some(d => d.text === 'Ann / CC BY 4.0' && d.color === '#000')).toBe(true)
+  })
+
+  it('moves beside the face when the subtitle is in the top slot, as the hook is', async () => {
+    stubCanvas()
+    stubBitmap()
+    const [image] = await renderSubtitleOverlays([hookCue], withImage({ ...IMAGE, cueId: 'a' }))
+    expect(image.y).toBe(LINE_IMAGE_SLOTS.side.top)
+  })
+
+  it('leaves out the image of an untranslated cue, as its subtitle is', async () => {
+    stubCanvas()
+    stubBitmap()
+    expect(await renderSubtitleOverlays([{ ...normalCue, ja: null }], withImage())).toEqual([])
+  })
+
+  it('comes out the same on the ffmpeg path, with no sticker for the first line', async () => {
+    stubCanvas()
+    stubBitmap()
+    const overlays = await renderSubtitleOverlays([{ ...hookCue, en: 'Toast🍞 hurts' }, normalCue], withImage(), { still: true })
+    expect(overlays).toHaveLength(3)
+    expect(overlays[0].y).toBe(LINE_IMAGE_SLOTS.top.top)
+    expect(overlays.filter(o => o.sprite)).toEqual([])
+  })
 })
 
 describe('renderSubtitleOverlays', () => {

@@ -5,8 +5,11 @@ import { useSettings } from '../hooks/useSettings'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
-import { lineJapaneseOf } from '../utils/subtitleCues'
-import { Shot, type VideoType } from '../types'
+import { lineJapaneseOf, takeLinesOf } from '../utils/subtitleCues'
+import { assignToLines, lineImagesOf, reconcileLineImages } from '../utils/lineImages'
+import { useLineImages } from '../hooks/useLineImages'
+import LineImageEditor from '../components/LineImageEditor'
+import { LineImage, Shot, type VideoType } from '../types'
 import styles from './ScriptEditPage.module.css'
 
 const DRAFT_KEY = 'teleprompter_new_script_draft'
@@ -71,6 +74,11 @@ export default function ScriptEditPage() {
   const [videoType, setVideoType] = useState<VideoType | null>(
     () => (existingScript ? existingScript.videoType : inboxItem?.videoType) ?? null,
   )
+  const [lineImages, setLineImages] = useState<LineImage[]>(() => {
+    if (existingScript) return existingScript.lineImages ?? []
+    return inboxItem?.images ? lineImagesOf(inboxItem.body, inboxItem.images) : []
+  })
+  const { stored: storedImages, loading: imagesLoading, retry: retryImages } = useLineImages(lineImages, settings.inboxKey)
 
   // Grow the textarea to fit its content so a long pasted script is visible
   // in full, instead of hiding most of it in a small scroll box nested
@@ -106,10 +114,18 @@ export default function ScriptEditPage() {
       // One shot holding every line; each line becomes one subtitle.
       const lines = splitShots(body, NEW_SCRIPT_SPLIT_OPTIONS)
       setPreview(lines.length > 0 ? [lines.join('\n')] : [])
+      // The images stay with their lines, wherever the edit put them.
+      setLineImages(images => reconcileLineImages(images, lines))
       return
     }
     const segments = splitShots(body, splitOptions)
     setPreview(segments)
+    setLineImages(images => reconcileLineImages(images, segments.flatMap(takeLinesOf)))
+  }
+
+  /** Put `image` on `line`, or take that line's away with null. */
+  function setLineImage(line: string, old: LineImage | null, image: LineImage | null) {
+    setLineImages(images => [...images.filter(i => i !== old), ...(image ? [{ ...image, en: line }] : [])])
   }
 
   function handleNext() {
@@ -124,14 +140,14 @@ export default function ScriptEditPage() {
 
     if (existingScript) {
       const shots = reconcileShots(existingScript.shots, preview, generateId)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined })
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, inboxItem?.look)
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, inboxItem?.look, lineImages)
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
@@ -145,6 +161,9 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${script.id}/shots`, { replace: Boolean(inboxItem) })
     }
   }
+
+  const shownLines = preview.length === 0 ? [] : oneTake ? preview[0].split('\n') : preview
+  const imageOfLine = assignToLines(lineImages, shownLines)
 
   return (
     <div className={styles.page}>
@@ -250,10 +269,23 @@ export default function ScriptEditPage() {
                 ? `一発撮り（字幕${preview[0].split('\n').length}行）`
                 : `分割結果（${preview.length}ショット）`}
             </p>
-            {(oneTake ? preview[0].split('\n') : preview).map((text, i) => (
+            {lineImages.length > 0 && (
+              <p className={styles.previewLabel}>画像がある台本なので、ステッカーと妖精は出ません</p>
+            )}
+            {shownLines.map((text, i) => (
               <div key={i} className={styles.previewItem}>
                 <span className={styles.previewNum}>{i + 1}</span>
-                <span className={styles.previewText}>{text}</span>
+                <div className={styles.previewLine}>
+                  <span className={styles.previewText}>{text}</span>
+                  <LineImageEditor
+                    line={text}
+                    image={imageOfLine[i]}
+                    stored={imageOfLine[i] ? storedImages.get(imageOfLine[i]!.imageId) : undefined}
+                    loading={imagesLoading}
+                    onChange={image => setLineImage(text, imageOfLine[i], image)}
+                    onRetry={retryImages}
+                  />
+                </div>
               </div>
             ))}
           </div>

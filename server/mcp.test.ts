@@ -87,9 +87,70 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'look', 'japanese'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'look', 'japanese', 'images'])
+    expect(result.tools[0].description).toContain('images には')
+    expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
+    expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
+  })
+
+  describe('images', () => {
+    const IMAGE = 'https://upload.wikimedia.org/a.jpg'
+
+    it('keeps the images with the script and says how many came', async () => {
+      const res = await handleMcpRequest(
+        callTool({ title: 'a', script: '一行目\n二行目', images: [{ line: 2, url: IMAGE }] }),
+        deps,
+      )
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toContain('画像1枚つき')
+      const [item] = await store.list()
+      expect(item.images).toEqual([{ line: 2, url: IMAGE }])
+      expect(item.caption).toBe('')
+    })
+
+    it('adds a credited image to the end of the caption, with its source', async () => {
+      await handleMcpRequest(
+        callTool({
+          title: 'a',
+          script: '一行目\n二行目\n三行目',
+          caption: 'small things #esl',
+          images: [
+            { line: 1, url: IMAGE },
+            { line: 2, url: IMAGE, credit: 'KKPCW / CC BY-SA 4.0', source: 'https://commons.wikimedia.org/wiki/File:A.jpg' },
+            { line: 3, url: IMAGE, credit: 'Ann / CC BY 4.0' },
+          ],
+        }),
+        deps,
+      )
+      const [item] = await store.list()
+      expect(item.caption).toBe(
+        'small things #esl\n\n画像: KKPCW / CC BY-SA 4.0 https://commons.wikimedia.org/wiki/File:A.jpg\n画像: Ann / CC BY 4.0',
+      )
+    })
+
+    it.each([
+      ['a line past the end', [{ line: 3, url: IMAGE }], '3行目'],
+      ['two images on one line', [{ line: 1, url: IMAGE }, { line: 1, url: IMAGE }], '1行目'],
+    ])('refuses %s, saving nothing', async (_name, images, message) => {
+      const res = await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', images }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toContain(message)
+      expect(await store.list()).toEqual([])
+    })
+
+    it('refuses an image that is not https', async () => {
+      const res = await handleMcpRequest(
+        callTool({ title: 'a', script: '一行目', images: [{ line: 1, url: 'http://example.com/a.jpg' }] }),
+        deps,
+      )
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(await store.list()).toEqual([])
+    })
   })
 
   it('asks for at most two middle-line emoji and none on the last line', async () => {

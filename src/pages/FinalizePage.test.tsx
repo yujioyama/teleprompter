@@ -1861,6 +1861,34 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!).hookStyleEnabled).toBe(false)
   })
 
+  it('burns no sticker or fairies for a script with a line image, keeping the bars', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    const scripts = JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify(scripts.map(s => (
+      s.id === 'script-1' ? { ...s, lineImages: [{ en: s.shots[0].text, imageId: 'https://x.test/a.jpg', url: 'https://x.test/a.jpg' }] } : s
+    ))))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    expect(screen.queryByText('ステッカーの位置')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    await waitFor(() => {
+      const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { sticker: 'off', fairies: false, opening: { kind: 'letterbox' } } })
+    }, { timeout: 3000 })
+  })
+
   it('burns the bars, not the zoom, into the first shot of a script with no type', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))

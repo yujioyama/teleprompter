@@ -20,6 +20,18 @@ export interface LineJapanese {
   ja: string
 }
 
+/** The image of one script line. The bytes are on the device (lineImageStore). */
+export interface LineImage {
+  /** The line it goes with, by its text. */
+  en: string
+  /** Its key on the device: `url`, or a new id for a picture chosen there. */
+  imageId: string
+  /** Where to get it again (a restored backup); absent for a picture chosen on the device. */
+  url?: string
+  /** Shown small under the image; absent when its license asks for none. */
+  credit?: string
+}
+
 export interface Script {
   id: string
   title: string
@@ -43,6 +55,8 @@ export interface Script {
   videoType?: VideoType
   /** The film look under the opening's bars; absent = the bars alone. */
   look?: CinemaLook
+  /** Images for some of the lines. With any, the video has no emoji stickers. */
+  lineImages?: LineImage[]
   createdAt: string
   updatedAt: string
 }
