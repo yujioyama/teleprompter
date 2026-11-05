@@ -1861,7 +1861,7 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!).hookStyleEnabled).toBe(false)
   })
 
-  it('burns the punch-in into the first shot', async () => {
+  it('burns the bars, not the zoom, into the first shot of a script with no type', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
     renderFinalizePage('script-1')
@@ -1880,7 +1880,7 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
 
     await waitFor(() => {
       const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
-      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: { zoom: 1.25, direction: 'out', at: 0.4 } }, firstShotDuration: 5 })
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: null, opening: { kind: 'letterbox' } }, firstShotDuration: 5 })
     }, { timeout: 3000 })
   })
 })

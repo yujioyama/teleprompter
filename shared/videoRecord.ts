@@ -50,7 +50,7 @@ export const videoRecordSchema = z.object({
     /** Type A (2021-style daily thing) or B (expression-note story); absent = untyped or before 2026-11-02. */
     videoType: z.enum(['A', 'B']).optional(),
     /**
-     * Type A/B's opening (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03);
+     * The opening (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03);
      * null = none, absent = before it. `look` is the film look graded under the bars; null = none, absent = before it.
      */
     opening: z

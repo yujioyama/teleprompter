@@ -31,7 +31,7 @@ import { useCoverFrames, type CoverChange } from '../hooks/useCoverFrames'
 import { useYoutubeExport } from '../hooks/useYoutubeExport'
 import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
-import { hookOptionsOf, oneTakeHookSettings, withVideoType, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
@@ -543,12 +543,11 @@ export default function FinalizePage() {
   )
   const oneTake = Boolean(script?.oneTake)
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
-  // A Type A/B script gets the opening look instead of the zoom.
-  const videoType = script?.videoType
+  // Every script gets the opening look instead of the zoom.
   const cinemaLook = script?.look
   const hook = useMemo(
-    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, subtitleCues, subtitlePosition, cinemaLook),
-    [hookSettings, oneTake, videoType, subtitleCues, subtitlePosition, cinemaLook],
+    () => withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), subtitleCues, subtitlePosition, cinemaLook),
+    [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook],
   )
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
@@ -1059,7 +1058,6 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
-                videoType={videoType}
                 cinemaLook={cinemaLook}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
                 onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? undefined })}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import ScriptEditPage from './ScriptEditPage'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
@@ -122,7 +122,8 @@ describe('ScriptEditPage from the Claude inbox', () => {
 
   it('stores no type when none was picked', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
-    expect(screen.getByLabelText('なし（設定のズーム）')).toBeChecked()
+    expect(within(screen.getByRole('group', { name: '動画の型' })).getByLabelText('なし')).toBeChecked()
+    expect(screen.getByText('動画の型（分析用の記録です。冒頭の演出は変わりません）')).toBeInTheDocument()
     fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()

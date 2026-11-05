@@ -6,8 +6,7 @@ import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleStic
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
-import { LETTERBOX, hasOpening, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
-import type { VideoType } from '../types'
+import { LETTERBOX, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
 /**
@@ -55,11 +54,11 @@ export interface HookOptions {
   fairies?: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム, default: on). */
   midZoom?: boolean
-  /** Type A/B's opening look (black bars); null/absent = none. */
+  /** The opening look (black bars); null/absent = none. */
   opening?: OpeningLook | null
-  /** Type A/B: the film look stays on after the bars (default: off). */
+  /** The film look stays on after the bars (default: off). */
   lookThrough?: boolean
-  /** Type A/B: the film look's strength, 0-1 (default: 1). */
+  /** The film look's strength, 0-1 (default: 1). */
   lookStrength?: number
 }
 
@@ -112,21 +111,18 @@ export function hookOptionsOf(settings: HookSettings): HookOptions {
 }
 
 /**
- * A Type A/B script gets the opening look instead of the zoom, timed from
+ * Every script gets the opening look instead of the zoom, timed from
  * `cues` (as edited) and kept clear of them where they're shown: at the
  * hook position with the hook style, else at `position`, the subtitles'.
  * `look` is the film look under the bars (none when absent); the hook's
  * lookThrough and lookStrength say whether it outlasts them, and how strong.
- * Any other script keeps the hook as set.
  */
-export function withVideoType(
+export function withOpening(
   hook: HookOptions,
-  type: VideoType | null | undefined,
   cues: SubtitleCue[],
   position: SubtitlePosition,
   look?: CinemaLook | null,
 ): HookOptions {
-  if (!hasOpening(type)) return hook
   const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null)
   // Bars alone have no color to keep on or soften.
   const graded = opening.grade ? { ...opening, through: hook.lookThrough ?? false, strength: hook.lookStrength ?? 1 } : opening

@@ -47,7 +47,7 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  *
  * `options.punchIn` zooms the first shot's picture in during the same encode,
  * and `options.midZoom` a peak's or the punchline's; `options.opening` gives
- * it Type A/B's opening look. `options.cover` puts the
+ * it the opening look. `options.cover` puts the
  * cover image in as frames before the shot's first, over silence, with the
  * shot (overlays in its own timeline as before) following it.
  */

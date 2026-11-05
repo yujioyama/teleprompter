@@ -1,15 +1,14 @@
 import type { CinemaLook } from '../../shared/cinemaLook'
-import type { VideoType } from '../types'
 import type { SubtitleCue } from './subtitleCues'
 import { createCanvasMeasure, layoutCue, type MeasureText } from './subtitleLayout'
 import { SUBTITLE_VIDEO_HEIGHT, clampedSubtitleY, type SubtitlePosition } from './subtitlePosition'
 import { stripStickers } from './subtitleSticker'
 
 /**
- * The opening look a Type A/B script gets on its own (2026-11-02), in place
- * of the first shot's zoom: cinema bars, top and bottom, that hold through
- * line 1 and slide away as it ends, so a small daily thing opens like a film.
- * Both types get the same bars (2026-11-03; Type B's color pop is gone).
+ * The opening look every script gets on its own (2026-11-05; before that,
+ * only Type A/B), in place of the first shot's zoom: cinema bars, top and
+ * bottom, that hold through line 1 and slide away as it ends, so a small
+ * daily thing opens like a film.
  * They're there from the first frame, with the face between them: a feed
  * viewer scrolls past an opening with nothing to see. They stay on for at
  * least about a second, as a feed viewer needs that long to see them at
@@ -51,10 +50,6 @@ export const LETTERBOX = {
   /** Seconds they take to slide away. */
   duration: 0.8,
 } as const
-
-export function hasOpening(type: VideoType | null | undefined): boolean {
-  return type === 'A' || type === 'B'
-}
 
 /** Smoothstep, the same ease as the zoom's. */
 function ease(p: number): number {
