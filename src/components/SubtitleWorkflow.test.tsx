@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
 import { WhisperProgress } from '../utils/transcribeSpeech'
@@ -10,6 +10,7 @@ import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/sub
 import type { LineJapanese } from '../types'
 import type { CinemaLook } from '../../shared/cinemaLook'
 import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
+import { encodesHeld } from '../utils/webcodecs/encodeHold'
 
 vi.mock('../utils/burnSubtitles')
 // jsdom has no canvas: the look's pixels aren't under test here, only when it is on.
@@ -579,6 +580,49 @@ describe('SubtitleWorkflow first shot and zooms', () => {
     setTime(video, 2)
     fireEvent.timeUpdate(video)
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
+  })
+
+  it('offers a way to stop the preview while it plays, since the picture covers the player controls', async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    await renderTranslated(vi.fn())
+    const video = document.querySelector('video') as HTMLVideoElement
+    expect(screen.queryByRole('button', { name: 'プレビューを止める' })).toBeNull()
+
+    fireEvent.play(video)
+    fireEvent.click(screen.getByRole('button', { name: 'プレビューを止める' }))
+    expect(pause).toHaveBeenCalledOnce()
+
+    // Paused, the player's own controls are back.
+    fireEvent.pause(video)
+    expect(screen.queryByRole('button', { name: 'プレビューを止める' })).toBeNull()
+    pause.mockRestore()
+  })
+
+  it('holds the encodes ahead only while the preview plays', async () => {
+    await renderTranslated(vi.fn())
+    const video = document.querySelector('video') as HTMLVideoElement
+    expect(encodesHeld()).toBe(false)
+
+    fireEvent.play(video)
+    expect(encodesHeld()).toBe(true)
+    fireEvent.pause(video)
+    expect(encodesHeld()).toBe(false)
+
+    fireEvent.play(video)
+    cleanup()
+    expect(encodesHeld()).toBe(false)
+  })
+
+  it('does not hold the burn the user is waiting on, even if the player has yet to report its pause', async () => {
+    seedBurnMock()
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    await renderTranslated(vi.fn())
+    fireEvent.play(document.querySelector('video') as HTMLVideoElement)
+    expect(encodesHeld()).toBe(true)
+
+    fireEvent.click(screen.getByText('次へ'))
+    expect(encodesHeld()).toBe(false)
+    vi.restoreAllMocks()
   })
 
   it('previews the picked film look under the bars, only while the opening plays', async () => {

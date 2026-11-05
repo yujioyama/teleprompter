@@ -11,6 +11,21 @@ afterEach(() => {
 })
 
 describe('guardAgainstStall', () => {
+  it('does not count the time `paused` says the task is waiting on purpose', async () => {
+    const onStall = vi.fn()
+    let paused = true
+    const guarded = guardAgainstStall(() => new Promise(() => {}), { timeoutMs: 5000, onStall, paused: () => paused })
+    const settled = expect(guarded).rejects.toBeInstanceOf(StallError)
+
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(onStall).not.toHaveBeenCalled()
+
+    paused = false
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(onStall).toHaveBeenCalledOnce()
+    await settled
+  })
+
   it('passes the task result through', async () => {
     await expect(guardAgainstStall(async () => 'done', { timeoutMs: 5000 })).resolves.toBe('done')
   })
