@@ -6,7 +6,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useObjectUrl } from '../hooks/useObjectUrl'
 import {
   SubtitlePosition,
-  SUBTITLE_POSITION_BOTTOM,
+  SUBTITLE_POSITION_TOP,
   SUBTITLE_POSITION_PRESETS,
 } from '../utils/subtitlePosition'
 import {
@@ -71,7 +71,7 @@ export const INITIAL_SUBTITLE_STATE: SubtitleState = {
   stage: 'idle',
   cues: [],
   pasteText: '',
-  position: SUBTITLE_POSITION_BOTTOM,
+  position: SUBTITLE_POSITION_TOP,
   source: 'script',
 }
 
@@ -518,7 +518,7 @@ export default function SubtitleWorkflow({
             />
             <p className={styles.hint}>*で囲んだ語は黄色で強調されます（例: I *love* it）</p>
             {hasLineImages ? (
-              <p className={styles.hint}>この台本には行ごとの画像があるので、ステッカーと妖精は出ません（画像は台本の編集画面で変えられます）</p>
+              <p className={styles.hint}>この台本には行ごとの画像があるので、ステッカーと妖精は出ません。画像のある行は、画像が頭の上に、字幕が胸のあたりに出ます（画像は台本の編集画面で変えられます）</p>
             ) : (
               <p className={styles.hint}>最初のショットの字幕に絵文字を入れると、字幕には出さず、大きなステッカーとして最初のショットの間ずっと表示します（例: I put *Vaseline*🧴 on…）</p>
             )}

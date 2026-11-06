@@ -1,7 +1,7 @@
 import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
-import { styleCues, type HookOptions } from '../utils/subtitleHook'
+import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
 import {
   SUBTITLE_BLOCK_GAP,
@@ -20,7 +20,7 @@ import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers 
 import { placeSticker, type StickerPose } from '../utils/stickerMotion'
 import type { FairyAppearance } from '../utils/fairyPlan'
 import { useObjectUrl } from '../hooks/useObjectUrl'
-import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_FRAME, LINE_IMAGE_RADIUS, layoutLineImage, lineImageSlot, wrapCredit, type CueImage } from '../utils/lineImages'
+import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_FRAME, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from '../utils/lineImages'
 import { drawSparkles } from '../utils/sparkles'
 import styles from './SubtitleOverlayPreview.module.css'
 
@@ -101,9 +101,9 @@ function StickerSprite({ emoji, pose, scale, testId }: { emoji: string; pose: St
 }
 
 /** A line's image and its credit, where and how big the burn draws them. */
-function LineImageBox({ image, position, subtitleHeight, measure }: { image: CueImage; position: SubtitlePosition; subtitleHeight: number; measure: MeasureText }) {
+function LineImageBox({ image, measure }: { image: CueImage; measure: MeasureText }) {
   const url = useObjectUrl(image.blob)
-  const slot = lineImageSlot(position, subtitleHeight, image.small)
+  const slot = LINE_IMAGE_SLOT
   const credit = wrapCredit(image.credit, slot.width, text => measure(text, CREDIT_FONT))
   const box = layoutLineImage(image.width, image.height, credit.length, slot)
   return (
@@ -184,8 +184,6 @@ export default function SubtitleOverlayPreview({
   const showSticker = sticker !== null && currentTime >= sticker.start && currentTime < sticker.end
   const pose = sticker && (sticker.path ? sticker.path(currentTime) : { ...sticker.home, scale: 1 })
 
-  const hookPosition = hook?.position ?? position
-
   // As burned: only a translated cue shows its image.
   const lineImage = cue && cue.ja !== null ? hook?.lineImages?.find(i => i.cueId === cue.id) : undefined
 
@@ -193,7 +191,7 @@ export default function SubtitleOverlayPreview({
     <div
       className={styles.wrapper}
       style={{
-        top: `${clampedSubtitlePosition(cue.variant === 'hook' ? hookPosition : position, layout.height)}%`,
+        top: `${clampedSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)}%`,
         width: cqw(SUBTITLE_TEXT_WIDTH),
         padding: `${cqw(SUBTITLE_PADDING_Y)} 0`,
       }}
@@ -256,15 +254,7 @@ export default function SubtitleOverlayPreview({
   if (!cueBox && !showCanvas) return null
   return (
     <>
-      {lineImage && cue && layout && (
-        <LineImageBox
-          key={lineImage.cueId}
-          image={lineImage}
-          position={cue.variant === 'hook' ? hookPosition : position}
-          subtitleHeight={layout.height}
-          measure={measure}
-        />
-      )}
+      {lineImage && <LineImageBox key={lineImage.cueId} image={lineImage} measure={measure} />}
       {cueBox}
       {showCanvas && <canvas ref={canvasRef} className={styles.sparkles} />}
       {stickerBox}

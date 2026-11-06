@@ -3,8 +3,7 @@ import type { LineImage } from '../types'
 import {
   assignToLines,
   layoutLineImage,
-  LINE_IMAGE_TOP_SLOT,
-  lineImageSlot,
+  LINE_IMAGE_SLOT,
   lineImagesOf,
   reconcileLineImages,
   withLineImages,
@@ -13,8 +12,8 @@ import {
 } from './lineImages'
 import { hookOptionsOf, type HookOptions } from './subtitleHook'
 import { fairiesFromSubtitles } from './fairyPlan'
-import { LETTERBOX } from './openingLook'
-import { inButtonColumn, onFace, placeSticker } from './stickerMotion'
+import { letterboxBarHeight } from './openingLook'
+import { placeSticker } from './stickerMotion'
 import type { SubtitleCue } from './subtitleCues'
 
 const image = (en: string, imageId = en): LineImage => ({ en, imageId, url: `https://x.test/${imageId}.jpg` })
@@ -87,11 +86,6 @@ describe('withLineImages', () => {
     expect(withLineImages(HOOK, { images: [], stored: new Map(), cues, lines })).toBe(HOOK)
   })
 
-  it('makes only the first line\'s image small, so the face and the bars show', () => {
-    const hook = withLineImages(HOOK, { images: [image(lines[0]), image(lines[1])], stored: stored(lines[0], lines[1]), cues, lines })
-    expect(hook.lineImages?.map(i => [i.cueId, i.small ?? false])).toEqual([['a', true], ['b', false]])
-  })
-
   it('turns off every sticker when a script has an image', () => {
     const hook = withLineImages(HOOK, { images: [image(lines[1])], stored: stored(lines[1]), cues, lines })
     const styled = cues.map(c => ({ ...c, variant: c.id === 'a' ? 'hook' : 'normal' }))
@@ -144,77 +138,39 @@ describe('withLineImages', () => {
     expect(hook.midZoom).toBe(true)
     expect(settingsHook.sticker).toBe('right')
   })
+
+  describe('with the bars up', () => {
+    const opening = (height: number) => ({ kind: 'letterbox', at: 1, height, grade: null }) as unknown as HookOptions['opening']
+
+    it('thins them to clear an image shown while they are up', () => {
+      const hook = withLineImages({ ...HOOK, opening: opening(0.2) }, { images: [image(lines[0])], stored: stored(lines[0]), cues, lines })
+      expect(hook.opening?.height).toBe(letterboxBarHeight([LINE_IMAGE_SLOT.top]))
+      expect(hook.opening!.height * 1920).toBeLessThan(LINE_IMAGE_SLOT.top)
+    })
+
+    it('leaves bars thin enough already as they are', () => {
+      const thin = opening(0.1)
+      const hook = withLineImages({ ...HOOK, opening: thin }, { images: [image(lines[0])], stored: stored(lines[0]), cues, lines })
+      expect(hook.opening).toBe(thin)
+    })
+  })
 })
 
-describe('lineImageSlot', () => {
-  it('starts right under the subtitle, and follows a taller one down', () => {
-    // Centered at 22.5% (432): 274 tall ends at 569, 400 tall at 632.
-    expect(lineImageSlot(22.5, 274).top).toBe(569)
-    expect(lineImageSlot(22.5, 400).top).toBe(632)
+describe('LINE_IMAGE_SLOT', () => {
+  it('stays in the band the feeds keep, above the head', () => {
+    expect((LINE_IMAGE_SLOT.top + LINE_IMAGE_SLOT.height) / 1920).toBeLessThanOrEqual(0.31)
+    expect(LINE_IMAGE_SLOT.top / 1920).toBeGreaterThanOrEqual(0.15)
   })
 
-  it('goes under a centered subtitle too, but above the head when one is lower', () => {
-    expect(lineImageSlot(50, 274).top).toBe(960 + 137)
-    expect(lineImageSlot(72.3, 274)).toBe(LINE_IMAGE_TOP_SLOT)
-  })
-
-  it('reaches as far as the feeds and TikTok keep, even over the face', () => {
-    const under = lineImageSlot(22.5, 274)
-    // Instagram's 4:5 feed keeps up to 85%.
-    expect(under.top + under.height).toBe(1632)
-    expect((LINE_IMAGE_TOP_SLOT.top + LINE_IMAGE_TOP_SLOT.height) / 1920).toBeLessThanOrEqual(0.31)
-    expect(LINE_IMAGE_TOP_SLOT.top / 1920).toBeGreaterThanOrEqual(0.15)
-    // TikTok zooms the video in on a tall phone, cutting the sides.
-    expect(under.left).toBe(108)
-    expect(under.left + under.width).toBe(972)
-    for (const { left, width } of [LINE_IMAGE_TOP_SLOT, under]) {
-      expect(left / 1080).toBeGreaterThanOrEqual(0.1)
-      expect((left + width) / 1080).toBeLessThanOrEqual(0.9)
-    }
-  })
-
-  describe('for a small image', () => {
-    const small = lineImageSlot(22.5, 274, true)
-    const corners = (slot: typeof small) => [
-      { x: slot.left / 1080, y: slot.top / 1920 },
-      { x: (slot.left + slot.width) / 1080, y: slot.top / 1920 },
-      { x: slot.left / 1080, y: (slot.top + slot.height) / 1920 },
-      { x: (slot.left + slot.width) / 1080, y: (slot.top + slot.height) / 1920 },
-    ]
-
-    it('sits on the chest, off the face and the buttons, and inside TikTok\'s crop', () => {
-      for (const corner of corners(small)) {
-        expect(onFace(corner)).toBe(false)
-        expect(inButtonColumn(corner)).toBe(false)
-        expect(corner.x).toBeGreaterThanOrEqual(0.1)
-        expect(corner.x).toBeLessThanOrEqual(0.9)
-      }
-      expect(onFace({ x: 0.5, y: small.top / 1920 })).toBe(false)
-    })
-
-    it('stays above the bottom bar, at its thickest', () => {
-      expect((small.top + small.height) / 1920).toBeLessThanOrEqual(1 - LETTERBOX.height)
-    })
-
-    it('is much smaller than the usual place', () => {
-      const usual = lineImageSlot(22.5, 274)
-      expect(small.width).toBeLessThan(usual.width / 2)
-    })
-
-    it('moves down rather than cover a subtitle that reaches the chest', () => {
-      // Centered at 50% (960): 400 tall ends at 1160.
-      expect(lineImageSlot(50, 400, true).top).toBe(1160)
-    })
-
-    it('goes above the head with a subtitle too low to have room, like any image', () => {
-      expect(lineImageSlot(72.3, 274, true)).toBe(LINE_IMAGE_TOP_SLOT)
-    })
+  it('stays inside what TikTok keeps of the sides', () => {
+    expect(LINE_IMAGE_SLOT.left / 1080).toBeGreaterThanOrEqual(0.1)
+    expect((LINE_IMAGE_SLOT.left + LINE_IMAGE_SLOT.width) / 1080).toBeLessThanOrEqual(0.9)
   })
 })
 
 describe('layoutLineImage', () => {
-  const UNDER = lineImageSlot(22.5, 274)
-  const inside = (box: { x: number; y: number; width: number; height: number }, slot: typeof LINE_IMAGE_TOP_SLOT) => {
+  const UNDER = { left: 108, top: 569, width: 864, height: 1063 }
+  const inside = (box: { x: number; y: number; width: number; height: number }, slot: typeof LINE_IMAGE_SLOT) => {
     expect(box.x).toBeGreaterThanOrEqual(slot.left)
     expect(box.y).toBeGreaterThanOrEqual(slot.top)
     expect(box.x + box.width).toBeLessThanOrEqual(slot.left + slot.width)
@@ -222,9 +178,9 @@ describe('layoutLineImage', () => {
   }
 
   it('fits a wide image in the slot, keeping its shape', () => {
-    const { image: box } = layoutLineImage(1280, 400, 0, LINE_IMAGE_TOP_SLOT)
-    inside(box, LINE_IMAGE_TOP_SLOT)
-    expect(box.width).toBeCloseTo(LINE_IMAGE_TOP_SLOT.width)
+    const { image: box } = layoutLineImage(1280, 400, 0, LINE_IMAGE_SLOT)
+    inside(box, LINE_IMAGE_SLOT)
+    expect(box.width).toBeCloseTo(LINE_IMAGE_SLOT.width)
     expect(box.width / box.height).toBeCloseTo(1280 / 400)
   })
 
@@ -248,7 +204,7 @@ describe('layoutLineImage', () => {
   })
 
   it('leaves room under the image for the credit, all inside the slot', () => {
-    const slot = LINE_IMAGE_TOP_SLOT
+    const slot = LINE_IMAGE_SLOT
     const bare = layoutLineImage(800, 800, 0, slot)
     const credited = layoutLineImage(800, 800, 2, slot)
     expect(credited.image.height).toBeLessThan(bare.image.height)

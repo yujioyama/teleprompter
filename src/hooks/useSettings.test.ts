@@ -12,7 +12,7 @@ const DEFAULTS = {
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
-  subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+  subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
@@ -38,6 +38,7 @@ const DEFAULTS = {
   youtubeBgmId: 'youtube-touching-moment',
   inboxKey: '',
   bgmDefaultRev: 1,
+  subtitlePositionRev: 1,
 }
 
 beforeEach(() => {
@@ -146,8 +147,19 @@ describe('useSettings', () => {
     expect(result.current[0]).toMatchObject({
       defaultBgmId: 'warmpiano-my-nightly-prayer',
       bgmVolume: 0.3,
-      subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+      subtitlePosition: SUBTITLE_POSITION_TOP,
     })
+  })
+
+  it('moves subtitles left on the old bottom default up to the top, once', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ subtitlePosition: SUBTITLE_POSITION_BOTTOM }))
+    expect(renderHook(() => useSettings()).result.current[0].subtitlePosition).toBe(SUBTITLE_POSITION_TOP)
+    // Picked again since, it stays.
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ subtitlePosition: SUBTITLE_POSITION_BOTTOM, subtitlePositionRev: 1 }))
+    expect(renderHook(() => useSettings()).result.current[0].subtitlePosition).toBe(SUBTITLE_POSITION_BOTTOM)
+    // A position of the user's own stays too.
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ subtitlePosition: 64 }))
+    expect(renderHook(() => useSettings()).result.current[0].subtitlePosition).toBe(64)
   })
 
   it('moves a BGM left on the old Tokyo Lofi default to the current default, keeping a later choice', () => {
