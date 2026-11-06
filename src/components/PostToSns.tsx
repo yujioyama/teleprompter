@@ -24,8 +24,14 @@ type State =
 
 const TIMES: PostTime[] = ['now', 12, 20]
 
+/** Threads processes the video first, so a post sent now shows up a minute or so later. */
+function okLabel(service: string, time: PostTime): string {
+  if (time !== 'now') return `${postTimeLabel(time)}に予約しました`
+  return service === 'threads' ? '送りました（動画の処理後、1〜2分で出ます）' : '送りました'
+}
+
 /**
- * 投稿する: Instagram, TikTok and X in one tap, through Buffer — right away
+ * 投稿する: Instagram, TikTok and X through Buffer, and Threads by its own API, in one tap — right away
  * or at the next 12:00 / 20:00. The caption is the one Claude sent.
  */
 export default function PostToSns({ video, caption, inboxKey, ready, coverOffsetMs, onPosted }: Props) {
@@ -37,7 +43,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
   if (!inboxKey) {
     return (
       <div className={styles.wrapper}>
-        <span className={styles.label}>Instagram・TikTok・Xに投稿</span>
+        <span className={styles.label}>SNSに投稿</span>
         <span className={styles.sub}>設定の「受け取り用キー」を入れると、ここから投稿できます</span>
       </div>
     )
@@ -46,7 +52,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
   async function handlePost() {
     if (!video || busy) return
     const label = postTimeLabel(time)
-    const ask = time === 'now' ? 'Instagram・TikTok・Xに今すぐ投稿しますか？' : `Instagram・TikTok・Xに${label}で予約しますか？`
+    const ask = time === 'now' ? 'Instagram・TikTok・X・Threadsに今すぐ投稿しますか？' : `Instagram・TikTok・X・Threadsに${label}で予約しますか？`
     if (!window.confirm(caption ? ask : `${ask}\n（キャプションがありません）`)) return
     setState({ kind: 'uploading', ratio: 0 })
     try {
@@ -68,7 +74,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
 
   return (
     <div className={styles.wrapper}>
-      <span className={styles.label}>Instagram・TikTok・Xに投稿</span>
+      <span className={styles.label}>SNSに投稿</span>
       <div className={styles.times} role="group" aria-label="投稿する時間">
         {TIMES.map(t => (
           <button
@@ -96,12 +102,12 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
           {state.results.map(r => (
             <li key={r.service} className={r.ok ? undefined : styles.failed}>
               {serviceLabel(r.service)}:{' '}
-              {r.ok ? (state.time === 'now' ? '送りました' : `${postTimeLabel(state.time)}に予約しました`) : `失敗（${r.message}）`}
+              {r.ok ? okLabel(r.service, state.time) : `失敗（${r.message}）`}
             </li>
           ))}
         </ul>
       )}
-      <span className={styles.sub}>YouTubeとThreadsは今まで通り別に投稿してください</span>
+      <span className={styles.sub}>YouTubeは今まで通り別に投稿してください</span>
     </div>
   )
 }

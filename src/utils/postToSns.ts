@@ -29,7 +29,7 @@ export function postTimeLabel(time: PostTime, now = new Date()): string {
 
 /** The networks by name, as they read in the results. */
 export function serviceLabel(service: string): string {
-  return { instagram: 'Instagram', tiktok: 'TikTok', twitter: 'X' }[service] ?? service
+  return { instagram: 'Instagram', tiktok: 'TikTok', twitter: 'X', threads: 'Threads' }[service] ?? service
 }
 
 /**

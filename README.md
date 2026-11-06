@@ -93,6 +93,15 @@ Claudeチャットで「teleprompterに送って」と頼むと、タイトル�
 3. Buffer → Settings → API で個人用APIキーを作る
 4. Vercel の環境変数に `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` / `BUFFER_API_KEY` を入れて再デプロイ
 
+### Threads（任意）
+
+Threadsは Buffer を使わず、Threads API で直接投稿します。Threads APIには予約がなく、動画の処理にも時間がかかるので、Upstash QStash が `/api/threads` を呼んで「入れ物を作る（投稿時刻に）→ 30秒ごとに処理を確認 → 公開」を進めます（QStashの署名がある呼び出しだけを受け付けます）。キャプションは500文字まで。
+
+1. Vercel → Storage / Integrations → Upstash → **QStash** を追加（`QSTASH_TOKEN` / `QSTASH_CURRENT_SIGNING_KEY` / `QSTASH_NEXT_SIGNING_KEY` が入る。リージョンが違えば `QSTASH_URL` も）
+2. Meta for Developers → アプリ → ユースケース → Threads API → 設定 → User Token Generator でトークンを作り `THREADS_ACCESS_TOKEN` に、Threadsアプリシークレットを `THREADS_APP_SECRET` に入れる
+
+短期トークンは初回に長期トークン（60日）に交換し、1日たつごとに投稿のついでに延長して Redis に保存します。`THREADS_ACCESS_TOKEN` を新しくすると、そこからやり直します。
+
 投稿には端末の「受け取り用キー」（`INBOX_SECRET`）が使われます。Bufferのチャンネルは毎回APIから取り、Instagram・TikTok・Xの最初の使えるチャンネルに送ります。
 
 サーバー側: `api/post.ts`、`server/postApi.ts`（受付）、`server/r2.ts`（アップロード用の署名付きURL）、`server/buffer.ts`（Buffer GraphQL API）。
