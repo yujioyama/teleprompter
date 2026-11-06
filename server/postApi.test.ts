@@ -96,3 +96,11 @@ describe('handlePostRequest', () => {
     expect(posted).toEqual([])
   })
 })
+
+describe('handlePostRequest check', () => {
+  it("tries R2 from the server and says what happened", async () => {
+    const fetchImpl = async () => new Response('', { status: 200 })
+    const res = await handlePostRequest(post({ action: 'check' }), deps({ fetch: fetchImpl as unknown as typeof fetch }))
+    expect(await res.json()).toEqual({ upload: { ok: true, detail: 'HTTP 200' }, publicRead: { ok: true, detail: 'HTTP 200' } })
+  })
+})

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { newVideoUpload, presignUrl, r2ConfigFromEnv } from './r2.js'
+import { accountIdOf, checkR2, newVideoUpload, presignUrl, r2ConfigFromEnv } from './r2.js'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -62,5 +62,55 @@ describe('r2ConfigFromEnv', () => {
     expect(r2ConfigFromEnv()).toBeNull()
     vi.stubEnv('R2_PUBLIC_URL', 'https://pub-x.r2.dev/')
     expect(r2ConfigFromEnv()?.publicUrl).toBe('https://pub-x.r2.dev')
+  })
+})
+
+describe('accountIdOf', () => {
+  it('takes the ID out of a pasted endpoint URL', () => {
+    const id = '0123456789abcdef0123456789abcdef'
+    expect(accountIdOf(id)).toBe(id)
+    expect(accountIdOf(`https://${id}.r2.cloudflarestorage.com`)).toBe(id)
+    expect(accountIdOf(`https://${id}.r2.cloudflarestorage.com/teleprompter-posts`)).toBe(id)
+  })
+
+  it('trims what was pasted into the env', () => {
+    vi.stubEnv('R2_ACCOUNT_ID', ' https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com\n')
+    vi.stubEnv('R2_ACCESS_KEY_ID', 'b ')
+    vi.stubEnv('R2_SECRET_ACCESS_KEY', ' c')
+    vi.stubEnv('R2_BUCKET', 'd')
+    vi.stubEnv('R2_PUBLIC_URL', 'https://pub-x.r2.dev')
+    expect(r2ConfigFromEnv()).toMatchObject({ accountId: '0123456789abcdef0123456789abcdef', accessKeyId: 'b', secretAccessKey: 'c' })
+  })
+})
+
+describe('checkR2', () => {
+  const config = { accountId: 'acct', accessKeyId: 'AK', secretAccessKey: 'SK', bucket: 'b', publicUrl: 'https://pub-x.r2.dev' }
+
+  it("reports R2's reason when the write is refused", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('<Error><Code>SignatureDoesNotMatch</Code><Message>bad sig</Message></Error>', { status: 403 }),
+    )
+    const check = await checkR2(config, fetchImpl as unknown as typeof fetch)
+    expect(check.upload).toEqual({ ok: false, detail: 'HTTP 403 SignatureDoesNotMatch bad sig' })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads back from the public URL after writing', async () => {
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url)
+      return new Response(urls.length === 1 ? '' : 'not found', { status: urls.length === 1 ? 200 : 404 })
+    })
+    const check = await checkR2(config, fetchImpl as unknown as typeof fetch)
+    expect(check).toEqual({ upload: { ok: true, detail: 'HTTP 200' }, publicRead: { ok: false, detail: 'HTTP 404' } })
+    expect(urls[1]).toMatch(/^https:\/\/pub-x\.r2\.dev\/posts\/check\//)
+  })
+
+  it('says when R2 cannot be reached at all', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('fetch failed', { cause: new Error('getaddrinfo ENOTFOUND acct.r2.cloudflarestorage.com') })
+    })
+    const check = await checkR2(config, fetchImpl as unknown as typeof fetch)
+    expect(check.upload.detail).toContain('ENOTFOUND')
   })
 })

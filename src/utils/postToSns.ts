@@ -71,6 +71,22 @@ function upload(url: string, video: Blob, onProgress: (ratio: number) => void): 
   })
 }
 
+interface R2Check {
+  upload: { ok: boolean; detail: string }
+  publicRead: { ok: boolean; detail: string }
+}
+
+/** What the server's own try at R2 says about a failed upload. */
+export function diagnose(check: R2Check): string {
+  if (!check.upload.ok) {
+    return `サーバーからもR2に書き込めませんでした（${check.upload.detail}）。VercelのR2_ACCOUNT_ID・R2_ACCESS_KEY_ID・R2_SECRET_ACCESS_KEY・R2_BUCKETを確認してください`
+  }
+  if (!check.publicRead.ok) {
+    return `R2への書き込みはできますが、公開URLから読めません（${check.publicRead.detail}）。R2のPublic Development URLとVercelのR2_PUBLIC_URLを確認してください`
+  }
+  return 'サーバーからはR2に書き込めて、公開URLからも読めました。ブラウザからの書き込みだけが止められているので、R2のCORS設定を確認してください'
+}
+
 export interface PostOptions {
   key: string
   video: Blob
@@ -83,7 +99,13 @@ export interface PostOptions {
 
 export async function postToSns(options: PostOptions): Promise<ChannelResult[]> {
   const { uploadUrl, videoUrl } = await api<{ uploadUrl: string; videoUrl: string }>(options.key, { action: 'upload' })
-  await upload(uploadUrl, options.video, options.onUploadProgress)
+  try {
+    await upload(uploadUrl, options.video, options.onUploadProgress)
+  } catch (err) {
+    // The browser can't see why R2 refused: ask the server to try the same and say.
+    const why = await api<R2Check>(options.key, { action: 'check' }).then(diagnose, () => null)
+    throw new Error([err instanceof Error ? err.message : String(err), why].filter(Boolean).join('\n'))
+  }
   const when = options.time === 'now' ? 'now' : nextSlot(options.time, options.now).toISOString()
   const { results } = await api<{ results: ChannelResult[] }>(options.key, {
     action: 'publish',

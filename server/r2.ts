@@ -15,13 +15,23 @@ export interface R2Config {
 
 /** The R2 settings from the environment, or null when any is missing. */
 export function r2ConfigFromEnv(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
-  const bucket = process.env.R2_BUCKET
-  const publicUrl = process.env.R2_PUBLIC_URL
+  const env = (name: string) => process.env[name]?.trim() ?? ''
+  const accountId = accountIdOf(env('R2_ACCOUNT_ID'))
+  const accessKeyId = env('R2_ACCESS_KEY_ID')
+  const secretAccessKey = env('R2_SECRET_ACCESS_KEY')
+  const bucket = env('R2_BUCKET')
+  const publicUrl = env('R2_PUBLIC_URL')
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket || !publicUrl) return null
   return { accountId, accessKeyId, secretAccessKey, bucket, publicUrl: publicUrl.replace(/\/+$/, '') }
+}
+
+/**
+ * The account ID, also when the whole S3 endpoint
+ * (https://<id>.r2.cloudflarestorage.com[/bucket]) was pasted in its place.
+ */
+export function accountIdOf(value: string): string {
+  const fromEndpoint = value.match(/([0-9a-f]{32})\.r2\.cloudflarestorage\.com/i)
+  return fromEndpoint ? fromEndpoint[1] : value
 }
 
 export interface PresignInput {
@@ -89,7 +99,10 @@ export interface Upload {
 
 /** A fresh object key under posts/ with a URL to upload it to and its public URL. */
 export function newVideoUpload(config: R2Config, now = new Date()): Upload {
-  const key = `posts/${now.toISOString().slice(0, 10)}/${randomUUID()}.mp4`
+  return uploadFor(config, `posts/${now.toISOString().slice(0, 10)}/${randomUUID()}.mp4`, now)
+}
+
+function uploadFor(config: R2Config, key: string, now: Date): Upload {
   const uploadUrl = presignUrl({
     method: 'PUT',
     host: `${config.accountId}.r2.cloudflarestorage.com`,
@@ -101,4 +114,48 @@ export function newVideoUpload(config: R2Config, now = new Date()): Upload {
     now,
   })
   return { uploadUrl, videoUrl: `${config.publicUrl}/${key}` }
+}
+
+export interface R2Check {
+  /** Writing with the upload URL worked. */
+  upload: { ok: boolean; detail: string }
+  /** What was written can be read at the public URL (Buffer reads it there). */
+  publicRead: { ok: boolean; detail: string }
+}
+
+/** R2's own reason from an error body: <Code>…</Code> and <Message>…</Message>. */
+function r2Reason(status: number, body: string): string {
+  const code = body.match(/<Code>([^<]*)<\/Code>/)?.[1]
+  const message = body.match(/<Message>([^<]*)<\/Message>/)?.[1]
+  return [`HTTP ${status}`, code, message].filter(Boolean).join(' ')
+}
+
+function errorText(err: unknown): string {
+  if (!(err instanceof Error)) return String(err)
+  const cause = (err as Error & { cause?: unknown }).cause
+  return cause instanceof Error ? `${err.message}: ${cause.message}` : err.message
+}
+
+/**
+ * Try what 投稿する does from the server: write a tiny file with a presigned
+ * URL, then read it back from the public URL. When the app's upload fails,
+ * this says why (a wrong key or account ID, a public URL that isn't on), which
+ * the browser can't see.
+ */
+export async function checkR2(config: R2Config, fetchImpl: typeof fetch = fetch, now = new Date()): Promise<R2Check> {
+  const { uploadUrl, videoUrl } = uploadFor(config, `posts/check/${randomUUID()}.txt`, now)
+  let upload: R2Check['upload']
+  try {
+    const res = await fetchImpl(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: 'ok' })
+    upload = res.ok ? { ok: true, detail: `HTTP ${res.status}` } : { ok: false, detail: r2Reason(res.status, await res.text()) }
+  } catch (err) {
+    upload = { ok: false, detail: errorText(err) }
+  }
+  if (!upload.ok) return { upload, publicRead: { ok: false, detail: '書き込めなかったので未確認' } }
+  try {
+    const res = await fetchImpl(videoUrl)
+    return { upload, publicRead: res.ok ? { ok: true, detail: `HTTP ${res.status}` } : { ok: false, detail: `HTTP ${res.status}` } }
+  } catch (err) {
+    return { upload, publicRead: { ok: false, detail: errorText(err) } }
+  }
 }

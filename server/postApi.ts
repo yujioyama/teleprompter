@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { channelsToPost, type BufferClient, type ChannelResult } from './buffer.js'
 import { withAuthedJson } from './http.js'
-import { newVideoUpload, type R2Config } from './r2.js'
+import { checkR2, newVideoUpload, type R2Config } from './r2.js'
 
 // 投稿する: the app asks for somewhere to upload the finished video
 // (action "upload"), PUTs it there, then asks for it to be posted through
@@ -11,10 +11,13 @@ export interface PostDeps {
   r2: () => R2Config | null
   buffer: () => BufferClient | null
   now?: () => Date
+  /** For checkR2; the real fetch when absent. */
+  fetch?: typeof fetch
 }
 
 const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('upload') }),
+  z.object({ action: z.literal('check') }),
   z.object({
     action: z.literal('publish'),
     videoUrl: z.string().url().max(500),
@@ -37,6 +40,7 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
     const now = deps.now?.() ?? new Date()
 
     if (body.action === 'upload') return Response.json(newVideoUpload(r2, now))
+    if (body.action === 'check') return Response.json(await checkR2(r2, deps.fetch, now))
 
     // Only videos this app uploaded: the endpoint never posts someone else's URL.
     if (!body.videoUrl.startsWith(`${r2.publicUrl}/posts/`)) {
