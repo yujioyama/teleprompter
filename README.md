@@ -80,6 +80,25 @@ Claudeチャットで「teleprompterに送って」と頼むと、タイトル�
 
 ---
 
+## Instagram・TikTok・Xに投稿する（Buffer経由）
+
+書き出し画面の「Instagram・TikTok・Xに投稿」で、仕上がった動画（SNS用・カバーのコマ入り）とClaudeから届いたキャプションを、Buffer経由で3つのSNSに送ります。時間は「今すぐ」「12:00」「20:00」（過ぎていれば翌日）から選びます。カバーのコマを入れていれば、そのコマがInstagram・TikTokのカバーになります。YouTubeとThreadsは対象外です。
+
+動画はCloudflare R2に直接アップロードされ（Vercel Functionsを通らない）、Bufferはその公開URLから動画を取りに行きます。
+
+### 初回だけの設定
+
+1. Cloudflare → R2 でバケットを作る（Standard）。Settings で Public Development URL を有効にし、CORS に本番ドメインからの `PUT`（`content-type` ヘッダー）を許可、Object lifecycle rules で数日後に自動削除
+2. R2 → Manage API tokens → Account API token（Object Read & Write、そのバケットだけ）
+3. Buffer → Settings → API で個人用APIキーを作る
+4. Vercel の環境変数に `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` / `BUFFER_API_KEY` を入れて再デプロイ
+
+投稿には端末の「受け取り用キー」（`INBOX_SECRET`）が使われます。Bufferのチャンネルは毎回APIから取り、Instagram・TikTok・Xの最初の使えるチャンネルに送ります。
+
+サーバー側: `api/post.ts`、`server/postApi.ts`（受付）、`server/r2.ts`（アップロード用の署名付きURL）、`server/buffer.ts`（Buffer GraphQL API）。
+
+---
+
 ## 技術スタック
 
 | カテゴリ | 技術 |
