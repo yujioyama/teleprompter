@@ -87,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'look', 'japanese', 'images'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
@@ -263,40 +263,20 @@ describe('handleMcpRequest', () => {
   })
 
   describe('look', () => {
-    it('keeps the opening film look with the script and says so', async () => {
-      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', look: 'oldFilm' }), deps)
+    // Routines and open chats may go on sending one for a while.
+    it.each(['hollywood', 'oldFilm', 'none', 'sepia'])('accepts the script and drops a look of %s', async look => {
+      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', look }), deps)
       const { result } = await res.json()
       expect(result.isError).toBeUndefined()
-      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・Type A・昔のフィルム）。teleprompterのホーム画面に届いています。')
-      expect((await store.list())[0].look).toBe('oldFilm')
+      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・Type A）。teleprompterのホーム画面に届いています。')
+      expect((await store.list())[0]).not.toHaveProperty('look')
     })
 
-    it.each([{ look: 'none' }, {}])('stores no look for %o', async extra => {
-      await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', ...extra }), deps)
-      expect(await store.list()).toEqual([expect.not.objectContaining({ look: expect.anything() })])
-    })
-
-    it('refuses a look it does not know', async () => {
-      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', type: 'A', look: 'sepia' }), deps)
-      const { result } = await res.json()
-      expect(result.isError).toBe(true)
-      expect(await store.list()).toEqual([])
-    })
-
-    it('is kept and announced without a type, since every script has the opening to wear it', async () => {
-      const res = await handleMcpRequest(callTool({ title: 'Toast', script: 'I eat toast.', look: 'mono' }), deps)
-      const { result } = await res.json()
-      expect(result.content[0].text).toBe('『Toast』をteleprompterに送りました（1行・白黒）。teleprompterのホーム画面に届いています。')
-      expect((await store.list())[0].look).toBe('mono')
-    })
-
-    it('is offered, with when to pick which in the description', async () => {
+    it('is not offered to Claude', async () => {
       const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), deps)
       const { result } = await res.json()
-      expect(Object.keys(result.tools[0].inputSchema.properties)).toContain('look')
-      for (const label of ['ハリウッド風', '昔のフィルム', '夜の青', '白黒', 'グリッチ']) {
-        expect(result.tools[0].description).toContain(label)
-      }
+      expect(Object.keys(result.tools[0].inputSchema.properties)).not.toContain('look')
+      expect(result.tools[0].description).not.toContain('hollywood')
     })
   })
 

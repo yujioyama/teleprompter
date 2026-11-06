@@ -1,4 +1,3 @@
-import type { CinemaLook } from './cinemaLook.js'
 
 /**
  * Which of the two daily formats a script is (from 2026-11-02): 'A' is the
@@ -38,8 +37,6 @@ export interface InboxItem {
   japanese?: string[]
   /** Type A or B; absent when Claude sent none. */
   videoType?: VideoType
-  /** The film look under the opening bars; absent = the bars alone. */
-  look?: CinemaLook
   /** Images for some of the lines; absent when none were sent. */
   images?: InboxImage[]
   /** ISO timestamp of when it arrived. */

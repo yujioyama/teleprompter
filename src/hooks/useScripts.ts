@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import type { CinemaLook } from '../../shared/cinemaLook'
 import { LineImage, LineJapanese, Script, Shot, type VideoType } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
 import { pruneLineImages } from '../utils/lineImageStore'
@@ -34,7 +33,6 @@ export function useScripts() {
     oneTake?: boolean,
     japanese?: LineJapanese[],
     videoType?: VideoType,
-    look?: CinemaLook,
     lineImages?: LineImage[],
   ): Script {
     const now = new Date().toISOString()
@@ -46,7 +44,6 @@ export function useScripts() {
       ...(oneTake ? { oneTake } : {}),
       ...(japanese?.length ? { japanese } : {}),
       ...(videoType ? { videoType } : {}),
-      ...(look ? { look } : {}),
       ...(lineImages?.length ? { lineImages } : {}),
       createdAt: now,
       updatedAt: now,
