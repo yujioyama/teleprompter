@@ -16,6 +16,7 @@ import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
 import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { releaseCinemaLookCaches } from '../utils/drawCinemaLook'
+import { filmLookOf } from '../../shared/cinemaLook'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
@@ -547,7 +548,7 @@ export default function FinalizePage() {
   const oneTake = Boolean(script?.oneTake)
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
   // Every script gets the opening look instead of the zoom.
-  const cinemaLook = script?.look
+  const cinemaLook = filmLookOf(script?.look)
   // A script with line images shows those instead of any sticker.
   const hasLineImages = Boolean(script?.lineImages?.length)
   const { stored: storedLineImages, loading: lineImagesLoading } = useLineImages(script?.lineImages, settings.inboxKey)
@@ -1088,7 +1089,7 @@ export default function FinalizePage() {
                 lineImages={lineImages}
                 cinemaLook={cinemaLook}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
-                onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? undefined })}
+                onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? 'none' })}
                 burn={async (cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null

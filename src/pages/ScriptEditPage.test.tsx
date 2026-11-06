@@ -177,19 +177,13 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(stored()[0].videoType).toBe('A')
   })
 
-  it('keeps the film look Claude sent', async () => {
-    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A', look: 'glitch' } } })
+  it('ignores a film look on an item that was waiting in the inbox', async () => {
+    const waiting = { ...ITEM, videoType: 'A', look: 'glitch' } as InboxItem
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: waiting } })
     fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
-    expect(stored()[0]).toMatchObject({ videoType: 'A', look: 'glitch' })
-  })
-
-  it('stores no film look when none was sent', async () => {
-    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A' } } })
-    fireEvent.click(screen.getByText('行に分ける'))
-    fireEvent.click(screen.getByText('編集へ進む →'))
-    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).toMatchObject({ videoType: 'A' })
     expect(stored()[0]).not.toHaveProperty('look')
   })
 

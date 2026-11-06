@@ -1,5 +1,5 @@
 import type { VideoType } from '../shared/inbox'
-import type { CinemaLook } from '../shared/cinemaLook'
+import type { StoredCinemaLook } from '../shared/cinemaLook'
 
 export type { VideoType }
 
@@ -53,8 +53,8 @@ export interface Script {
    * video for the weekly comparison; every script gets the opening bars.
    */
   videoType?: VideoType
-  /** The film look under the opening's bars; absent = the bars alone. */
-  look?: CinemaLook
+  /** The film look picked on screen; see filmLookOf for what it means. */
+  look?: StoredCinemaLook
   /** Images for some of the lines. With any, the video has no emoji stickers. */
   lineImages?: LineImage[]
   createdAt: string

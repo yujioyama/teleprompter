@@ -1911,4 +1911,50 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
       expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: null, opening: { kind: 'letterbox' } }, firstShotDuration: 5 })
     }, { timeout: 3000 })
   })
+
+  describe('the film look', () => {
+    async function toSubtitles(look?: Script['look']) {
+      seedScript()
+      const script = JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0] as Script
+      localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...script, ...(look ? { look } : {}) }]))
+      vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+      vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+      renderFinalizePage('script-1')
+
+      await screen.findByText('ショット1')
+      const shotVideo = document.querySelector('video') as HTMLVideoElement
+      Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+      fireEvent(shotVideo, new Event('loadedmetadata'))
+      fireEvent.click(screen.getByText('結合する'))
+      fireEvent.click(await screen.findByText('次へ'))
+      await screen.findByDisplayValue('ショット1')
+      fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+        target: { value: '1. こんにちは' },
+      })
+      fireEvent.click(screen.getByText('日本語を反映'))
+    }
+
+    it.each([
+      [undefined, 'hollywood', 'ハリウッド風'],
+      ['mono', 'mono', '白黒'],
+      ['none', null, 'なし'],
+    ] as const)('with %s stored, burns %s and shows %s as picked', async (stored, grade, label) => {
+      await toSubtitles(stored)
+
+      await waitFor(() => {
+        const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+        expect(looks[looks.length - 1]).toMatchObject({ hook: { opening: { grade } } })
+      }, { timeout: 3000 })
+      const group = within(screen.getByRole('group', { name: '冒頭の色' }))
+      expect(group.getByText(label)).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('saves なし as a pick, so it stays off', async () => {
+      await toSubtitles()
+
+      fireEvent.click(within(await screen.findByRole('group', { name: '冒頭の色' })).getByText('なし'))
+
+      expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0].look).toBe('none')
+    })
+  })
 })

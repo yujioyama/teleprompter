@@ -35,14 +35,6 @@ describe('createInboxStore', () => {
     expect(INBOX_TTL_SECONDS).toBe(30 * 24 * 60 * 60)
   })
 
-  it('keeps the opening look when one is sent, and has no look key otherwise', async () => {
-    const { store } = storeAt(['2026-10-09T01:00:00.000Z', '2026-10-09T02:00:00.000Z'], ['id-1', 'id-2'])
-    const { item } = await store.add({ title: 'A', body: 'a', caption: '', videoType: 'A', look: 'mono' })
-    expect(item.look).toBe('mono')
-    const { item: plain } = await store.add({ title: 'B', body: 'b', caption: '' })
-    expect(plain).not.toHaveProperty('look')
-  })
-
   it('replaces waiting items with the same title, leaving the others', async () => {
     const { store, values } = storeAt(
       ['2026-10-09T01:00:00.000Z', '2026-10-09T02:00:00.000Z', '2026-10-09T03:00:00.000Z', '2026-10-09T04:00:00.000Z'],
