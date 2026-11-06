@@ -31,6 +31,8 @@ export interface CueImage {
   width: number
   height: number
   credit?: string
+  /** The first line's: small, so the face and the opening's bars are what's seen. */
+  small?: boolean
 }
 
 // How alike a line and a subtitle must be to be the same words (as reconcileShots).
@@ -117,7 +119,15 @@ export function withLineImages(
     const cue = here ? cueOf(i) : null
     if (!image || !here || !cue) return []
     const { blob, width, height } = here
-    return [{ cueId: cue.id, imageId: image.imageId, blob, width, height, ...(image.credit ? { credit: image.credit } : {}) }]
+    return [{
+      cueId: cue.id,
+      imageId: image.imageId,
+      blob,
+      width,
+      height,
+      ...(image.credit ? { credit: image.credit } : {}),
+      ...(i === 0 ? { small: true } : {}),
+    }]
   })
   return { ...hook, sticker: 'off', fairies: false, lineImages }
 }
@@ -143,14 +153,22 @@ export const LINE_IMAGE_TOP_SLOT: LineImageSlot = { left: 230, top: 298, width: 
  */
 const UNDER_SUBTITLE = { left: 108, width: 864, bottom: 1632 }
 
+/**
+ * The first line's place: the chest, between the face and the opening's bottom
+ * bar at its thickest, and left of TikTok's buttons. A subtitle reaching past
+ * `top` pushes it down.
+ */
+const ON_CHEST = { left: 340, width: 400, top: 1070, bottom: 1490 }
+
 /** A subtitle centered below this percent leaves too little room under it. */
 const SUBTITLE_TOO_LOW = 50
 
 /** Where a line's image may go, given its subtitle's position and rendered height. */
-export function lineImageSlot(subtitlePosition: number, subtitleHeight: number): LineImageSlot {
+export function lineImageSlot(subtitlePosition: number, subtitleHeight: number, small = false): LineImageSlot {
   if (subtitlePosition > SUBTITLE_TOO_LOW) return LINE_IMAGE_TOP_SLOT
-  const { left, width, bottom } = UNDER_SUBTITLE
-  const top = clampedSubtitleY(subtitlePosition, subtitleHeight) + subtitleHeight
+  const subtitleBottom = clampedSubtitleY(subtitlePosition, subtitleHeight) + subtitleHeight
+  const { left, width, bottom } = small ? ON_CHEST : UNDER_SUBTITLE
+  const top = small ? Math.max(ON_CHEST.top, subtitleBottom) : subtitleBottom
   return { left, top, width, height: bottom - top }
 }
 

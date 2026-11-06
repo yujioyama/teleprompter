@@ -71,6 +71,7 @@ describe('burnRequest', () => {
     expect(shown).not.toBe(plain)
     expect(keyWith([{ ...image, credit: 'Ann / CC BY 4.0' }])).not.toBe(shown)
     expect(keyWith([{ ...image, imageId: 'j', blob: new Blob(['j']) }])).not.toBe(shown)
+    expect(keyWith([{ ...image, small: true }])).not.toBe(shown)
   })
 
   const shot = clip('s1', 0.5, 2.5)

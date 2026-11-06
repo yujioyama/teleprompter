@@ -103,7 +103,7 @@ function StickerSprite({ emoji, pose, scale, testId }: { emoji: string; pose: St
 /** A line's image and its credit, where and how big the burn draws them. */
 function LineImageBox({ image, position, subtitleHeight, measure }: { image: CueImage; position: SubtitlePosition; subtitleHeight: number; measure: MeasureText }) {
   const url = useObjectUrl(image.blob)
-  const slot = lineImageSlot(position, subtitleHeight)
+  const slot = lineImageSlot(position, subtitleHeight, image.small)
   const credit = wrapCredit(image.credit, slot.width, text => measure(text, CREDIT_FONT))
   const box = layoutLineImage(image.width, image.height, credit.length, slot)
   return (

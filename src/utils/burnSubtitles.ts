@@ -299,7 +299,7 @@ export async function renderLineImage(
   subtitlePosition: SubtitlePosition,
   subtitleHeight: number,
 ): Promise<{ image: Blob; y: number }> {
-  const slot = lineImageSlot(subtitlePosition, subtitleHeight)
+  const slot = lineImageSlot(subtitlePosition, subtitleHeight, lineImage.small)
   const measure = canvasMeasure()
   const credit = wrapCredit(lineImage.credit, slot.width, text => measure(text, CREDIT_FONT))
   const layout = layoutLineImage(lineImage.width, lineImage.height, credit.length, slot)
