@@ -13,7 +13,8 @@ import {
 } from './lineImages'
 import { hookOptionsOf, type HookOptions } from './subtitleHook'
 import { fairiesFromSubtitles } from './fairyPlan'
-import { placeSticker } from './stickerMotion'
+import { LETTERBOX } from './openingLook'
+import { inButtonColumn, onFace, placeSticker } from './stickerMotion'
 import type { SubtitleCue } from './subtitleCues'
 
 const image = (en: string, imageId = en): LineImage => ({ en, imageId, url: `https://x.test/${imageId}.jpg` })
@@ -84,6 +85,11 @@ describe('withLineImages', () => {
 
   it('leaves a script without images as it was, stickers and all', () => {
     expect(withLineImages(HOOK, { images: [], stored: new Map(), cues, lines })).toBe(HOOK)
+  })
+
+  it('makes only the first line\'s image small, so the face and the bars show', () => {
+    const hook = withLineImages(HOOK, { images: [image(lines[0]), image(lines[1])], stored: stored(lines[0], lines[1]), cues, lines })
+    expect(hook.lineImages?.map(i => [i.cueId, i.small ?? false])).toEqual([['a', true], ['b', false]])
   })
 
   it('turns off every sticker when a script has an image', () => {
@@ -165,6 +171,44 @@ describe('lineImageSlot', () => {
       expect(left / 1080).toBeGreaterThanOrEqual(0.1)
       expect((left + width) / 1080).toBeLessThanOrEqual(0.9)
     }
+  })
+
+  describe('for a small image', () => {
+    const small = lineImageSlot(22.5, 274, true)
+    const corners = (slot: typeof small) => [
+      { x: slot.left / 1080, y: slot.top / 1920 },
+      { x: (slot.left + slot.width) / 1080, y: slot.top / 1920 },
+      { x: slot.left / 1080, y: (slot.top + slot.height) / 1920 },
+      { x: (slot.left + slot.width) / 1080, y: (slot.top + slot.height) / 1920 },
+    ]
+
+    it('sits on the chest, off the face and the buttons, and inside TikTok\'s crop', () => {
+      for (const corner of corners(small)) {
+        expect(onFace(corner)).toBe(false)
+        expect(inButtonColumn(corner)).toBe(false)
+        expect(corner.x).toBeGreaterThanOrEqual(0.1)
+        expect(corner.x).toBeLessThanOrEqual(0.9)
+      }
+      expect(onFace({ x: 0.5, y: small.top / 1920 })).toBe(false)
+    })
+
+    it('stays above the bottom bar, at its thickest', () => {
+      expect((small.top + small.height) / 1920).toBeLessThanOrEqual(1 - LETTERBOX.height)
+    })
+
+    it('is much smaller than the usual place', () => {
+      const usual = lineImageSlot(22.5, 274)
+      expect(small.width).toBeLessThan(usual.width / 2)
+    })
+
+    it('moves down rather than cover a subtitle that reaches the chest', () => {
+      // Centered at 50% (960): 400 tall ends at 1160.
+      expect(lineImageSlot(50, 400, true).top).toBe(1160)
+    })
+
+    it('goes above the head with a subtitle too low to have room, like any image', () => {
+      expect(lineImageSlot(72.3, 274, true)).toBe(LINE_IMAGE_TOP_SLOT)
+    })
   })
 })
 

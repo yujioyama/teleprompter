@@ -43,6 +43,16 @@ describe('SubtitleOverlayPreview with a line image', () => {
     expect(parseFloat((image as HTMLElement).style.left)).toBeCloseTo((box.image.x / 1080) * 100)
   })
 
+  it('puts a small image in the small slot, where the burn does', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:i', revokeObjectURL: () => {} }))
+    render(<SubtitleOverlayPreview cues={CUES} position={22.5} currentTime={3} hook={{ ...HOOK, lineImages: [{ ...IMAGE, small: true }] }} />)
+    const image = await screen.findByTestId('subtitle-line-image')
+    const { height } = layoutCue(CUES[1], createCanvasMeasure())
+    const box = layoutLineImage(800, 600, 1, lineImageSlot(22.5, height, true))
+    expect(parseFloat((image as HTMLElement).style.top)).toBeCloseTo((box.image.y / 1920) * 100)
+    expect(parseFloat((image as HTMLElement).style.left)).toBeCloseTo((box.image.x / 1080) * 100)
+  })
+
   it('shows no sticker for the emoji on the first line', () => {
     const cues = [{ ...CUES[0], en: 'Toast🍞 hurts' }, CUES[1]]
     render(<SubtitleOverlayPreview cues={cues} position={72} currentTime={1} hook={{ ...HOOK, style: true }} firstShotDuration={2} />)

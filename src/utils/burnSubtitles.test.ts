@@ -17,7 +17,7 @@ import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLay
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
 import type { FairyAppearance } from './fairyPlan'
-import { LINE_IMAGE_TOP_SLOT, layoutLineImage, lineImageSlot } from './lineImages'
+import { LINE_IMAGE_TOP_SLOT, layoutLineImage, lineImageSlot, type CueImage } from './lineImages'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -174,7 +174,7 @@ describe('renderSubtitleOverlays with line images', () => {
   }
   const hookCue: StyledCue = { id: 'a', start: 0, end: 1, en: 'Hi', ja: 'やあ', variant: 'hook' }
   const normalCue: StyledCue = { id: 'b', start: 2, end: 3, en: 'Bye', ja: 'じゃあ', variant: 'normal' }
-  const withImage = (image = IMAGE): SubtitleLook => ({ ...LOOK, hook: { ...LOOK.hook, position: 22.5, sticker: 'off', fairies: false, lineImages: [image] } })
+  const withImage = (image: CueImage = IMAGE): SubtitleLook => ({ ...LOOK, hook: { ...LOOK.hook, position: 22.5, sticker: 'off', fairies: false, lineImages: [image] } })
 
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -209,6 +209,14 @@ describe('renderSubtitleOverlays with line images', () => {
     // 800×600 at the slot's full 864 wide.
     expect(heights).toContain(648)
     expect(layoutLineImage(800, 600, 0, lineImageSlot(22.5, height)).height).toBeCloseTo(648)
+  })
+
+  it('burns a small image in the small slot', async () => {
+    stubCanvas()
+    stubBitmap()
+    const [image] = await renderSubtitleOverlays([hookCue], withImage({ ...IMAGE, cueId: 'a', credit: '', small: true }))
+    const { height } = layoutCue(hookCue, measure)
+    expect(image.y).toBe(lineImageSlot(22.5, height, true).top)
   })
 
   it('leaves out the image of an untranslated cue, as its subtitle is', async () => {
