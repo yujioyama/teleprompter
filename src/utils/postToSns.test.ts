@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverOffsetMs, nextSlot, postTimeLabel } from './postToSns'
+import { coverOffsetMs, diagnose, nextSlot, postTimeLabel } from './postToSns'
 
 describe('nextSlot', () => {
   it('is today when the hour is still ahead, tomorrow when it has passed', () => {
@@ -26,5 +26,15 @@ describe('coverOffsetMs', () => {
     expect(coverOffsetMs('last', 2, 20)).toBe(19967)
     expect(coverOffsetMs('last', 1, 0)).toBeUndefined()
     expect(coverOffsetMs('none', 1, 20)).toBeUndefined()
+  })
+})
+
+describe('diagnose', () => {
+  it('points at the setting to fix', () => {
+    const bad = { ok: false, detail: 'HTTP 403 InvalidAccessKeyId' }
+    const good = { ok: true, detail: 'HTTP 200' }
+    expect(diagnose({ upload: bad, publicRead: bad })).toContain('R2_ACCESS_KEY_ID')
+    expect(diagnose({ upload: good, publicRead: { ok: false, detail: 'HTTP 401' } })).toContain('R2_PUBLIC_URL')
+    expect(diagnose({ upload: good, publicRead: good })).toContain('CORS')
   })
 })
