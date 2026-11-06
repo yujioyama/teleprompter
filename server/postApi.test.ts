@@ -104,3 +104,36 @@ describe('handlePostRequest check', () => {
     expect(await res.json()).toEqual({ upload: { ok: true, detail: 'HTTP 200' }, publicRead: { ok: true, detail: 'HTTP 200' } })
   })
 })
+
+describe('handlePostRequest with Threads', () => {
+  const qstash = { token: 'qtok', url: 'https://qstash.upstash.io', currentSigningKey: 'c', nextSigningKey: 'n' }
+
+  function withThreads(fetchImpl: typeof fetch) {
+    return deps({ threads: () => qstash, fetch: fetchImpl })
+  }
+
+  it('hands Threads to QStash with the caption cut to 500 characters, at the post time', async () => {
+    const sent: { url: string; init?: RequestInit }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      sent.push({ url, init })
+      return Response.json({ messageId: 'm' })
+    }) as unknown as typeof fetch
+    const res = await handlePostRequest(
+      post(publish({ caption: 'x'.repeat(600), when: '2026-11-07T20:00:00+09:00' })),
+      withThreads(fetchImpl),
+    )
+    const { results } = await res.json()
+    expect(results.map((r: { service: string }) => r.service)).toEqual(['instagram', 'tiktok', 'twitter', 'threads'])
+    expect(results[3]).toEqual({ service: 'threads', name: 'Threads', ok: true, dueAt: '2026-11-07T11:00:00.000Z' })
+    expect(sent[0].url).toBe('https://qstash.upstash.io/v2/publish/https://app.test/api/threads')
+    expect(sent[0].init?.headers).toMatchObject({ 'Upstash-Not-Before': String(Date.parse('2026-11-07T11:00:00Z') / 1000) })
+    expect(JSON.parse(String(sent[0].init?.body))).toEqual({ step: 'create', videoUrl: VIDEO, text: 'x'.repeat(500) })
+  })
+
+  it('reports Threads as failed when QStash refuses, while the others still go', async () => {
+    const fetchImpl = (async () => new Response('nope', { status: 401 })) as unknown as typeof fetch
+    const { results } = await (await handlePostRequest(post(publish()), withThreads(fetchImpl))).json()
+    expect(results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(3)
+    expect(results[3].ok).toBe(false)
+  })
+})
