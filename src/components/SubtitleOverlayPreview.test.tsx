@@ -8,7 +8,7 @@ import { placeSticker } from '../utils/stickerMotion'
 import { styleCues } from '../utils/subtitleHook'
 import { STICKER_EMOJI_PX, STICKER_PLACEMENTS } from '../utils/subtitleSticker'
 import type { FairyAppearance } from '../utils/fairyPlan'
-import { LINE_IMAGE_SLOTS, layoutLineImage } from '../utils/lineImages'
+import { LINE_IMAGE_TOP_SLOT, layoutLineImage, lineImageSlot } from '../utils/lineImages'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
@@ -26,11 +26,21 @@ describe('SubtitleOverlayPreview with a line image', () => {
 
     rerender(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={3} hook={HOOK} />)
     const image = await screen.findByTestId('subtitle-line-image')
-    const box = layoutLineImage(800, 600, 1, LINE_IMAGE_SLOTS.top)
+    const box = layoutLineImage(800, 600, 1, LINE_IMAGE_TOP_SLOT)
     expect(image).toHaveAttribute('src', 'blob:i')
     expect(parseFloat((image as HTMLElement).style.top)).toBeCloseTo((box.image.y / 1920) * 100)
     expect(parseFloat((image as HTMLElement).style.left)).toBeCloseTo((box.image.x / 1080) * 100)
     expect(screen.getByTestId('subtitle-line-image-credit')).toHaveTextContent('Ann / CC BY 4.0')
+  })
+
+  it('puts it right under a subtitle up top, where the burn does', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:i', revokeObjectURL: () => {} }))
+    render(<SubtitleOverlayPreview cues={CUES} position={22.5} currentTime={3} hook={HOOK} />)
+    const image = await screen.findByTestId('subtitle-line-image')
+    const { height } = layoutCue(CUES[1], createCanvasMeasure())
+    const box = layoutLineImage(800, 600, 1, lineImageSlot(22.5, height))
+    expect(parseFloat((image as HTMLElement).style.top)).toBeCloseTo((box.image.y / 1920) * 100)
+    expect(parseFloat((image as HTMLElement).style.left)).toBeCloseTo((box.image.x / 1080) * 100)
   })
 
   it('shows no sticker for the emoji on the first line', () => {

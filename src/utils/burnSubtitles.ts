@@ -289,24 +289,29 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
 
 /**
  * Render a line's image with its credit under it, rounded, on a transparent
- * PNG as wide as the video and as tall as its slot (see lineImageSlot; a
- * subtitle centered at `subtitlePosition` decides which). Decoded here and let
- * go again: the full-width PNG is all that stays in memory during the encode.
+ * PNG as wide as the video and only as tall as the two: every overlay is
+ * decoded for the whole encode, and a slot can be most of the frame (see
+ * lineImageSlot; the subtitle's position and height decide it). The image is
+ * decoded here and let go again.
  */
-export async function renderLineImage(lineImage: CueImage, subtitlePosition: SubtitlePosition): Promise<{ image: Blob; y: number }> {
-  const slot = lineImageSlot(subtitlePosition)
-  const { canvas, ctx } = overlayCanvas(slot.height)
-  ctx.font = CREDIT_FONT
-  const credit = wrapCredit(lineImage.credit, slot.width, text => ctx.measureText(text).width)
+export async function renderLineImage(
+  lineImage: CueImage,
+  subtitlePosition: SubtitlePosition,
+  subtitleHeight: number,
+): Promise<{ image: Blob; y: number }> {
+  const slot = lineImageSlot(subtitlePosition, subtitleHeight)
+  const measure = canvasMeasure()
+  const credit = wrapCredit(lineImage.credit, slot.width, text => measure(text, CREDIT_FONT))
   const layout = layoutLineImage(lineImage.width, lineImage.height, credit.length, slot)
+  const { canvas, ctx } = overlayCanvas(Math.ceil(layout.height))
+  ctx.font = CREDIT_FONT
 
   const bitmap = await createImageBitmap(lineImage.blob)
-  const y = layout.image.y - slot.top
   ctx.save()
   ctx.beginPath()
-  ctx.roundRect(layout.image.x, y, layout.image.width, layout.image.height, LINE_IMAGE_RADIUS)
+  ctx.roundRect(layout.image.x, 0, layout.image.width, layout.image.height, LINE_IMAGE_RADIUS)
   ctx.clip()
-  ctx.drawImage(bitmap, layout.image.x, y, layout.image.width, layout.image.height)
+  ctx.drawImage(bitmap, layout.image.x, 0, layout.image.width, layout.image.height)
   ctx.restore()
   bitmap.close()
 
@@ -344,7 +349,8 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     const lineImage = cue.ja === null ? undefined : look.hook.lineImages?.find(i => i.cueId === cue.id)
     if (!lineImage) continue
-    const { image, y } = await renderLineImage(lineImage, cuePosition(cue, look))
+    const { height } = layoutCue({ ...cue, en: stripStickers(cue.en) }, canvasMeasure())
+    const { image, y } = await renderLineImage(lineImage, cuePosition(cue, look), height)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
   }
   for (const cue of cues) {

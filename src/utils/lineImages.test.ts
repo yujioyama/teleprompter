@@ -3,7 +3,7 @@ import type { LineImage } from '../types'
 import {
   assignToLines,
   layoutLineImage,
-  LINE_IMAGE_SLOTS,
+  LINE_IMAGE_TOP_SLOT,
   lineImageSlot,
   lineImagesOf,
   reconcileLineImages,
@@ -141,21 +141,27 @@ describe('withLineImages', () => {
 })
 
 describe('lineImageSlot', () => {
-  it('goes on the chest, unless the subtitle is down there', () => {
-    expect(lineImageSlot(22.5)).toBe(LINE_IMAGE_SLOTS.chest)
-    expect(lineImageSlot(50)).toBe(LINE_IMAGE_SLOTS.chest)
-    expect(lineImageSlot(72.3)).toBe(LINE_IMAGE_SLOTS.top)
+  it('starts right under the subtitle, and follows a taller one down', () => {
+    // Centered at 22.5% (432): 274 tall ends at 569, 400 tall at 632.
+    expect(lineImageSlot(22.5, 274).top).toBe(569)
+    expect(lineImageSlot(22.5, 400).top).toBe(632)
   })
 
-  it('stays out of the feed header, off the face and inside what TikTok keeps of the sides', () => {
-    const { top, chest } = LINE_IMAGE_SLOTS
-    expect(top.top / 1920).toBeGreaterThanOrEqual(0.15)
-    expect((top.top + top.height) / 1920).toBeLessThanOrEqual(0.31)
-    // onFace's ellipse ends at 55% down; Instagram's 4:5 feed keeps up to 85%.
-    expect(chest.top / 1920).toBeGreaterThanOrEqual(0.55)
-    expect((chest.top + chest.height) / 1920).toBeLessThanOrEqual(0.85)
+  it('goes under a centered subtitle too, but above the head when one is lower', () => {
+    expect(lineImageSlot(50, 274).top).toBe(960 + 137)
+    expect(lineImageSlot(72.3, 274)).toBe(LINE_IMAGE_TOP_SLOT)
+  })
+
+  it('reaches as far as the feeds and TikTok keep, even over the face', () => {
+    const under = lineImageSlot(22.5, 274)
+    // Instagram's 4:5 feed keeps up to 85%.
+    expect(under.top + under.height).toBe(1632)
+    expect((LINE_IMAGE_TOP_SLOT.top + LINE_IMAGE_TOP_SLOT.height) / 1920).toBeLessThanOrEqual(0.31)
+    expect(LINE_IMAGE_TOP_SLOT.top / 1920).toBeGreaterThanOrEqual(0.15)
     // TikTok zooms the video in on a tall phone, cutting the sides.
-    for (const { left, width } of [top, chest]) {
+    expect(under.left).toBe(108)
+    expect(under.left + under.width).toBe(972)
+    for (const { left, width } of [LINE_IMAGE_TOP_SLOT, under]) {
       expect(left / 1080).toBeGreaterThanOrEqual(0.1)
       expect((left + width) / 1080).toBeLessThanOrEqual(0.9)
     }
@@ -163,7 +169,8 @@ describe('lineImageSlot', () => {
 })
 
 describe('layoutLineImage', () => {
-  const inside = (box: { x: number; y: number; width: number; height: number }, slot: typeof LINE_IMAGE_SLOTS.top) => {
+  const UNDER = lineImageSlot(22.5, 274)
+  const inside = (box: { x: number; y: number; width: number; height: number }, slot: typeof LINE_IMAGE_TOP_SLOT) => {
     expect(box.x).toBeGreaterThanOrEqual(slot.left)
     expect(box.y).toBeGreaterThanOrEqual(slot.top)
     expect(box.x + box.width).toBeLessThanOrEqual(slot.left + slot.width)
@@ -171,20 +178,33 @@ describe('layoutLineImage', () => {
   }
 
   it('fits a wide image in the slot, keeping its shape', () => {
-    const { image: box } = layoutLineImage(1280, 400, 0, LINE_IMAGE_SLOTS.top)
-    inside(box, LINE_IMAGE_SLOTS.top)
-    expect(box.width).toBeCloseTo(LINE_IMAGE_SLOTS.top.width)
+    const { image: box } = layoutLineImage(1280, 400, 0, LINE_IMAGE_TOP_SLOT)
+    inside(box, LINE_IMAGE_TOP_SLOT)
+    expect(box.width).toBeCloseTo(LINE_IMAGE_TOP_SLOT.width)
     expect(box.width / box.height).toBeCloseTo(1280 / 400)
   })
 
   it('fits a tall image in the slot, keeping its shape', () => {
-    const { image: box } = layoutLineImage(600, 1280, 0, LINE_IMAGE_SLOTS.chest)
-    inside(box, LINE_IMAGE_SLOTS.chest)
+    const { image: box } = layoutLineImage(600, 1280, 0, UNDER)
+    inside(box, UNDER)
     expect(box.width / box.height).toBeCloseTo(600 / 1280)
   })
 
+  it('sits at the top of the slot, right under the subtitle, however short it is', () => {
+    const { image: box, height } = layoutLineImage(1280, 720, 0, UNDER)
+    expect(box.y).toBe(UNDER.top)
+    expect(box.width).toBeCloseTo(864)
+    expect(box.height).toBeCloseTo(486)
+    expect(height).toBeCloseTo(486)
+  })
+
+  it('counts the credit in its height, which is all a burned PNG needs', () => {
+    const { image: box, height, creditTop, creditLineHeight } = layoutLineImage(1280, 720, 2, UNDER)
+    expect(height).toBeCloseTo(creditTop + 2 * creditLineHeight - box.y)
+  })
+
   it('leaves room under the image for the credit, all inside the slot', () => {
-    const slot = LINE_IMAGE_SLOTS.top
+    const slot = LINE_IMAGE_TOP_SLOT
     const bare = layoutLineImage(800, 800, 0, slot)
     const credited = layoutLineImage(800, 800, 2, slot)
     expect(credited.image.height).toBeLessThan(bare.image.height)
