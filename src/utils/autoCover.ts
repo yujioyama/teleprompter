@@ -4,6 +4,7 @@ import {
   canvasToPng,
   coverStartTime,
   drawCover,
+  type CoverLook,
   type CoverWords,
   type PlacedSticker,
 } from './coverImage'
@@ -19,6 +20,7 @@ export async function makeCover(
   words: CoverWords,
   position: number,
   sticker: PlacedSticker,
+  look: CoverLook | null = null,
 ): Promise<Blob> {
   const stills = await openVideoStills(video)
   const canvas = document.createElement('canvas')
@@ -28,7 +30,7 @@ export async function makeCover(
     canvas.height = COVER_HEIGHT
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas 2D context unavailable')
-    drawCover(ctx, stills.canvas, stills.canvas.width, stills.canvas.height, words, position, sticker)
+    drawCover(ctx, stills.canvas, stills.canvas.width, stills.canvas.height, words, position, sticker, look)
     return await canvasToPng(canvas)
   } finally {
     stills.dispose()

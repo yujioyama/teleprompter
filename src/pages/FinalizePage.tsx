@@ -224,7 +224,8 @@ export default function FinalizePage() {
   const [madeCover, setMadeCover] = useState<{ png: Blob | null; drawing: boolean }>({ png: null, drawing: false })
   // The made cover's starting point, drawn without opening カバー画像を作る (see makeCover).
   const [autoCover, setAutoCover] = useState<'idle' | 'making' | 'failed'>('idle')
-  const autoCoverForRef = useRef<Blob | null>(null)
+  // What it was last made from (結合 and film look); a made one for anything else is dropped.
+  const autoCoverForRef = useRef<string | null>(null)
   // Which of the two versions the export step's preview plays.
   const [previewYoutube, setPreviewYoutube] = useState(false)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -566,6 +567,10 @@ export default function FinalizePage() {
     ),
     [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook, lineImages],
   )
+  // The cover's picture wears the video's film look.
+  const coverGrade = hook.opening?.grade ?? null
+  const coverStrength = hook.opening?.strength ?? 1
+  const coverLook = useMemo(() => (coverGrade ? { grade: coverGrade, strength: coverStrength } : null), [coverGrade, coverStrength])
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
 
@@ -586,9 +591,9 @@ export default function FinalizePage() {
       if (!coverInBurn || !combinedBlob || !script) return undefined
       const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length))
       const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
-      const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker])
+      const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker, coverLook])
       if (burnCoverRef.current?.key !== key) {
-        const png = makeCover(combinedBlob, words, coverTextPosition, sticker).catch(err => {
+        const png = makeCover(combinedBlob, words, coverTextPosition, sticker, coverLook).catch(err => {
           console.warn('[FinalizePage] could not make the cover for the burn:', err)
           return null
         })
@@ -597,7 +602,7 @@ export default function FinalizePage() {
       const image = await burnCoverRef.current.png
       return image ? { image, count: burnCoverCount } : undefined
     },
-    [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount],
+    [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount, coverLook],
   )
 
   useEffect(() => {
@@ -727,38 +732,43 @@ export default function FinalizePage() {
   const savable =
     exportBlob !== null && !(madeCoverWanted && (madeCover.drawing || (!madeCover.png && autoCover !== 'failed')))
 
-  // A cover made for another 結合 shows another video.
+  // A cover made for another 結合 shows another video, and one made under another film look another color.
   useEffect(() => {
     setMadeCover(c => (c.png || c.drawing ? { png: null, drawing: false } : c))
     setAutoCover('idle')
-  }, [combinedBlob])
+    // So a look picked again is made again: the saves wait for a cover, and the old one is gone.
+    autoCoverForRef.current = null
+  }, [combinedBlob, coverLook])
 
   // The cover frames want the made cover but none has been drawn: make the
   // one カバー画像を作る would start with, so it goes in without opening it.
-  // Once per 結合; the maker's own cover, when it comes, takes its place.
+  // Once per 結合 and film look; the maker's own cover, when it comes, takes its place.
   useEffect(() => {
     if (step !== 'export' || !combinedBlob || !script || !madeCoverWanted) return
-    if (madeCover.png || coverOpen || autoCoverForRef.current === combinedBlob) return
-    autoCoverForRef.current = combinedBlob
+    const madeFrom = JSON.stringify([blobId(combinedBlob), coverLook])
+    if (madeCover.png || coverOpen || autoCoverForRef.current === madeFrom) return
+    autoCoverForRef.current = madeFrom
     setAutoCover('making')
     makeCover(
       combinedBlob,
       coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja), hasLineImages),
       settings.coverTextPosition,
       coverStickerSpot(stickerPlacement, settings.coverStickerSpot),
+      coverLook,
     ).then(
       png => {
+        if (autoCoverForRef.current !== madeFrom) return
         setMadeCover(c => (c.png ? c : { ...c, png }))
         setAutoCover('idle')
       },
       err => {
         console.warn('[FinalizePage] could not make the cover:', err)
-        setAutoCover('failed')
+        if (autoCoverForRef.current === madeFrom) setAutoCover('failed')
       },
     )
     // The words and spots are read once, as the maker reads them on opening.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, combinedBlob, madeCoverWanted, madeCover.png, coverOpen])
+  }, [step, combinedBlob, madeCoverWanted, madeCover.png, coverOpen, coverLook])
   // YouTube用も書き出す: the same video with the YouTube BGM in place of
   // the usual one, mixed the same way, and no cover frames. Made once the
   // normal version is ready, not alongside it.
@@ -1272,6 +1282,7 @@ export default function FinalizePage() {
                   stickerPlacement={stickerPlacement}
                   initialStickerSpot={settings.coverStickerSpot}
                   onStickerSpotChange={coverStickerSpot => updateSettings({ coverStickerSpot })}
+                  look={coverLook}
                   onCoverDrawing={() => setMadeCover(c => (c.drawing ? c : { ...c, drawing: true }))}
                   onCoverDrawn={png => setMadeCover(c => ({ png: png ?? c.png, drawing: false }))}
                   saveAll={{
