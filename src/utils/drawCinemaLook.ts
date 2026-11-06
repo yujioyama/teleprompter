@@ -11,9 +11,9 @@ import {
   LOOK_GRAIN,
   LOOK_HAS_DUST,
   DUST_OPACITY,
+  lookMask,
   lookStep,
   releaseLookTables,
-  vignetteMask,
   type DustSpec,
 } from './cinemaLook'
 
@@ -161,7 +161,7 @@ export function drawCinemaLookAtScale(
   const work = scratchFor(pw, ph)
   work.ctx.drawImage(ctx.canvas, 0, 0, width, height, 0, 0, pw, ph)
   const picture = work.ctx.getImageData(0, 0, pw, ph)
-  const mask = vignetteMask(pw, ph)
+  const mask = lookMask(look, pw, ph)
   let graded: ImageData
   if (look === 'glitch') {
     glitchPixels(picture.data, work.out.data, pw, ph, glitchParams(step, pw, ph), mask)

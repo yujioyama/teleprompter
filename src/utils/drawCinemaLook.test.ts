@@ -159,6 +159,25 @@ describe('drawCinemaLook', () => {
     expect(ctx.globalCompositeOperation).toBe('multiply')
   })
 
+  describe('the light on the face', () => {
+    /** The red of the graded picture at the face (gray 128 going in). */
+    const redAtFace = (look: CinemaLook) => {
+      events = []
+      draw(ctx, look, 0, 1, W, H)
+      const graded = events.find(e => e.call === 'putImageData')!.data!
+      return graded[(6 * W + 4) * 4]
+    }
+
+    it('brightens the graded face on hollywood', () => {
+      // Gray 128 grades to about 82 with no light; × 1.18 is about 97.
+      expect(Math.abs(redAtFace('hollywood') - 97)).toBeLessThanOrEqual(3)
+    })
+
+    it('leaves the face alone on mono', () => {
+      expect(Math.abs(redAtFace('mono') - 128)).toBeLessThanOrEqual(3)
+    })
+  })
+
   it('draws no grain or dust for hollywood', () => {
     draw(ctx, 'hollywood', 0, 1, W, H)
     expect(calls('drawImage')).toHaveLength(2)

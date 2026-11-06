@@ -13,6 +13,7 @@ import {
   lookStep,
   lutApply,
   releaseLookTables,
+  lookMask,
   vignetteMask,
 } from './cinemaLook'
 
@@ -73,6 +74,48 @@ describe('vignetteMask', () => {
   it('is made once per size', () => {
     expect(vignetteMask(1080, 1920)).toBe(vignetteMask(1080, 1920))
     expect(vignetteMask(540, 960)).not.toBe(vignetteMask(1080, 1920))
+  })
+})
+
+describe('lookMask', () => {
+  const W = 540
+  const H = 960
+  const at = (x: number, y: number) => y * W + x
+
+  it('lights the face on hollywood, 40% of the way down the middle', () => {
+    expect(lookMask('hollywood', W, H)[at(270, 384)]).toBeCloseTo(1.18, 2)
+  })
+
+  it('leaves hollywood as the plain vignette away from the face', () => {
+    const lit = lookMask('hollywood', W, H)
+    const plain = vignetteMask(W, H)
+    for (const [x, y] of [[0, 0], [539, 959], [270, 900], [270, 10], [5, 384], [534, 384]]) {
+      expect(lit[at(x, y)]).toBeCloseTo(plain[at(x, y)], 5)
+    }
+  })
+
+  it('fades out with no edge to see: neighbouring pixels stay within about a level of 255', () => {
+    const m = lookMask('hollywood', W, H)
+    let steepest = 0
+    for (let y = 1; y < H; y++) {
+      for (let x = 1; x < W; x++) {
+        steepest = Math.max(steepest, Math.abs(m[at(x, y)] - m[at(x - 1, y)]), Math.abs(m[at(x, y)] - m[at(x, y - 1)]))
+      }
+    }
+    expect(steepest).toBeGreaterThan(0)
+    expect(steepest).toBeLessThan(0.005)
+  })
+
+  it('gives every other look the plain vignette', () => {
+    for (const look of ['oldFilm', 'nightBlue', 'mono', 'glitch'] as const) {
+      expect(Math.max(...lookMask(look, 54, 96))).toBeLessThanOrEqual(1)
+      expect(lookMask(look, 54, 96)).toBe(vignetteMask(54, 96))
+    }
+  })
+
+  it('is made once per size', () => {
+    expect(lookMask('hollywood', W, H)).toBe(lookMask('hollywood', W, H))
+    expect(lookMask('hollywood', 270, 480)).not.toBe(lookMask('hollywood', W, H))
   })
 })
 
