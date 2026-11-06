@@ -8,6 +8,7 @@ import {
   coverStartTime,
   coverStickerSpot,
   drawCover,
+  type CoverLook,
   type CoverStickerSpot,
   type CoverWords,
 } from '../utils/coverImage'
@@ -35,6 +36,8 @@ interface Props {
   initialStickerSpot: CoverStickerSpot | null
   /** Called when a drag ends or the sticker goes back, so the next cover starts there. */
   onStickerSpotChange: (spot: CoverStickerSpot | null) => void
+  /** The video's film look, for the picture; null = as shot. */
+  look?: CoverLook | null
   /**
    * A button above the cover-only save that saves the cover along with
    * other things in one tap. It gets the cover still being encoded, so the
@@ -73,6 +76,7 @@ export default function CoverMaker({
   stickerPlacement,
   initialStickerSpot,
   onStickerSpotChange,
+  look = null,
   onCoverDrawing,
   onCoverDrawn,
   saveAll,
@@ -102,7 +106,7 @@ export default function CoverMaker({
     const frame = stillsRef.current?.canvas
     const ctx = canvasRef.current?.getContext('2d')
     if (!frame || !ctx) return
-    drawCover(ctx, frame, frame.width, frame.height, words, position, sticker)
+    drawCover(ctx, frame, frame.width, frame.height, words, position, sticker, look)
   }
   // A frame decoded after a later render draws with that render's words.
   const redrawRef = useRef(redraw)
@@ -115,7 +119,7 @@ export default function CoverMaker({
   useEffect(() => {
     if (ready) redraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [words, position, movedSticker, ready])
+  }, [words, position, movedSticker, look, ready])
 
   // Tell the page the cover changed, and send it once it settles.
   useEffect(() => {
@@ -125,7 +129,7 @@ export default function CoverMaker({
     const timer = setTimeout(() => sendCover(canvasRef.current), COVER_SETTLE_MS)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [words, position, movedSticker, ready, frameDrawn])
+  }, [words, position, movedSticker, look, ready, frameDrawn])
 
   // Closing the maker sends a change still waiting to settle. The canvas is
   // taken now: its ref is cleared before this cleanup runs.

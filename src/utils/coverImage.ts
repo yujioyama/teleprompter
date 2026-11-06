@@ -2,13 +2,22 @@ import { SUBTITLE_FONT_FAMILY, OUTLINE_WIDTH_RATIO, SUBTITLE_SHADOW } from './su
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
 import { STICKER_EMOJI_PX, STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type StickerPlacement } from './subtitleSticker'
 import { dieCutSticker } from './stickerCanvas'
+import { drawCinemaLook } from './drawCinemaLook'
+import type { CinemaLook } from '../../shared/cinemaLook'
 
 /**
  * A cover image for the profile grid: a frame of the video with the
  * episode's English phrase (yellow, the `*…*` one) and its Japanese word
  * (mint, the `{…}` one) drawn large, so the grid reads like a word list,
  * and the first shot's sticker where the video's first frame has it.
+ * The frame wears the video's film look; the words and sticker keep their colors.
  */
+
+/** The video's film look and its strength (0-1), for the picture under the words. */
+export interface CoverLook {
+  grade: CinemaLook
+  strength: number
+}
 
 export const COVER_WIDTH = 1080
 export const COVER_HEIGHT = 1920
@@ -223,6 +232,7 @@ export function drawCover(
   words: CoverWords,
   position = COVER_TEXT_POSITION_DEFAULT,
   sticker: PlacedSticker = coverStickerSpot('right', null),
+  look: CoverLook | null = null,
 ): void {
   ctx.clearRect(0, 0, COVER_WIDTH, COVER_HEIGHT)
   ctx.fillStyle = '#000'
@@ -230,6 +240,8 @@ export function drawCover(
   if (sourceWidth > 0 && sourceHeight > 0) {
     const { x, y, width, height } = coverFitRect(sourceWidth, sourceHeight, COVER_WIDTH, COVER_HEIGHT)
     ctx.drawImage(source, x, y, width, height)
+    // Always the same t: the grain must not change a cover drawn again the same way (see sameBytes).
+    if (look) drawCinemaLook(ctx, look.grade, 0, look.strength, COVER_WIDTH, COVER_HEIGHT)
   }
 
   const measure: MeasureWidth = (text, font) => {
