@@ -44,6 +44,8 @@ import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
+import PostToSns from '../components/PostToSns'
+import { coverOffsetMs } from '../utils/postToSns'
 import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
 import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
@@ -888,6 +890,15 @@ export default function FinalizePage() {
     ])
   }
 
+  // 投稿する's cover: the frame the cover frames are at in the video posted,
+  // so Instagram and TikTok show it; none when no cover went in.
+  async function postCoverOffsetMs(): Promise<number | undefined> {
+    const coverIn = coverFrameState !== 'failed' && (burnedCover !== null || coverImage !== null)
+    const placement = coverIn ? coverFramePlacement : 'none'
+    const duration = placement === 'last' && exportBlob ? await probeVideoDuration(exportBlob) : 0
+    return coverOffsetMs(placement, clampCoverFrameCount(coverFrameCount), duration)
+  }
+
   // Saving the video is "this is the version": record how it was made,
   // without holding up or failing the save.
   function recordSavedVideo() {
@@ -1264,6 +1275,14 @@ export default function FinalizePage() {
                       : 'キャプションをコピー'}
                 </button>
               )}
+              <PostToSns
+                video={exportBlob}
+                caption={script.caption ?? ''}
+                inboxKey={settings.inboxKey}
+                ready={savable && coverFrameState !== 'inserting'}
+                coverOffsetMs={postCoverOffsetMs}
+                onPosted={recordSavedVideo}
+              />
               {combinedUrl && (
                 <button className={styles.copyCaptionBtn} onClick={() => setCoverOpen(open => !open)}>
                   {coverOpen ? 'カバー画像を閉じる' : 'カバー画像を作る'}

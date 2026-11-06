@@ -1,0 +1,75 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.times {
+  display: flex;
+  gap: 8px;
+}
+
+.timeBtn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 4px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+.timeBtnActive {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.postBtn {
+  background: var(--accent);
+  color: #fff;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.postBtn:disabled {
+  opacity: 0.5;
+}
+
+.status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.failed {
+  color: var(--danger, #d33);
+}
