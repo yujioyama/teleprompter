@@ -17,7 +17,7 @@ import { SUBTITLE_FONT_FAMILY, layoutCue, type MeasureText } from './subtitleLay
 import { subtitleY } from './subtitlePosition'
 import type { StyledCue } from './subtitleHook'
 import type { FairyAppearance } from './fairyPlan'
-import { LINE_IMAGE_SLOTS } from './lineImages'
+import { LINE_IMAGE_TOP_SLOT, layoutLineImage, lineImageSlot } from './lineImages'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
@@ -185,7 +185,7 @@ describe('renderSubtitleOverlays with line images', () => {
     const close = stubBitmap()
     const overlays = await renderSubtitleOverlays([hookCue, normalCue], withImage())
     expect(overlays).toHaveLength(3)
-    expect(overlays[0]).toMatchObject({ start: 2, end: 3, y: LINE_IMAGE_SLOTS.top.top })
+    expect(overlays[0]).toMatchObject({ start: 2, end: 3, y: LINE_IMAGE_TOP_SLOT.top })
     expect(overlays[0].sprite).toBeUndefined()
     expect(close).toHaveBeenCalled()
   })
@@ -198,11 +198,17 @@ describe('renderSubtitleOverlays with line images', () => {
     expect(stroked.some(d => d.text === 'Ann / CC BY 4.0' && d.color === '#000')).toBe(true)
   })
 
-  it('goes on the chest when the subtitle is up top, as the hook is', async () => {
+  it('goes right under the subtitle when it is up top, as the hook is, on a PNG only as tall as the image', async () => {
     stubCanvas()
     stubBitmap()
-    const [image] = await renderSubtitleOverlays([hookCue], withImage({ ...IMAGE, cueId: 'a' }))
-    expect(image.y).toBe(LINE_IMAGE_SLOTS.chest.top)
+    const createElement = vi.spyOn(document, 'createElement')
+    const [image, subtitle] = await renderSubtitleOverlays([hookCue], withImage({ ...IMAGE, cueId: 'a', credit: '' }))
+    const { height } = layoutCue(hookCue, measure)
+    expect(image.y).toBe(subtitle.y + height)
+    const heights = createElement.mock.results.map(r => (r.value as HTMLCanvasElement).height)
+    // 800×600 at the slot's full 864 wide.
+    expect(heights).toContain(648)
+    expect(layoutLineImage(800, 600, 0, lineImageSlot(22.5, height)).height).toBeCloseTo(648)
   })
 
   it('leaves out the image of an untranslated cue, as its subtitle is', async () => {
@@ -216,7 +222,7 @@ describe('renderSubtitleOverlays with line images', () => {
     stubBitmap()
     const overlays = await renderSubtitleOverlays([{ ...hookCue, en: 'Toast🍞 hurts' }, normalCue], withImage(), { still: true })
     expect(overlays).toHaveLength(3)
-    expect(overlays[0].y).toBe(LINE_IMAGE_SLOTS.top.top)
+    expect(overlays[0].y).toBe(LINE_IMAGE_TOP_SLOT.top)
     expect(overlays.filter(o => o.sprite)).toEqual([])
   })
 })

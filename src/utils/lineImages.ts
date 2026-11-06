@@ -5,6 +5,7 @@ import { lineKey, takeLinesOf, type SubtitleCue } from './subtitleCues'
 import { stripEmphasis } from './subtitleEmphasis'
 import type { HookOptions } from './subtitleHook'
 import { SUBTITLE_FONT_FAMILY } from './subtitleLayout'
+import { clampedSubtitleY } from './subtitlePosition'
 import { stripStickers } from './subtitleSticker'
 
 /**
@@ -129,23 +130,28 @@ export interface LineImageSlot {
 }
 
 /**
- * Where an image may go on the 1080×1920 output. `chest` is the usual place:
- * below the face (which ends about 55% down), where only hands and a mic are,
- * and above what Instagram's 4:5 feed crops off. `top` is the band between the
- * feeds' header and the head, for a subtitle that sits on the chest. Both stay
- * 10% in from the sides, since TikTok zooms the video in on a tall phone and
- * cuts them off.
+ * For a subtitle too low to have room under it: the band between the feeds'
+ * header and the head, on the 1080×1920 output.
  */
-export const LINE_IMAGE_SLOTS = {
-  chest: { left: 130, top: 1130, width: 820, height: 430 },
-  top: { left: 230, top: 298, width: 620, height: 297 },
-} satisfies Record<string, LineImageSlot>
+export const LINE_IMAGE_TOP_SLOT: LineImageSlot = { left: 230, top: 298, width: 620, height: 297 }
 
-/** A subtitle centered below this percent is in the chest slot's way. */
-const SUBTITLE_IN_CHEST_SLOT = 50
+/**
+ * The usual place, from the subtitle's bottom down to what Instagram's 4:5 feed
+ * keeps (85%), over the face if it comes to that: a line's image is up only
+ * for that line. 10% in from the sides, since TikTok zooms the video in on a
+ * tall phone and cuts them off.
+ */
+const UNDER_SUBTITLE = { left: 108, width: 864, bottom: 1632 }
 
-export function lineImageSlot(subtitlePosition: number): LineImageSlot {
-  return subtitlePosition > SUBTITLE_IN_CHEST_SLOT ? LINE_IMAGE_SLOTS.top : LINE_IMAGE_SLOTS.chest
+/** A subtitle centered below this percent leaves too little room under it. */
+const SUBTITLE_TOO_LOW = 50
+
+/** Where a line's image may go, given its subtitle's position and rendered height. */
+export function lineImageSlot(subtitlePosition: number, subtitleHeight: number): LineImageSlot {
+  if (subtitlePosition > SUBTITLE_TOO_LOW) return LINE_IMAGE_TOP_SLOT
+  const { left, width, bottom } = UNDER_SUBTITLE
+  const top = clampedSubtitleY(subtitlePosition, subtitleHeight) + subtitleHeight
+  return { left, top, width, height: bottom - top }
 }
 
 export const LINE_IMAGE_FRAME = { width: 1080, height: 1920 }
@@ -176,16 +182,19 @@ export function wrapCredit(credit: string | undefined, width: number, measure: (
   })
 }
 
-/** The image kept in shape as big as the slot allows above its credit, the two centered in the slot. */
+/**
+ * The image kept in shape as big as the slot allows above its credit: centered
+ * across the slot, at its top. `height` is the image and credit together.
+ */
 export function layoutLineImage(width: number, height: number, creditLines: number, slot: LineImageSlot) {
   const creditHeight = creditLines > 0 ? CREDIT_GAP + creditLines * CREDIT_LINE_PX : 0
   const scale = Math.min(slot.width / width, (slot.height - creditHeight) / height)
   const drawn = { width: width * scale, height: height * scale }
-  const y = slot.top + (slot.height - drawn.height - creditHeight) / 2
   return {
-    image: { x: slot.left + (slot.width - drawn.width) / 2, y, ...drawn },
+    image: { x: slot.left + (slot.width - drawn.width) / 2, y: slot.top, ...drawn },
+    height: drawn.height + creditHeight,
     creditCenterX: slot.left + slot.width / 2,
-    creditTop: y + drawn.height + CREDIT_GAP,
+    creditTop: slot.top + drawn.height + CREDIT_GAP,
     creditLineHeight: CREDIT_LINE_PX,
   }
 }

@@ -101,9 +101,9 @@ function StickerSprite({ emoji, pose, scale, testId }: { emoji: string; pose: St
 }
 
 /** A line's image and its credit, where and how big the burn draws them. */
-function LineImageBox({ image, position, measure }: { image: CueImage; position: SubtitlePosition; measure: MeasureText }) {
+function LineImageBox({ image, position, subtitleHeight, measure }: { image: CueImage; position: SubtitlePosition; subtitleHeight: number; measure: MeasureText }) {
   const url = useObjectUrl(image.blob)
-  const slot = lineImageSlot(position)
+  const slot = lineImageSlot(position, subtitleHeight)
   const credit = wrapCredit(image.credit, slot.width, text => measure(text, CREDIT_FONT))
   const box = layoutLineImage(image.width, image.height, credit.length, slot)
   return (
@@ -256,8 +256,14 @@ export default function SubtitleOverlayPreview({
   if (!cueBox && !showCanvas) return null
   return (
     <>
-      {lineImage && cue && (
-        <LineImageBox key={lineImage.cueId} image={lineImage} position={cue.variant === 'hook' ? hookPosition : position} measure={measure} />
+      {lineImage && cue && layout && (
+        <LineImageBox
+          key={lineImage.cueId}
+          image={lineImage}
+          position={cue.variant === 'hook' ? hookPosition : position}
+          subtitleHeight={layout.height}
+          measure={measure}
+        />
       )}
       {cueBox}
       {showCanvas && <canvas ref={canvasRef} className={styles.sparkles} />}
