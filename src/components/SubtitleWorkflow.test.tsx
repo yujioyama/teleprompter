@@ -109,7 +109,7 @@ function ControlledSubtitleWorkflow({
 const positionGroup = () => within(screen.getByRole('group', { name: '字幕の位置' }))
 
 describe('SubtitleWorkflow position controls', () => {
-  it('defaults to the bottom preset and burns in with it when advancing', async () => {
+  it('defaults to the top preset and burns in with it when advancing', async () => {
     seedBurnMock()
     const onBurned = vi.fn()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
@@ -122,14 +122,14 @@ describe('SubtitleWorkflow position controls', () => {
     })
     fireEvent.click(screen.getByText('日本語を反映'))
 
-    expect(positionGroup().getByText('下部')).toHaveAttribute('aria-pressed', 'true')
+    expect(positionGroup().getByText('上部')).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(screen.getByText('次へ'))
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
     expect(burnModule.burnSubtitles).toHaveBeenCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ position: 72.2917 }),
+      expect.objectContaining({ position: 22.5 }),
     )
   })
 

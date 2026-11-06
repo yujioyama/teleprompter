@@ -101,7 +101,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     fairies.map(f => f.key),
     midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
     // Only a shot with one gets this entry, so the others keep their cached burns.
-    ...(images.length > 0 ? [images.map(i => [i.cueId, i.imageId, blobId(i.blob), i.credit ?? null, i.small ?? false])] : []),
+    // The subtitle moved down and the image above the head (2026-11-06); old burns with an image are stale.
+    ...(images.length > 0 ? ['image-above-v1', images.map(i => [i.cueId, i.imageId, blobId(i.blob), i.credit ?? null])] : []),
   ])
   const opening = openingPlan(look.hook, look.firstShotDuration)
   const firstShot = JSON.stringify(extras ? (opening ? [look.hook.punchIn, opening] : look.hook.punchIn) : null)

@@ -20,6 +20,7 @@ import {
   type HookOptions,
   type PunchInPlan,
   type StyledCue,
+  subtitlePositionOf,
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
@@ -27,7 +28,7 @@ import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
-import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_RADIUS, layoutLineImage, lineImageSlot, wrapCredit, type CueImage } from './lineImages'
+import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from './lineImages'
 import { openingFilterStages, type OpeningLook } from './openingLook'
 import {
   EN_STYLE,
@@ -132,9 +133,9 @@ export interface SubtitleLook {
   midZoom?: MidZoomSegment[]
 }
 
-/** Where a cue is centered: hook cues have a position of their own. */
+/** Where a cue is centered (see subtitlePositionOf). */
 export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePosition {
-  return cue.variant === 'hook' ? look.hook.position : look.position
+  return subtitlePositionOf(cue, look.position, look.hook)
 }
 
 /**
@@ -290,16 +291,10 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
 /**
  * Render a line's image with its credit under it, rounded, on a transparent
  * PNG as wide as the video and only as tall as the two: every overlay is
- * decoded for the whole encode, and a slot can be most of the frame (see
- * lineImageSlot; the subtitle's position and height decide it). The image is
- * decoded here and let go again.
+ * decoded for the whole encode. The image is decoded here and let go again.
  */
-export async function renderLineImage(
-  lineImage: CueImage,
-  subtitlePosition: SubtitlePosition,
-  subtitleHeight: number,
-): Promise<{ image: Blob; y: number }> {
-  const slot = lineImageSlot(subtitlePosition, subtitleHeight, lineImage.small)
+export async function renderLineImage(lineImage: CueImage): Promise<{ image: Blob; y: number }> {
+  const slot = LINE_IMAGE_SLOT
   const measure = canvasMeasure()
   const credit = wrapCredit(lineImage.credit, slot.width, text => measure(text, CREDIT_FONT))
   const layout = layoutLineImage(lineImage.width, lineImage.height, credit.length, slot)
@@ -349,8 +344,7 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     const lineImage = cue.ja === null ? undefined : look.hook.lineImages?.find(i => i.cueId === cue.id)
     if (!lineImage) continue
-    const { height } = layoutCue({ ...cue, en: stripStickers(cue.en) }, canvasMeasure())
-    const { image, y } = await renderLineImage(lineImage, cuePosition(cue, look), height)
+    const { image, y } = await renderLineImage(lineImage)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
   }
   for (const cue of cues) {

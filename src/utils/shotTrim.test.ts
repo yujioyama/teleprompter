@@ -65,6 +65,7 @@ describe('resolveShotTrimSettings', () => {
     youtubeBgmId: 'youtube-touching-moment',
     inboxKey: '',
     bgmDefaultRev: 1,
+    subtitlePositionRev: 1,
   }
 
   it('gives the first shot its own lead-in before the speech', () => {

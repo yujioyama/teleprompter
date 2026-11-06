@@ -1,7 +1,7 @@
 import type { AppSettings } from '../hooks/useSettings'
 import type { SubtitleCue } from './subtitleCues'
 import type { CueVariant } from './subtitleLayout'
-import type { SubtitlePosition } from './subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, type SubtitlePosition } from './subtitlePosition'
 import { DEFAULT_STICKER_PLACEMENT, type StickerPlacement } from './subtitleSticker'
 import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
@@ -18,6 +18,20 @@ import type { CinemaLook } from '../../shared/cinemaLook'
  */
 
 export type StyledCue = SubtitleCue & { variant: CueVariant }
+
+/**
+ * Where a cue's subtitle is centered: down on the chest when its line has an
+ * image, which goes above the head; else at the hook position for a hook cue
+ * and at `position` for the rest.
+ */
+export function subtitlePositionOf(
+  cue: StyledCue,
+  position: SubtitlePosition,
+  hook: Pick<HookOptions, 'position' | 'lineImages'>,
+): SubtitlePosition {
+  if (hook.lineImages?.some(image => image.cueId === cue.id)) return SUBTITLE_POSITION_BOTTOM
+  return cue.variant === 'hook' ? hook.position : position
+}
 
 /** How far the first shot has zoomed in by its end. */
 export type PunchInZoom = 1.15 | 1.25 | 1.35 | 1.5
