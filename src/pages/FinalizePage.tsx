@@ -890,6 +890,16 @@ export default function FinalizePage() {
     ])
   }
 
+  // YouTubeに投稿: YouTube can't be posted to by API without Google's audit,
+  // so the YouTube version goes alone into the share sheet (pick YouTube
+  // there), with the caption copied for the description.
+  async function handleShareYoutube() {
+    if (!youtubeBlob || !script) return
+    // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
+    if (script.caption) void copyCaption(script.caption)
+    await shareOrDownload(youtubeBlob, `${script.title}-youtube`)
+  }
+
   // 投稿する's cover: the frame the cover frames are at in the video posted,
   // so Instagram and TikTok show it; none when no cover went in.
   async function postCoverOffsetMs(): Promise<number | undefined> {
@@ -1283,6 +1293,11 @@ export default function FinalizePage() {
                 coverOffsetMs={postCoverOffsetMs}
                 onPosted={recordSavedVideo}
               />
+              {youtubeEnabled && youtubeState !== 'failed' && (
+                <button className={styles.copyCaptionBtn} onClick={handleShareYoutube} disabled={!youtubeBlob}>
+                  {youtubeBlob ? 'YouTubeに投稿（共有シートで YouTube を選ぶ）' : 'YouTube用を作っています...'}
+                </button>
+              )}
               {combinedUrl && (
                 <button className={styles.copyCaptionBtn} onClick={() => setCoverOpen(open => !open)}>
                   {coverOpen ? 'カバー画像を閉じる' : 'カバー画像を作る'}

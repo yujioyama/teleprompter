@@ -107,7 +107,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
           ))}
         </ul>
       )}
-      <span className={styles.sub}>YouTubeは今まで通り別に投稿してください</span>
+      <span className={styles.sub}>YouTubeは下の「YouTubeに投稿」から（YouTube用も書き出すをオンにすると出ます）</span>
     </div>
   )
 }

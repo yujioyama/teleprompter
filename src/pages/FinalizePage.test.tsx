@@ -1774,6 +1774,28 @@ describe('FinalizePage export step: YouTube version', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({ youtubeExportEnabled: true })
   })
 
+  it('hands the YouTube version alone to the share sheet, with the caption copied', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: 'toast hurt again #esl' }]))
+    useSettingsOf({ youtubeExportEnabled: true })
+    await walkToExport()
+
+    const button = await screen.findByText('YouTubeに投稿（共有シートで YouTube を選ぶ）')
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    expect(writeText).toHaveBeenCalledWith('toast hurt again #esl')
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(YOUTUBE_MIX, 'テスト動画-youtube'))
+    expect(vi.mocked(shareOrDownload).mock.calls[0][0]).toBe(YOUTUBE_MIX)
+    delete (navigator as { clipboard?: unknown }).clipboard
+  })
+
+  it('has no YouTube post button while YouTube用も書き出す is off', async () => {
+    useSettingsOf({})
+    await walkToExport()
+    expect(screen.queryByText(/YouTubeに投稿/)).not.toBeInTheDocument()
+  })
+
   it('mixes the BGM chosen in the settings', async () => {
     useSettingsOf({ youtubeExportEnabled: true, youtubeBgmId: 'lofi-sunny-cafe' })
     await walkToExport()
