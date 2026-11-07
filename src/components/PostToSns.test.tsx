@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PostToSns from './PostToSns'
-import { postStatus, postToSns, type PostOptions } from '../utils/postToSns'
+import { nextFreeSlot, postStatus, postToSns, whenLabel, type PostOptions } from '../utils/postToSns'
 
 vi.mock('../utils/postToSns', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/postToSns')>()),
   postToSns: vi.fn(),
   postStatus: vi.fn(async () => []),
+  nextFreeSlot: vi.fn(),
 }))
 
 const VIDEO = new Blob(['video'], { type: 'video/mp4' })
@@ -27,6 +28,7 @@ afterEach(() => {
   vi.mocked(postToSns).mockReset()
   vi.mocked(postStatus).mockReset()
   vi.mocked(postStatus).mockResolvedValue([])
+  vi.mocked(nextFreeSlot).mockReset()
 })
 
 describe('PostToSns', () => {
@@ -90,5 +92,85 @@ describe('PostToSns', () => {
     expect(second.postId).toBe(first.postId)
     expect(second.uploadedUrl).toBe('https://pub.r2.dev/posts/v.mp4')
     expect(await screen.findByText('TikTok: 送りました')).toBeInTheDocument()
+  })
+
+  describe('次の空き', () => {
+    const SLOT = new Date(2099, 0, 5, 20, 0).toISOString()
+
+    it('asks with the slot it found, reserves it, and says when', async () => {
+      vi.mocked(nextFreeSlot).mockResolvedValue(SLOT)
+      vi.mocked(postToSns).mockResolvedValue([{ service: 'instagram', name: 'yuji', ok: true }])
+      const onPosted = renderPost()
+      fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
+      fireEvent.click(screen.getByText('次の空きに予約する'))
+      const label = whenLabel(new Date(SLOT))
+      expect(await screen.findByText(`Instagram: ${label}に予約しました`)).toBeInTheDocument()
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(`${label}で予約しますか`))
+      expect(vi.mocked(postToSns).mock.calls[0][0].when).toBe(SLOT)
+      expect(onPosted).toHaveBeenCalledWith(SLOT)
+    })
+
+    it('posts nothing when every slot is taken, and says how far', async () => {
+      vi.mocked(nextFreeSlot).mockResolvedValue(null)
+      renderPost()
+      fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
+      fireEvent.click(screen.getByText('次の空きに予約する'))
+      expect(await screen.findByText(/5日先まで埋まっています/)).toBeInTheDocument()
+      expect(postToSns).not.toHaveBeenCalled()
+      expect(window.confirm).not.toHaveBeenCalled()
+    })
+
+    it('says why when the slots could not be checked, without posting', async () => {
+      vi.mocked(nextFreeSlot).mockRejectedValue(new Error('Buffer API: down'))
+      renderPost()
+      fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
+      fireEvent.click(screen.getByText('次の空きに予約する'))
+      expect(await screen.findByText('Buffer API: down')).toBeInTheDocument()
+      expect(postToSns).not.toHaveBeenCalled()
+    })
+
+    it('goes back to waiting when the question is declined', async () => {
+      vi.mocked(nextFreeSlot).mockResolvedValue(SLOT)
+      vi.mocked(window.confirm).mockReturnValue(false)
+      renderPost()
+      fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
+      fireEvent.click(screen.getByText('次の空きに予約する'))
+      await waitFor(() => expect(window.confirm).toHaveBeenCalled())
+      await waitFor(() => expect(screen.getByText('次の空きに予約する')).toBeEnabled())
+      expect(postToSns).not.toHaveBeenCalled()
+    })
+
+    it('keeps the same slot on a retry, so every network goes out together', async () => {
+      vi.mocked(nextFreeSlot).mockResolvedValue(SLOT)
+      vi.mocked(postToSns).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
+      vi.mocked(postToSns).mockImplementationOnce(async (options: PostOptions) => {
+        options.onUploaded?.('https://pub.r2.dev/posts/v.mp4')
+        return [{ service: 'tiktok', name: 'yuji', ok: false, message: 'busy' }]
+      })
+      renderPost()
+      fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
+      fireEvent.click(screen.getByText('次の空きに予約する'))
+      fireEvent.click(await screen.findByText('失敗したものだけ送り直す'))
+      await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(2))
+      expect(vi.mocked(postToSns).mock.calls[1][0].when).toBe(SLOT)
+      expect(nextFreeSlot).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('reserves the 12:00 or 20:00 picked, and keeps that time on a retry', async () => {
+    vi.mocked(postToSns).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
+    vi.mocked(postToSns).mockImplementationOnce(async (options: PostOptions) => {
+      options.onUploaded?.('https://pub.r2.dev/posts/v.mp4')
+      return [{ service: 'tiktok', name: 'yuji', ok: false, message: 'busy' }]
+    })
+    renderPost()
+    fireEvent.click(screen.getByRole('button', { name: /20:00/ }))
+    fireEvent.click(screen.getByText(/20:00に予約する/))
+    fireEvent.click(await screen.findByText('失敗したものだけ送り直す'))
+    await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(2))
+    const [first, second] = vi.mocked(postToSns).mock.calls.map(c => c[0])
+    expect(new Date(first.when).getHours()).toBe(20)
+    expect(second.when).toBe(first.when)
+    expect(nextFreeSlot).not.toHaveBeenCalled()
   })
 })

@@ -1,7 +1,17 @@
 // 投稿する (api/post.ts): the finished video goes to R2, then Buffer posts it
 // to Instagram, TikTok and X — right away or at a set time.
 
-export type PostTime = 'now' | 12 | 20
+import { FREE_SLOT_COUNT } from '../../shared/posting'
+
+/** The choices on the screen; 'free' is the next slot nothing is reserved at. */
+export type PostTime = 'now' | 12 | 20 | 'free'
+/** Right away, or the ISO time the post goes out. */
+export type PostWhen = 'now' | string
+
+const SLOT_HOURS = [12, 20]
+/** A slot closer than this could pass while the video uploads. */
+const SLOT_MARGIN_MS = 10 * 60 * 1000
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
 export interface ChannelResult {
   service: string
@@ -19,12 +29,46 @@ export function nextSlot(hour: number, now = new Date()): Date {
   return at
 }
 
-/** How a post time reads on the button: 今すぐ, 今日 12:00, 明日 20:00. */
+/** The next 12:00s and 20:00s on this device, far enough ahead to upload to. */
+export function upcomingSlots(now = new Date()): Date[] {
+  const slots: Date[] = []
+  for (let day = 0; slots.length < FREE_SLOT_COUNT; day++) {
+    for (const hour of SLOT_HOURS) {
+      const at = new Date(now)
+      at.setDate(at.getDate() + day)
+      at.setHours(hour, 0, 0, 0)
+      if (at.getTime() > now.getTime() + SLOT_MARGIN_MS && slots.length < FREE_SLOT_COUNT) slots.push(at)
+    }
+  }
+  return slots
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+/** How a time reads: 今日 12:00, 明日 20:00, 11/12(木) 20:00. */
+export function whenLabel(at: Date, now = new Date()): string {
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const day = sameDay(at, now)
+    ? '今日'
+    : sameDay(at, tomorrow)
+      ? '明日'
+      : `${at.getMonth() + 1}/${at.getDate()}(${WEEKDAYS[at.getDay()]})`
+  return `${day} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+}
+
+/** How a post time reads on the button: 今すぐ, 今日 12:00, 明日 20:00, 次の空き. */
 export function postTimeLabel(time: PostTime, now = new Date()): string {
   if (time === 'now') return '今すぐ'
-  const at = nextSlot(time, now)
-  const day = at.getDate() === now.getDate() ? '今日' : '明日'
-  return `${day} ${String(time).padStart(2, '0')}:00`
+  if (time === 'free') return '次の空き'
+  return whenLabel(nextSlot(time, now), now)
+}
+
+/** What YouTube, posted by hand, should be scheduled at so it goes out with the rest. */
+export function youtubeScheduleHint(postAt: string, now = new Date()): string {
+  return `他のSNSは ${whenLabel(new Date(postAt), now)} に予約済みです。YouTubeでも「スケジュール」で同じ日時を選んでください`
 }
 
 /** The networks by name, as they read in the results. */
@@ -97,10 +141,9 @@ export interface PostOptions {
   onUploaded?: (videoUrl: string) => void
   video: Blob
   caption: string
-  time: PostTime
+  when: PostWhen
   thumbnailOffsetMs?: number
   onUploadProgress: (ratio: number) => void
-  now?: Date
 }
 
 export async function postToSns(options: PostOptions): Promise<ChannelResult[]> {
@@ -117,16 +160,22 @@ export async function postToSns(options: PostOptions): Promise<ChannelResult[]> 
     videoUrl = upload.videoUrl
     options.onUploaded?.(videoUrl)
   }
-  const when = options.time === 'now' ? 'now' : nextSlot(options.time, options.now).toISOString()
   const { results } = await api<{ results: ChannelResult[] }>(options.key, {
     action: 'publish',
     postId: options.postId,
     videoUrl,
     caption: options.caption,
-    when,
+    when: options.when,
     thumbnailOffsetMs: options.thumbnailOffsetMs,
   })
   return results
+}
+
+/** The next 12:00 or 20:00 nothing is reserved at (ISO); null when all of them are taken. */
+export async function nextFreeSlot(key: string, now = new Date()): Promise<string | null> {
+  const candidates = upcomingSlots(now).map(at => at.toISOString())
+  const { slot } = await api<{ slot: string | null }>(key, { action: 'freeSlot', candidates })
+  return slot
 }
 
 /**

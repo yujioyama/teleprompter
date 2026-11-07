@@ -11,6 +11,8 @@ export const videoRecordSchema = z.object({
   hookLine: z.string().max(1_000),
   /** ISO timestamp of the save. */
   savedAt: z.string().max(40),
+  /** ISO time a reserved post goes out; absent when it went out at once or was only saved. */
+  postAt: z.string().max(40).optional(),
   durationSec: z.number().nonnegative(),
   shotCount: z.number().int().nonnegative(),
   effects: z.object({

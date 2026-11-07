@@ -21,12 +21,16 @@
 }
 
 .times {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
+.timeBtnWide {
+  grid-column: 1 / -1;
+}
+
 .timeBtn {
-  flex: 1;
   background: var(--surface2);
   color: var(--text);
   border: 1px solid var(--border);
