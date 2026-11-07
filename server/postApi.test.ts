@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BufferChannel, BufferClient, VideoPost } from './buffer.js'
 import { handlePostRequest, type PostDeps } from './postApi.js'
+import { createPostStore } from './postStore.js'
+import { createFakeRedis } from './testing/fakeRedis.js'
 
 const r2 = {
   accountId: 'acct',
@@ -135,5 +137,50 @@ describe('handlePostRequest with Threads', () => {
     const { results } = await (await handlePostRequest(post(publish()), withThreads(fetchImpl))).json()
     expect(results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(3)
     expect(results[3].ok).toBe(false)
+  })
+})
+
+describe('handlePostRequest, posting the same video again', () => {
+  const POST_ID = '7f0c4d0e-8a4f-4e57-9a43-2a0e4d1f6b21'
+
+  function withStore() {
+    const posts = createPostStore(createFakeRedis().redis)
+    return { posts, deps: deps({ posts: () => posts }) }
+  }
+
+  it('keeps each result, and the status action gives them back', async () => {
+    const { posts, deps: d } = withStore()
+    await handlePostRequest(post(publish({ postId: POST_ID })), d)
+    expect((await posts.results(POST_ID)).map(r => r.service).sort()).toEqual(['instagram', 'tiktok', 'twitter'])
+    const res = await handlePostRequest(post({ action: 'status', postId: POST_ID }), d)
+    expect((await res.json()).results).toHaveLength(3)
+  })
+
+  it('sends only to the networks that failed or were not reached', async () => {
+    const { posts, deps: d } = withStore()
+    await posts.save(POST_ID, { service: 'instagram', name: 'yuji', ok: true })
+    await posts.save(POST_ID, { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' })
+    const res = await handlePostRequest(post(publish({ postId: POST_ID })), d)
+    expect(posted.map(p => p.channel.service)).toEqual(['tiktok', 'twitter'])
+    const { results } = await res.json()
+    expect(results.map((r: { service: string; ok: boolean }) => [r.service, r.ok])).toEqual([
+      ['instagram', true],
+      ['tiktok', true],
+      ['twitter', true],
+    ])
+  })
+
+  it('sends nothing when every network already has it', async () => {
+    const { posts, deps: d } = withStore()
+    for (const service of ['instagram', 'tiktok', 'twitter']) await posts.save(POST_ID, { service, name: 'yuji', ok: true })
+    await handlePostRequest(post(publish({ postId: POST_ID })), d)
+    expect(posted).toEqual([])
+  })
+
+  it('posts each time without a post id, as before', async () => {
+    const { deps: d } = withStore()
+    await handlePostRequest(post(publish()), d)
+    await handlePostRequest(post(publish()), d)
+    expect(posted).toHaveLength(6)
   })
 })
