@@ -57,7 +57,7 @@ async function api<T>(key: string, body: unknown): Promise<T> {
 }
 
 /** PUT the video to the presigned URL, reporting progress 0-1. */
-function upload(url: string, video: Blob, onProgress: (ratio: number) => void): Promise<void> {
+function putVideo(url: string, video: Blob, onProgress: (ratio: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', url)
@@ -89,6 +89,12 @@ export function diagnose(check: R2Check): string {
 
 export interface PostOptions {
   key: string
+  /** This video's post: sending it again skips the networks that already have it. */
+  postId: string
+  /** The video already uploaded for this post, so a retry doesn't upload it again. */
+  uploadedUrl?: string
+  /** Told the uploaded URL as soon as the upload is done. */
+  onUploaded?: (videoUrl: string) => void
   video: Blob
   caption: string
   time: PostTime
@@ -98,21 +104,36 @@ export interface PostOptions {
 }
 
 export async function postToSns(options: PostOptions): Promise<ChannelResult[]> {
-  const { uploadUrl, videoUrl } = await api<{ uploadUrl: string; videoUrl: string }>(options.key, { action: 'upload' })
-  try {
-    await upload(uploadUrl, options.video, options.onUploadProgress)
-  } catch (err) {
-    // The browser can't see why R2 refused: ask the server to try the same and say.
-    const why = await api<R2Check>(options.key, { action: 'check' }).then(diagnose, () => null)
-    throw new Error([err instanceof Error ? err.message : String(err), why].filter(Boolean).join('\n'))
+  let videoUrl = options.uploadedUrl
+  if (!videoUrl) {
+    const upload = await api<{ uploadUrl: string; videoUrl: string }>(options.key, { action: 'upload' })
+    try {
+      await putVideo(upload.uploadUrl, options.video, options.onUploadProgress)
+    } catch (err) {
+      // The browser can't see why R2 refused: ask the server to try the same and say.
+      const why = await api<R2Check>(options.key, { action: 'check' }).then(diagnose, () => null)
+      throw new Error([err instanceof Error ? err.message : String(err), why].filter(Boolean).join('\n'))
+    }
+    videoUrl = upload.videoUrl
+    options.onUploaded?.(videoUrl)
   }
   const when = options.time === 'now' ? 'now' : nextSlot(options.time, options.now).toISOString()
   const { results } = await api<{ results: ChannelResult[] }>(options.key, {
     action: 'publish',
+    postId: options.postId,
     videoUrl,
     caption: options.caption,
     when,
     thumbnailOffsetMs: options.thumbnailOffsetMs,
   })
+  return results
+}
+
+/**
+ * What the server has sent for this post so far: the answer to a publish
+ * the app lost (it went to the background while waiting). Empty when nothing was sent.
+ */
+export async function postStatus(key: string, postId: string): Promise<ChannelResult[]> {
+  const { results } = await api<{ results: ChannelResult[] }>(key, { action: 'status', postId })
   return results
 }
