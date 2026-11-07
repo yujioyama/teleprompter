@@ -38,6 +38,11 @@ export interface ChannelResult {
 
 type Fetch = typeof fetch
 
+interface ScheduledPage {
+  edges?: { node: { dueAt?: string | null; channelService: string } }[] | null
+  pageInfo: { hasNextPage: boolean; endCursor?: string | null }
+}
+
 export class BufferError extends Error {}
 
 export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
@@ -55,19 +60,50 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
     return body.data
   }
 
-  /** Every channel in every organization of the account. */
-  async function channels(): Promise<BufferChannel[]> {
+  async function organizationIds(): Promise<string[]> {
     const { account } = await graphql<{ account: { organizations: { id: string }[] } }>(
       'query { account { organizations { id } } }',
     )
+    return account.organizations.map(org => org.id)
+  }
+
+  /** Every channel in every organization of the account. */
+  async function channels(): Promise<BufferChannel[]> {
     const lists = await Promise.all(
-      account.organizations.map(org =>
+      (await organizationIds()).map(org =>
         graphql<{ channels: BufferChannel[] }>(
           'query Channels($org: OrganizationId!) { channels(input: { organizationId: $org }) { id service name isLocked isDisconnected } }',
-          { org: org.id },
+          { org },
         ).then(d => d.channels),
       ),
     )
+    return lists.flat()
+  }
+
+  async function scheduledIn(organizationId: string, start: string, end: string): Promise<string[]> {
+    const times: string[] = []
+    let after: string | null = null
+    do {
+      const { posts }: { posts: ScheduledPage } = await graphql<{ posts: ScheduledPage }>(
+        `query Scheduled($input: PostsInput!, $after: String) {
+          posts(first: 100, after: $after, input: $input) {
+            edges { node { dueAt channelService } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`,
+        { after, input: { organizationId, filter: { status: ['scheduled'], dueAt: { start, end } } } },
+      )
+      for (const { node } of posts.edges ?? []) {
+        if (node.dueAt && (POSTED_SERVICES as readonly string[]).includes(node.channelService)) times.push(node.dueAt)
+      }
+      after = posts.pageInfo.hasNextPage ? (posts.pageInfo.endCursor ?? null) : null
+    } while (after)
+    return times
+  }
+
+  /** When the reserved posts to the posted networks go out, between two ISO times. */
+  async function scheduledTimes(start: string, end: string): Promise<string[]> {
+    const lists = await Promise.all((await organizationIds()).map(org => scheduledIn(org, start, end)))
     return lists.flat()
   }
 
@@ -106,7 +142,7 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
     }
   }
 
-  return { channels, createVideoPost }
+  return { channels, scheduledTimes, createVideoPost }
 }
 
 export type BufferClient = ReturnType<typeof createBufferClient>

@@ -45,7 +45,7 @@ import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
 import PostToSns from '../components/PostToSns'
-import { coverOffsetMs } from '../utils/postToSns'
+import { coverOffsetMs, youtubeScheduleHint } from '../utils/postToSns'
 import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
 import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
@@ -231,6 +231,8 @@ export default function FinalizePage() {
   const autoCoverForRef = useRef<string | null>(null)
   // Which of the two versions the export step's preview plays.
   const [previewYoutube, setPreviewYoutube] = useState(false)
+  // The time 投稿する reserved this video at, for YouTube to be scheduled at by hand.
+  const [reservation, setReservation] = useState<{ video: Blob | null; at: string } | null>(null)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
@@ -911,21 +913,22 @@ export default function FinalizePage() {
 
   // Saving the video is "this is the version": record how it was made,
   // without holding up or failing the save.
-  function recordSavedVideo() {
+  function recordSavedVideo(postAt?: string) {
     if (!settings.inboxKey) return
     try {
-      sendVideoRecord(settings.inboxKey)
+      sendVideoRecord(settings.inboxKey, postAt)
     } catch (err) {
       console.warn('[FinalizePage] could not build the video record:', err)
     }
   }
 
   // Built from what the burn and the mix actually used (see buildVideoRecord).
-  function sendVideoRecord(key: string) {
+  function sendVideoRecord(key: string, postAt?: string) {
     if (!script) return
     const record = buildVideoRecord({
       script,
       savedAt: new Date().toISOString(),
+      postAt,
       durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
       shotCount: combinedClips.length,
       burn: burnedBlob ? burnInputs : null,
@@ -1291,12 +1294,18 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 ready={savable && coverFrameState !== 'inserting'}
                 coverOffsetMs={postCoverOffsetMs}
-                onPosted={recordSavedVideo}
+                onPosted={postAt => {
+                  setReservation(postAt ? { video: exportBlob, at: postAt } : null)
+                  recordSavedVideo(postAt)
+                }}
               />
               {youtubeEnabled && youtubeState !== 'failed' && (
                 <button className={styles.copyCaptionBtn} onClick={handleShareYoutube} disabled={!youtubeBlob}>
                   {youtubeBlob ? 'YouTubeに投稿（共有シートで YouTube を選ぶ）' : 'YouTube用を作っています...'}
                 </button>
+              )}
+              {youtubeEnabled && youtubeState !== 'failed' && reservation?.video === exportBlob && (
+                <p className={styles.youtubeScheduleHint}>{youtubeScheduleHint(reservation.at)}</p>
               )}
               {combinedUrl && (
                 <button className={styles.copyCaptionBtn} onClick={() => setCoverOpen(open => !open)}>

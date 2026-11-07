@@ -16,12 +16,15 @@ const NOW = new Date('2026-11-07T00:00:00Z')
 const VIDEO = 'https://pub-abc.r2.dev/posts/2026-11-07/x.mp4'
 
 let posted: { channel: BufferChannel; post: VideoPost }[]
+let booked: string[]
 let buffer: BufferClient
 
 beforeEach(() => {
   vi.stubEnv('INBOX_SECRET', 'secret')
   posted = []
+  booked = []
   buffer = {
+    scheduledTimes: async () => booked,
     channels: async () => [
       { id: 'ig', service: 'instagram', name: 'yuji', isLocked: false, isDisconnected: false },
       { id: 'tt', service: 'tiktok', name: 'yuji', isLocked: false, isDisconnected: false },
@@ -96,6 +99,50 @@ describe('handlePostRequest', () => {
     expect((await handlePostRequest(post(publish({ videoUrl: 'https://evil.example/v.mp4' })), deps())).status).toBe(400)
     expect((await handlePostRequest(post({ action: 'publish' }), deps())).status).toBe(400)
     expect(posted).toEqual([])
+  })
+})
+
+describe('handlePostRequest freeSlot', () => {
+  const SLOTS = ['2026-11-07T03:00:00.000Z', '2026-11-07T11:00:00.000Z', '2026-11-08T03:00:00.000Z']
+  const ask = async (candidates: string[], extra: Partial<PostDeps> = {}) => {
+    const res = await handlePostRequest(post({ action: 'freeSlot', candidates }), deps(extra))
+    return { status: res.status, body: await res.json() }
+  }
+
+  it('gives the first slot with nothing reserved at that minute', async () => {
+    expect((await ask(SLOTS)).body).toEqual({ slot: SLOTS[0] })
+    booked = ['2026-11-07T03:00:30.000Z']
+    expect((await ask(SLOTS)).body).toEqual({ slot: SLOTS[1] })
+    booked = [SLOTS[0], SLOTS[1]]
+    expect((await ask(SLOTS)).body).toEqual({ slot: SLOTS[2] })
+  })
+
+  it('says none when every slot is taken', async () => {
+    booked = SLOTS
+    expect(await ask(SLOTS)).toEqual({ status: 200, body: { slot: null } })
+  })
+
+  it('skips a slot that has passed', async () => {
+    expect((await ask(['2026-11-06T03:00:00.000Z', SLOTS[1]])).body).toEqual({ slot: SLOTS[1] })
+  })
+
+  it('takes the times as sent, in any offset, whatever order', async () => {
+    booked = [SLOTS[0]]
+    expect((await ask(['2026-11-07T20:00:00+09:00', '2026-11-07T12:00:00+09:00'])).body).toEqual({ slot: '2026-11-07T20:00:00+09:00' })
+  })
+
+  it('says why when Buffer cannot be asked, rather than guessing a free slot', async () => {
+    buffer.scheduledTimes = async () => {
+      throw new Error('Buffer API: down')
+    }
+    expect(await ask(SLOTS)).toEqual({ status: 502, body: { error: 'Buffer API: down' } })
+    expect((await ask(SLOTS, { buffer: () => null })).status).toBe(503)
+  })
+
+  it('refuses a bad list', async () => {
+    expect((await ask([])).status).toBe(400)
+    expect((await ask(['tomorrow'])).status).toBe(400)
+    expect((await ask(Array(11).fill(SLOTS[0]))).status).toBe(400)
   })
 })
 

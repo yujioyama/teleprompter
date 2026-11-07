@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { postStatus, postTimeLabel, postToSns, serviceLabel, type ChannelResult, type PostTime } from '../utils/postToSns'
+import {
+  nextFreeSlot,
+  nextSlot,
+  postStatus,
+  postTimeLabel,
+  postToSns,
+  serviceLabel,
+  whenLabel,
+  type ChannelResult,
+  type PostTime,
+  type PostWhen,
+} from '../utils/postToSns'
 import styles from './PostToSns.module.css'
 
 interface Props {
@@ -12,32 +23,39 @@ interface Props {
   ready: boolean
   /** Which frame Instagram and TikTok should show as the cover (ms), or undefined for their default. */
   coverOffsetMs: () => Promise<number | undefined>
-  /** Posted: the video went out, like 保存する (it records how it was made). */
-  onPosted: () => void
+  /** Posted: the video went out, like 保存する (it records how it was made). postAt is the reserved time, if any. */
+  onPosted: (postAt?: string) => void
 }
 
 type State =
   | { kind: 'idle' }
+  | { kind: 'finding' }
   | { kind: 'uploading'; ratio: number }
   | { kind: 'sending' }
-  | { kind: 'done'; results: ChannelResult[]; time: PostTime; recovered: boolean }
+  | { kind: 'done'; results: ChannelResult[]; when: PostWhen; recovered: boolean }
   | { kind: 'failed'; message: string }
 
-const TIMES: PostTime[] = ['now', 12, 20]
+const TIMES: PostTime[] = ['now', 12, 20, 'free']
+const NO_FREE_SLOT = '次の空きがありません。5日先まで埋まっています'
 
 /** Threads processes the video first, so a post sent now shows up a minute or so later. */
-function okLabel(service: string, time: PostTime): string {
-  if (time !== 'now') return `${postTimeLabel(time)}に予約しました`
+function okLabel(service: string, when: PostWhen): string {
+  if (when !== 'now') return `${whenLabel(new Date(when))}に予約しました`
   return service === 'threads' ? '送りました（動画の処理後、1〜2分で出ます）' : '送りました'
+}
+
+function reservedAt(when: PostWhen): string | undefined {
+  return when === 'now' ? undefined : when
 }
 
 /**
  * 投稿する: Instagram, TikTok and X through Buffer, and Threads by its own API, in one tap — right away
- * or at the next 12:00 / 20:00. The caption is the one Claude sent.
+ * at the next 12:00 / 20:00, or at the next of those nothing is reserved at
+ * (次の空き). The caption is the one Claude sent.
  *
  * Each video has one post id: pressing again (after one network failed, or
  * after the app went to the background and lost the answer) only sends to
- * the networks that don't have it yet, and a lost answer is asked for again
+ * the networks that don't have it yet, at the time first chosen, and a lost answer is asked for again
  * when the app comes back.
  */
 export default function PostToSns({ video, caption, inboxKey, ready, coverOffsetMs, onPosted }: Props) {
@@ -47,7 +65,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
   const uploadedRef = useRef<string | undefined>(undefined)
   // A publish went out for this post id: its answer may be lost, not missing.
   const sentRef = useRef(false)
-  const timeSentRef = useRef<PostTime>('now')
+  const whenRef = useRef<PostWhen>('now')
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -72,7 +90,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inboxKey])
 
-  const busy = state.kind === 'uploading' || state.kind === 'sending'
+  const busy = state.kind === 'finding' || state.kind === 'uploading' || state.kind === 'sending'
   const results = state.kind === 'done' ? state.results : []
   const allSent = results.length > 0 && results.every(r => r.ok)
   const someFailed = results.some(r => !r.ok)
@@ -91,8 +109,8 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     try {
       const found = await postStatus(inboxKey, postIdRef.current)
       if (found.length > 0) {
-        setState({ kind: 'done', results: found, time: timeSentRef.current, recovered: true })
-        if (found.some(r => r.ok)) onPosted()
+        setState({ kind: 'done', results: found, when: whenRef.current, recovered: true })
+        if (found.some(r => r.ok)) onPosted(reservedAt(whenRef.current))
         return true
       }
     } catch {
@@ -102,20 +120,40 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     return false
   }
 
+  /** The time this choice means now; null (with the reason on screen) when it has none. */
+  async function chooseWhen(): Promise<PostWhen | null> {
+    if (time === 'now') return 'now'
+    if (time !== 'free') return nextSlot(time).toISOString()
+    setState({ kind: 'finding' })
+    try {
+      const slot = await nextFreeSlot(inboxKey)
+      if (!slot) setState({ kind: 'failed', message: NO_FREE_SLOT })
+      return slot
+    } catch (err) {
+      setState({ kind: 'failed', message: err instanceof Error ? err.message : String(err) })
+      return null
+    }
+  }
+
   async function handlePost() {
     if (!video || busy || allSent) return
-    const label = postTimeLabel(time)
     const retry = sentRef.current
+    // A retry goes out with the first try, so all the networks post together.
+    const when = retry ? whenRef.current : await chooseWhen()
+    if (when === null) return
     const ask = retry
       ? 'まだ届いていないSNSにだけ送ります（投稿済みのSNSには送りません）。よろしいですか？'
-      : time === 'now'
+      : when === 'now'
         ? 'Instagram・TikTok・X・Threadsに今すぐ投稿しますか？'
-        : `Instagram・TikTok・X・Threadsに${label}で予約しますか？`
-    if (!window.confirm(caption ? ask : `${ask}\n（キャプションがありません）`)) return
+        : `Instagram・TikTok・X・Threadsに${whenLabel(new Date(when))}で予約しますか？`
+    if (!window.confirm(caption ? ask : `${ask}\n（キャプションがありません）`)) {
+      setState(s => (s.kind === 'finding' ? { kind: 'idle' } : s))
+      return
+    }
+    whenRef.current = when
     setState(uploadedRef.current ? { kind: 'sending' } : { kind: 'uploading', ratio: 0 })
     try {
       const thumbnailOffsetMs = await coverOffsetMs()
-      const sentTime = time
       const posted = await postToSns({
         key: inboxKey,
         postId: postIdRef.current,
@@ -123,18 +161,17 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
         onUploaded: url => {
           uploadedRef.current = url
           sentRef.current = true
-          timeSentRef.current = sentTime
           setState({ kind: 'sending' })
         },
         video,
         caption,
-        time,
+        when,
         thumbnailOffsetMs,
         onUploadProgress: ratio => setState(s => (s.kind === 'uploading' ? { kind: 'uploading', ratio } : s)),
       })
       sentRef.current = true
-      setState({ kind: 'done', results: posted, time: sentTime, recovered: false })
-      if (posted.some(r => r.ok)) onPosted()
+      setState({ kind: 'done', results: posted, when, recovered: false })
+      if (posted.some(r => r.ok)) onPosted(reservedAt(when))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // The publish may have gone through with only its answer lost.
@@ -160,7 +197,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
           <button
             key={t}
             type="button"
-            className={`${styles.timeBtn} ${time === t ? styles.timeBtnActive : ''}`}
+            className={`${styles.timeBtn} ${t === 'free' ? styles.timeBtnWide : ''} ${time === t ? styles.timeBtnActive : ''}`}
             aria-pressed={time === t}
             disabled={busy || sentRef.current}
             onClick={() => setTime(t)}
@@ -172,6 +209,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
       <button className={styles.postBtn} onClick={handlePost} disabled={!video || !ready || busy || allSent}>
         {buttonLabel}
       </button>
+      {state.kind === 'finding' && <p className={styles.status}>空いている枠を探しています...</p>}
       {state.kind === 'uploading' && (
         <p className={styles.status}>動画をアップロード中... {Math.round(state.ratio * 100)}%（終わるまでこの画面のままにしてください）</p>
       )}
@@ -184,7 +222,7 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
         <ul className={styles.results}>
           {state.results.map(r => (
             <li key={r.service} className={r.ok ? undefined : styles.failed}>
-              {serviceLabel(r.service)}: {r.ok ? okLabel(r.service, state.time) : `失敗（${r.message}）`}
+              {serviceLabel(r.service)}: {r.ok ? okLabel(r.service, state.when) : `失敗（${r.message}）`}
             </li>
           ))}
         </ul>

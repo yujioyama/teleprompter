@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FREE_SLOT_COUNT } from '../shared/posting.js'
 import { channelsToPost, type BufferClient, type ChannelResult } from './buffer.js'
 import { withAuthedJson } from './http.js'
 import type { PostStore } from './postStore.js'
@@ -9,7 +10,7 @@ import { threadsJobUrl, type ThreadsJob } from './threadsJobApi.js'
 // 投稿する: the app asks for somewhere to upload the finished video
 // (action "upload"), PUTs it there, then asks for it to be posted through
 // Buffer to Instagram, TikTok and X, and to Threads by its own API
-// (action "publish").
+// (action "publish"). "freeSlot" picks the next slot nothing is reserved at.
 
 /** Threads takes at most 500 characters. */
 export const THREADS_TEXT_LIMIT = 500
@@ -31,6 +32,11 @@ const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('check') }),
   /** What a post has sent so far: for the app that lost the publish answer. */
   z.object({ action: z.literal('status'), postId: z.string().uuid() }),
+  /** The first of these times (the app's next 12:00s and 20:00s) with nothing reserved. */
+  z.object({
+    action: z.literal('freeSlot'),
+    candidates: z.array(z.string().datetime({ offset: true })).min(1).max(FREE_SLOT_COUNT),
+  }),
   z.object({
     action: z.literal('publish'),
     /** The app's id for this video's post: publishing it again skips the networks that already have it. */
@@ -42,6 +48,15 @@ const bodySchema = z.discriminatedUnion('action', [
     thumbnailOffsetMs: z.number().nonnegative().max(60 * 60 * 1000).optional(),
   }),
 ])
+
+const MINUTE_MS = 60_000
+
+/** The first candidate still ahead with no reservation in the same minute; null when there is none. */
+export function firstFreeSlot(candidates: string[], reserved: string[], now: Date): string | null {
+  const taken = new Set(reserved.map(at => Math.floor(Date.parse(at) / MINUTE_MS)))
+  const ahead = candidates.filter(at => Date.parse(at) > now.getTime()).sort((a, b) => Date.parse(a) - Date.parse(b))
+  return ahead.find(at => !taken.has(Math.floor(Date.parse(at) / MINUTE_MS))) ?? null
+}
 
 export function handlePostRequest(request: Request, deps: PostDeps): Promise<Response> {
   return withAuthedJson(request, 'post', async () => {
@@ -58,6 +73,7 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
     if (body.action === 'check') return Response.json(await checkR2(r2, deps.fetch, now))
     const posts = deps.posts?.() ?? null
     if (body.action === 'status') return Response.json({ results: posts ? await posts.results(body.postId) : [] })
+    if (body.action === 'freeSlot') return freeSlot(deps.buffer(), body.candidates, now)
 
     // Only videos this app uploaded: the endpoint never posts someone else's URL.
     if (!body.videoUrl.startsWith(`${r2.publicUrl}/posts/`)) {
@@ -102,6 +118,21 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
     const results = [...done.values(), ...sent]
     return Response.json({ results })
   })
+}
+
+/** Buffer's own list is the truth: a post deleted or moved there frees its slot. */
+async function freeSlot(buffer: BufferClient | null, candidates: string[], now: Date): Promise<Response> {
+  if (!buffer) return Response.json({ error: 'Buffer is not configured' }, { status: 503 })
+  const times = candidates.map(at => Date.parse(at))
+  try {
+    const reserved = await buffer.scheduledTimes(
+      new Date(Math.min(...times)).toISOString(),
+      new Date(Math.max(...times) + MINUTE_MS).toISOString(),
+    )
+    return Response.json({ slot: firstFreeSlot(candidates, reserved, now) })
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 })
+  }
 }
 
 /** Hand the Threads post to QStash: it calls /api/threads now, or at the post time. */
