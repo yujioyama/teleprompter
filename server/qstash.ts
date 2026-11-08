@@ -23,14 +23,14 @@ export function qstashConfigFromEnv(): QStashConfig | null {
 
 export type Delivery = { delaySeconds: number } | { notBefore: Date }
 
-/** Have QStash POST `body` (as JSON) to `destination` now, after a delay, or at a time. */
+/** Have QStash POST `body` (as JSON) to `destination` now, after a delay, or at a time; gives the message id. */
 export async function enqueue(
   config: QStashConfig,
   destination: string,
   body: unknown,
   delivery: Delivery,
   fetchImpl: typeof fetch = fetch,
-): Promise<void> {
+): Promise<string | undefined> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${config.token}`,
     'Content-Type': 'application/json',
@@ -47,6 +47,17 @@ export async function enqueue(
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`QStash publish failed: HTTP ${res.status} ${await res.text().catch(() => '')}`)
+  const sent = (await res.json().catch(() => null)) as { messageId?: unknown } | null
+  return typeof sent?.messageId === 'string' ? sent.messageId : undefined
+}
+
+/** Call off a message QStash has not delivered yet; throws when it can't (already delivered, or refused). */
+export async function cancelMessage(config: QStashConfig, messageId: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const res = await fetchImpl(`${config.url}/v2/messages/${encodeURIComponent(messageId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${config.token}` },
+  })
+  if (!res.ok) throw new Error(`QStash cancel failed: HTTP ${res.status} ${await res.text().catch(() => '')}`)
 }
 
 function base64url(value: Buffer): string {

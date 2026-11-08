@@ -34,6 +34,8 @@ export interface ChannelResult {
   /** Buffer's error, when it refused the post. */
   message?: string
   dueAt?: string
+  /** What undoes the post: Buffer's post id, or the QStash message id for Threads. */
+  ref?: string
 }
 
 type Fetch = typeof fetch
@@ -135,14 +137,28 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
         }`,
         { input },
       )
-      if (createPost.post) return { ...base, ok: true, dueAt: createPost.post.dueAt ?? undefined }
+      if (createPost.post) return { ...base, ok: true, dueAt: createPost.post.dueAt ?? undefined, ref: createPost.post.id }
       return { ...base, ok: false, message: createPost.message ?? '不明なエラー' }
     } catch (err) {
       return { ...base, ok: false, message: err instanceof Error ? err.message : String(err) }
     }
   }
 
-  return { channels, scheduledTimes, createVideoPost }
+  /** Take a reserved post back out of Buffer; throws when Buffer refuses. */
+  async function deletePost(id: string): Promise<void> {
+    const { deletePost } = await graphql<{ deletePost: { id?: string; message?: string } }>(
+      `mutation Delete($input: DeletePostInput!) {
+        deletePost(input: $input) {
+          ... on DeletePostSuccess { id }
+          ... on MutationError { message }
+        }
+      }`,
+      { input: { id } },
+    )
+    if (!deletePost.id) throw new BufferError(`Buffer API: ${deletePost.message ?? '不明なエラー'}`)
+  }
+
+  return { channels, scheduledTimes, createVideoPost, deletePost }
 }
 
 export type BufferClient = ReturnType<typeof createBufferClient>

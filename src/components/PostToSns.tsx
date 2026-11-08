@@ -11,6 +11,7 @@ import {
   type PostTime,
   type PostWhen,
 } from '../utils/postToSns'
+import { NOW_DELAY_MINUTES } from '../../shared/posting'
 import styles from './PostToSns.module.css'
 
 interface Props {
@@ -38,10 +39,15 @@ type State =
 const TIMES: PostTime[] = ['now', 12, 20, 'free']
 const NO_FREE_SLOT = '次の空きがありません。5日先まで埋まっています'
 
-/** Threads processes the video first, so a post sent now shows up a minute or so later. */
+/**
+ * 今すぐ is held NOW_DELAY_MINUTES so a failure can take it back; Threads
+ * processes the video after that, so it shows up a minute or two later still.
+ */
 function okLabel(service: string, when: PostWhen): string {
   if (when !== 'now') return `${whenLabel(new Date(when))}に予約しました`
-  return service === 'threads' ? '送りました（動画の処理後、1〜2分で出ます）' : '送りました'
+  return service === 'threads'
+    ? `送りました（${NOW_DELAY_MINUTES}分後に動画の処理が始まり、その1〜2分後に出ます）`
+    : `送りました（${NOW_DELAY_MINUTES}分後に出ます）`
 }
 
 function reservedAt(when: PostWhen): string | undefined {
@@ -52,6 +58,9 @@ function reservedAt(when: PostWhen): string | undefined {
  * 投稿する: Instagram, TikTok and X through Buffer, and Threads by its own API, in one tap — right away
  * at the next 12:00 / 20:00, or at the next of those nothing is reserved at
  * (次の空き). The caption is the one Claude sent.
+ *
+ * All or nothing: when one network fails, the server takes the others back,
+ * and pressing again sends to all of them.
  *
  * Each video has one post id: pressing again (after one network failed, or
  * after the app went to the background and lost the answer) only sends to
@@ -94,6 +103,8 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
   const results = state.kind === 'done' ? state.results : []
   const allSent = results.length > 0 && results.every(r => r.ok)
   const someFailed = results.some(r => !r.ok)
+  // One failed and the rest were taken back: nothing went out.
+  const noneSent = someFailed && !results.some(r => r.ok)
 
   if (!inboxKey) {
     return (
@@ -141,7 +152,9 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     // A retry goes out with the first try, so all the networks post together.
     const when = retry ? whenRef.current : await chooseWhen()
     if (when === null) return
-    const ask = retry
+    const ask = noneSent
+      ? 'もう一度、すべてのSNSに送ります。よろしいですか？'
+      : retry
       ? 'まだ届いていないSNSにだけ送ります（投稿済みのSNSには送りません）。よろしいですか？'
       : when === 'now'
         ? 'Instagram・TikTok・X・Threadsに今すぐ投稿しますか？'
@@ -181,7 +194,9 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
 
   const buttonLabel = allSent
     ? '投稿しました'
-    : someFailed
+    : noneSent
+      ? 'もう一度投稿する'
+      : someFailed
       ? '失敗したものだけ送り直す'
       : state.kind === 'failed' && sentRef.current
         ? 'もう一度試す（投稿済みのSNSには送りません）'
@@ -222,14 +237,19 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
         <ul className={styles.results}>
           {state.results.map(r => (
             <li key={r.service} className={r.ok ? undefined : styles.failed}>
-              {serviceLabel(r.service)}: {r.ok ? okLabel(r.service, state.when) : `失敗（${r.message}）`}
+              {serviceLabel(r.service)}:{' '}
+              {r.ok ? okLabel(r.service, state.when) + (r.message ? `。${r.message}` : '') : `失敗（${r.message}）`}
             </li>
           ))}
         </ul>
       )}
+      {state.kind === 'done' && noneSent && (
+        <p className={`${styles.status} ${styles.failed}`}>失敗したSNSがあったので、どこにも投稿していません</p>
+      )}
       {state.kind === 'done' && state.recovered && (
         <p className={styles.status}>途中で通信が切れたので、結果をサーバーから取り直しました</p>
       )}
+      <span className={styles.sub}>どれか1つでも失敗したら、全部取り消します</span>
       <span className={styles.sub}>YouTubeは下の「YouTubeに投稿」から（YouTube用も書き出すをオンにすると出ます）</span>
     </div>
   )

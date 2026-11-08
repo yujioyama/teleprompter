@@ -39,7 +39,7 @@ describe('PostToSns', () => {
     ])
     const onPosted = renderPost()
     fireEvent.click(screen.getByText('今すぐ投稿する'))
-    expect(await screen.findByText('X: 送りました')).toBeInTheDocument()
+    expect(await screen.findByText('X: 送りました（2分後に出ます）')).toBeInTheDocument()
     expect(screen.getByText('投稿しました')).toBeDisabled()
     expect(onPosted).toHaveBeenCalledTimes(1)
   })
@@ -52,7 +52,7 @@ describe('PostToSns', () => {
     vi.mocked(postStatus).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
     renderPost()
     fireEvent.click(screen.getByText('今すぐ投稿する'))
-    expect(await screen.findByText('TikTok: 送りました')).toBeInTheDocument()
+    expect(await screen.findByText('TikTok: 送りました（2分後に出ます）')).toBeInTheDocument()
     expect(screen.getByText(/結果をサーバーから取り直しました/)).toBeInTheDocument()
     expect(vi.mocked(postStatus).mock.calls[0][1]).toBe(vi.mocked(postToSns).mock.calls[0][0].postId)
   })
@@ -70,7 +70,7 @@ describe('PostToSns', () => {
     vi.mocked(postStatus).mockResolvedValue([{ service: 'instagram', name: 'yuji', ok: true }])
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
-    expect(await screen.findByText('Instagram: 送りました')).toBeInTheDocument()
+    expect(await screen.findByText('Instagram: 送りました（2分後に出ます）')).toBeInTheDocument()
     expect(screen.getByText('投稿しました')).toBeDisabled()
     expect(postToSns).toHaveBeenCalledTimes(1)
   })
@@ -91,7 +91,39 @@ describe('PostToSns', () => {
     const [first, second] = vi.mocked(postToSns).mock.calls.map(c => c[0])
     expect(second.postId).toBe(first.postId)
     expect(second.uploadedUrl).toBe('https://pub.r2.dev/posts/v.mp4')
-    expect(await screen.findByText('TikTok: 送りました')).toBeInTheDocument()
+    expect(await screen.findByText('TikTok: 送りました（2分後に出ます）')).toBeInTheDocument()
+  })
+
+  it('says nothing went out when one failed and the rest were taken back, and sends to all again', async () => {
+    vi.mocked(postToSns).mockResolvedValue([{ service: 'instagram', name: 'yuji', ok: true }])
+    vi.mocked(postToSns).mockImplementationOnce(async (options: PostOptions) => {
+      options.onUploaded?.('https://pub.r2.dev/posts/v.mp4')
+      return [
+        { service: 'instagram', name: 'yuji', ok: false, message: '他のSNSが失敗したので取り消しました' },
+        { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' },
+      ]
+    })
+    const onPosted = renderPost()
+    fireEvent.click(screen.getByText('今すぐ投稿する'))
+    expect(await screen.findByText('失敗したSNSがあったので、どこにも投稿していません')).toBeInTheDocument()
+    expect(screen.getByText('Instagram: 失敗（他のSNSが失敗したので取り消しました）')).toBeInTheDocument()
+    expect(onPosted).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('もう一度投稿する'))
+    expect(window.confirm).toHaveBeenLastCalledWith(expect.stringContaining('すべてのSNSに送ります'))
+    expect(await screen.findByText('Instagram: 送りました（2分後に出ます）')).toBeInTheDocument()
+  })
+
+  it('says so when a network could not be taken back', async () => {
+    vi.mocked(postToSns).mockResolvedValue([
+      { service: 'twitter', name: 'yuji', ok: true, message: '他のSNSが失敗しましたが、これは取り消せませんでした（down）' },
+      { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' },
+    ])
+    renderPost()
+    fireEvent.click(screen.getByText('今すぐ投稿する'))
+    expect(
+      await screen.findByText('X: 送りました（2分後に出ます）。他のSNSが失敗しましたが、これは取り消せませんでした（down）'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('失敗したものだけ送り直す')).toBeEnabled()
   })
 
   describe('次の空き', () => {
@@ -150,7 +182,7 @@ describe('PostToSns', () => {
       renderPost()
       fireEvent.click(screen.getByRole('button', { name: '次の空き' }))
       fireEvent.click(screen.getByText('次の空きに予約する'))
-      fireEvent.click(await screen.findByText('失敗したものだけ送り直す'))
+      fireEvent.click(await screen.findByText('もう一度投稿する'))
       await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(2))
       expect(vi.mocked(postToSns).mock.calls[1][0].when).toBe(SLOT)
       expect(nextFreeSlot).toHaveBeenCalledTimes(1)
@@ -166,7 +198,7 @@ describe('PostToSns', () => {
     renderPost()
     fireEvent.click(screen.getByRole('button', { name: /20:00/ }))
     fireEvent.click(screen.getByText(/20:00に予約する/))
-    fireEvent.click(await screen.findByText('失敗したものだけ送り直す'))
+    fireEvent.click(await screen.findByText('もう一度投稿する'))
     await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(2))
     const [first, second] = vi.mocked(postToSns).mock.calls.map(c => c[0])
     expect(new Date(first.when).getHours()).toBe(20)

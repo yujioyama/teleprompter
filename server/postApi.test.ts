@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BufferChannel, BufferClient, VideoPost } from './buffer.js'
-import { handlePostRequest, type PostDeps } from './postApi.js'
+import { handlePostRequest, ROLLED_BACK, type PostDeps } from './postApi.js'
 import { createPostStore } from './postStore.js'
 import { createFakeRedis } from './testing/fakeRedis.js'
 
@@ -16,12 +16,14 @@ const NOW = new Date('2026-11-07T00:00:00Z')
 const VIDEO = 'https://pub-abc.r2.dev/posts/2026-11-07/x.mp4'
 
 let posted: { channel: BufferChannel; post: VideoPost }[]
+let deleted: string[]
 let booked: string[]
 let buffer: BufferClient
 
 beforeEach(() => {
   vi.stubEnv('INBOX_SECRET', 'secret')
   posted = []
+  deleted = []
   booked = []
   buffer = {
     scheduledTimes: async () => booked,
@@ -32,7 +34,10 @@ beforeEach(() => {
     ],
     createVideoPost: async (channel, post) => {
       posted.push({ channel, post })
-      return { service: channel.service, name: channel.name, ok: true }
+      return { service: channel.service, name: channel.name, ok: true, ref: `post-${channel.id}` }
+    },
+    deletePost: async id => {
+      deleted.push(id)
     },
   }
 })
@@ -81,12 +86,45 @@ describe('handlePostRequest', () => {
     expect((await handlePostRequest(post(publish()), deps({ buffer: () => null }))).status).toBe(503)
   })
 
-  it('posts to Instagram, TikTok and X right away, with the cover frame', async () => {
+  it('posts to Instagram, TikTok and X two minutes out (今すぐ), with the cover frame', async () => {
     const res = await handlePostRequest(post(publish({ thumbnailOffsetMs: 0 })), deps())
     expect(res.status).toBe(200)
     expect((await res.json()).results).toHaveLength(3)
     expect(posted.map(p => p.channel.service)).toEqual(['instagram', 'tiktok', 'twitter'])
-    expect(posted[0].post).toEqual({ videoUrl: VIDEO, text: 'toast hurt my mouth again', when: { kind: 'now' }, thumbnailOffsetMs: 0 })
+    expect(posted[0].post).toEqual({
+      videoUrl: VIDEO,
+      text: 'toast hurt my mouth again',
+      when: { kind: 'at', dueAt: '2026-11-07T00:02:00.000Z' },
+      thumbnailOffsetMs: 0,
+    })
+    expect(deleted).toEqual([])
+  })
+
+  it('takes the others back when one network fails, so nothing goes out', async () => {
+    const create = buffer.createVideoPost
+    buffer.createVideoPost = async (channel, p) =>
+      channel.service === 'tiktok' ? { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' } : create(channel, p)
+    const { results } = await (await handlePostRequest(post(publish()), deps())).json()
+    expect(deleted.sort()).toEqual(['post-ig', 'post-x'])
+    expect(results).toEqual([
+      { service: 'instagram', name: 'yuji', ok: false, message: ROLLED_BACK },
+      { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' },
+      { service: 'twitter', name: 'yuji', ok: false, message: ROLLED_BACK },
+    ])
+  })
+
+  it('keeps a network it could not take back as sent, saying why', async () => {
+    const create = buffer.createVideoPost
+    buffer.createVideoPost = async (channel, p) =>
+      channel.service === 'tiktok' ? { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' } : create(channel, p)
+    buffer.deletePost = async id => {
+      if (id === 'post-x') throw new Error('Buffer API: down')
+      deleted.push(id)
+    }
+    const { results } = await (await handlePostRequest(post(publish()), deps())).json()
+    expect(results[0]).toMatchObject({ service: 'instagram', ok: false })
+    expect(results[2]).toMatchObject({ service: 'twitter', ok: true })
+    expect(results[2].message).toContain('取り消せませんでした（Buffer API: down）')
   })
 
   it('schedules at the time given, in UTC', async () => {
@@ -173,17 +211,41 @@ describe('handlePostRequest with Threads', () => {
     )
     const { results } = await res.json()
     expect(results.map((r: { service: string }) => r.service)).toEqual(['instagram', 'tiktok', 'twitter', 'threads'])
-    expect(results[3]).toEqual({ service: 'threads', name: 'Threads', ok: true, dueAt: '2026-11-07T11:00:00.000Z' })
+    expect(results[3]).toEqual({ service: 'threads', name: 'Threads', ok: true, dueAt: '2026-11-07T11:00:00.000Z', ref: 'm' })
     expect(sent[0].url).toBe('https://qstash.upstash.io/v2/publish/https://app.test/api/threads')
     expect(sent[0].init?.headers).toMatchObject({ 'Upstash-Not-Before': String(Date.parse('2026-11-07T11:00:00Z') / 1000) })
     expect(JSON.parse(String(sent[0].init?.body))).toEqual({ step: 'create', videoUrl: VIDEO, text: 'x'.repeat(500) })
   })
 
-  it('reports Threads as failed when QStash refuses, while the others still go', async () => {
+  it('holds 今すぐ two minutes for Threads too', async () => {
+    const sent: RequestInit[] = []
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sent.push(init!)
+      return Response.json({ messageId: 'm' })
+    }) as unknown as typeof fetch
+    await handlePostRequest(post(publish()), withThreads(fetchImpl))
+    expect(sent[0].headers).toMatchObject({ 'Upstash-Not-Before': String(Date.parse('2026-11-07T00:02:00Z') / 1000) })
+  })
+
+  it('takes the Buffer posts back when QStash refuses Threads', async () => {
     const fetchImpl = (async () => new Response('nope', { status: 401 })) as unknown as typeof fetch
     const { results } = await (await handlePostRequest(post(publish()), withThreads(fetchImpl))).json()
-    expect(results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(3)
+    expect(results.filter((r: { ok: boolean }) => r.ok)).toHaveLength(0)
     expect(results[3].ok).toBe(false)
+    expect(deleted.sort()).toEqual(['post-ig', 'post-tt', 'post-x'])
+  })
+
+  it('calls off the Threads job when a Buffer network fails', async () => {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init })
+      return Response.json({ messageId: 'msg-1' })
+    }) as unknown as typeof fetch
+    buffer.createVideoPost = async channel => ({ service: channel.service, name: channel.name, ok: false, message: 'busy' })
+    const { results } = await (await handlePostRequest(post(publish()), withThreads(fetchImpl))).json()
+    expect(calls[1].url).toBe('https://qstash.upstash.io/v2/messages/msg-1')
+    expect(calls[1].init?.method).toBe('DELETE')
+    expect(results[3]).toEqual({ service: 'threads', name: 'Threads', ok: false, message: ROLLED_BACK })
   })
 })
 
@@ -201,6 +263,19 @@ describe('handlePostRequest, posting the same video again', () => {
     expect((await posts.results(POST_ID)).map(r => r.service).sort()).toEqual(['instagram', 'tiktok', 'twitter'])
     const res = await handlePostRequest(post({ action: 'status', postId: POST_ID }), d)
     expect((await res.json()).results).toHaveLength(3)
+  })
+
+  it('keeps the taken-back results, so a retry sends to all of them', async () => {
+    const { posts, deps: d } = withStore()
+    const create = buffer.createVideoPost
+    buffer.createVideoPost = async (channel, p) =>
+      channel.service === 'tiktok' ? { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' } : create(channel, p)
+    await handlePostRequest(post(publish({ postId: POST_ID })), d)
+    expect((await posts.results(POST_ID)).every(r => !r.ok)).toBe(true)
+    buffer.createVideoPost = create
+    posted = []
+    await handlePostRequest(post(publish({ postId: POST_ID })), d)
+    expect(posted.map(p => p.channel.service)).toEqual(['instagram', 'tiktok', 'twitter'])
   })
 
   it('sends only to the networks that failed or were not reached', async () => {

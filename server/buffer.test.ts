@@ -78,7 +78,7 @@ describe('createBufferClient', () => {
       when: { kind: 'now' },
       thumbnailOffsetMs: 0,
     })
-    expect(result).toEqual({ service: 'instagram', name: 'instagram-name', ok: true, dueAt: '2026-11-07T03:00:00.000Z' })
+    expect(result).toEqual({ service: 'instagram', name: 'instagram-name', ok: true, dueAt: '2026-11-07T03:00:00.000Z', ref: 'p1' })
     const input = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body)).variables.input
     expect(input).toEqual({
       channelId: 'instagram-id',
@@ -124,5 +124,13 @@ describe('createBufferClient', () => {
     const result = await broken.createVideoPost(channel('tiktok'), { videoUrl: 'u', text: 't', when: { kind: 'now' } })
     expect(result.ok).toBe(false)
     expect(result.message).toContain('Unauthorized')
+  })
+
+  it('deletes a post by id, and throws when Buffer refuses', async () => {
+    const fetchImpl = fakeFetch(() => ({ data: { deletePost: { id: 'p1' } } }))
+    await createBufferClient('key', fetchImpl as unknown as typeof fetch).deletePost('p1')
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body)).variables).toEqual({ input: { id: 'p1' } })
+    const refused = createBufferClient('key', fakeFetch(() => ({ data: { deletePost: { message: 'Post already sent' } } })) as unknown as typeof fetch)
+    await expect(refused.deletePost('p1')).rejects.toThrow('Post already sent')
   })
 })
