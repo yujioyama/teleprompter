@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { enqueue, verifySignature, type QStashConfig } from './qstash.js'
+import { cancelMessage, enqueue, verifySignature, type QStashConfig } from './qstash.js'
 import { qstashSignature } from './testing/qstash.js'
 
 const config: QStashConfig = { token: 'qtok', url: 'https://qstash.upstash.io', currentSigningKey: 'cur', nextSigningKey: 'next' }
@@ -43,5 +43,22 @@ describe('enqueue', () => {
   it('throws when QStash refuses', async () => {
     const fetchImpl = vi.fn(async () => new Response('bad token', { status: 401 }))
     await expect(enqueue(config, URL_, {}, { delaySeconds: 0 }, fetchImpl as unknown as typeof fetch)).rejects.toThrow('401')
+  })
+})
+
+describe('cancelMessage', () => {
+  it('deletes the message, and throws when QStash refuses', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }))
+    await cancelMessage(config, 'msg_1', fetchImpl as unknown as typeof fetch)
+    const [url, init] = (fetchImpl.mock.calls as unknown as [string, RequestInit][])[0]
+    expect(url).toBe('https://qstash.upstash.io/v2/messages/msg_1')
+    expect(init).toMatchObject({ method: 'DELETE', headers: { Authorization: 'Bearer qtok' } })
+    const gone = vi.fn(async () => new Response('not found', { status: 404 }))
+    await expect(cancelMessage(config, 'msg_1', gone as unknown as typeof fetch)).rejects.toThrow('404')
+  })
+
+  it('gives back the message id from enqueue', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ messageId: 'msg_2' }))
+    expect(await enqueue(config, URL_, {}, { delaySeconds: 0 }, fetchImpl as unknown as typeof fetch)).toBe('msg_2')
   })
 })

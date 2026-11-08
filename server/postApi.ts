@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { FREE_SLOT_COUNT } from '../shared/posting.js'
+import { FREE_SLOT_COUNT, NOW_DELAY_MINUTES } from '../shared/posting.js'
 import { channelsToPost, type BufferClient, type ChannelResult } from './buffer.js'
 import { withAuthedJson } from './http.js'
 import type { PostStore } from './postStore.js'
-import { enqueue, type QStashConfig } from './qstash.js'
+import { cancelMessage, enqueue, type QStashConfig } from './qstash.js'
 import { checkR2, newVideoUpload, type R2Config } from './r2.js'
 import { threadsJobUrl, type ThreadsJob } from './threadsJobApi.js'
 
@@ -11,6 +11,13 @@ import { threadsJobUrl, type ThreadsJob } from './threadsJobApi.js'
 // (action "upload"), PUTs it there, then asks for it to be posted through
 // Buffer to Instagram, TikTok and X, and to Threads by its own API
 // (action "publish"). "freeSlot" picks the next slot nothing is reserved at.
+//
+// All or nothing: every network gets a reservation (今すぐ is NOW_DELAY_MINUTES
+// out), and when any one of them fails the others are taken back, so the
+// video goes everywhere or nowhere.
+
+/** What a network says when it was taken back because another one failed. */
+export const ROLLED_BACK = '他のSNSが失敗したので取り消しました'
 
 /** Threads takes at most 500 characters. */
 export const THREADS_TEXT_LIMIT = 500
@@ -88,7 +95,9 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
 
     const channels = buffer ? channelsToPost(await buffer.channels()) : []
     if (channels.length === 0 && !qstash) return Response.json({ error: 'no Buffer channels to post to' }, { status: 409 })
-    const when = body.when === 'now' ? ({ kind: 'now' } as const) : ({ kind: 'at', dueAt: new Date(body.when).toISOString() } as const)
+    // 今すぐ is a reservation a little ahead too, so a failure can still take it back.
+    const dueAt = body.when === 'now' ? new Date(now.getTime() + NOW_DELAY_MINUTES * MINUTE_MS) : new Date(body.when)
+    const when = { kind: 'at', dueAt: dueAt.toISOString() } as const
 
     // A network this post already reached is left alone; the rest are (re)sent.
     const postId = body.postId
@@ -100,7 +109,7 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
       if (posts && postId) await posts.save(postId, result).catch(err => console.error('could not keep the post result', err))
       return result
     }
-    const sent: ChannelResult[] = await Promise.all([
+    const tried: ChannelResult[] = await Promise.all([
       ...channels
         .filter(channel => !done.has(channel.service))
         .map(channel =>
@@ -115,6 +124,9 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
         ),
       ...(qstash && !done.has('threads') ? [queueThreads(qstash, request.url, body.videoUrl, body.caption, when, deps.fetch).then(keep)] : []),
     ])
+    const sent = tried.some(r => !r.ok)
+      ? await Promise.all(tried.map(r => (r.ok ? takeBack(r, buffer, qstash, deps.fetch).then(keep) : r)))
+      : tried
     const results = [...done.values(), ...sent]
     return Response.json({ results })
   })
@@ -135,26 +147,43 @@ async function freeSlot(buffer: BufferClient | null, candidates: string[], now: 
   }
 }
 
+/**
+ * Undo a reservation that went through, because another network failed.
+ * One that can't be undone stays ok (it will go out), with why in its message,
+ * so pressing again never sends it twice.
+ */
+async function takeBack(
+  result: ChannelResult,
+  buffer: BufferClient | null,
+  qstash: QStashConfig | null,
+  fetchImpl?: typeof fetch,
+): Promise<ChannelResult> {
+  try {
+    if (!result.ref) throw new Error('取り消しに使うIDがありません')
+    if (result.service === 'threads') await cancelMessage(qstash!, result.ref, fetchImpl)
+    else await buffer!.deletePost(result.ref)
+    return { service: result.service, name: result.name, ok: false, message: ROLLED_BACK }
+  } catch (err) {
+    console.error('could not take the post back', result.service, err)
+    const why = err instanceof Error ? err.message : String(err)
+    return { ...result, message: `他のSNSが失敗しましたが、これは取り消せませんでした（${why}）` }
+  }
+}
+
 /** Hand the Threads post to QStash: it calls /api/threads now, or at the post time. */
 async function queueThreads(
   qstash: QStashConfig,
   requestUrl: string,
   videoUrl: string,
   caption: string,
-  when: { kind: 'now' } | { kind: 'at'; dueAt: string },
+  when: { kind: 'at'; dueAt: string },
   fetchImpl?: typeof fetch,
 ): Promise<ChannelResult> {
   const job: ThreadsJob = { step: 'create', videoUrl, text: caption.slice(0, THREADS_TEXT_LIMIT) }
   const base = { service: 'threads', name: 'Threads' }
   try {
-    await enqueue(
-      qstash,
-      threadsJobUrl(requestUrl),
-      job,
-      when.kind === 'now' ? { delaySeconds: 0 } : { notBefore: new Date(when.dueAt) },
-      fetchImpl,
-    )
-    return { ...base, ok: true, ...(when.kind === 'at' ? { dueAt: when.dueAt } : {}) }
+    const ref = await enqueue(qstash, threadsJobUrl(requestUrl), job, { notBefore: new Date(when.dueAt) }, fetchImpl)
+    return { ...base, ok: true, dueAt: when.dueAt, ...(ref ? { ref } : {}) }
   } catch (err) {
     return { ...base, ok: false, message: err instanceof Error ? err.message : String(err) }
   }
