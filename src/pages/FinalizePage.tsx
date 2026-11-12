@@ -41,7 +41,8 @@ import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from '../components/SubtitleWorkflow'
-import { ShotCueInput, lineStartsInTake, takeLinesOf, type SubtitleCue } from '../utils/subtitleCues'
+import { ShotCueInput, cuesFromShotEntries, lineStartsInTake, takeLinesOf, withScriptJapanese, type SubtitleCue } from '../utils/subtitleCues'
+import type { SubtitlePosition } from '../utils/subtitlePosition'
 import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
@@ -580,19 +581,34 @@ export default function FinalizePage() {
     }),
     [script, storedLineImages, lineImagesLoading],
   )
-  const hook = useMemo(
-    () => withLineImages(
-      withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), subtitleCues, subtitlePosition, cinemaLook),
-      { ...lineImages, cues: subtitleCues },
+  const hookFor = useCallback(
+    (cues: SubtitleCue[], position: SubtitlePosition) => withLineImages(
+      withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook),
+      { ...lineImages, cues },
     ),
-    [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook, lineImages],
+    [hookSettings, oneTake, cinemaLook, lineImages],
+  )
+  const hook = useMemo(() => hookFor(subtitleCues, subtitlePosition), [hookFor, subtitleCues, subtitlePosition])
+  // The subtitles the subtitle step will open with, known as soon as the
+  // 結合 is: the script's lines with the Japanese that came with it (as
+  // SubtitleWorkflow makes them on arrival). Once that step has cues of its
+  // own, those.
+  const cueInputs = combined?.cueInputs
+  const scriptJapanese = script?.japanese
+  const aheadCues = useMemo(
+    () => subtitleCues.length > 0 || !cueInputs
+      ? subtitleCues
+      : withScriptJapanese(cuesFromShotEntries(cueInputs), scriptJapanese ?? []),
+    [subtitleCues, cueInputs, scriptJapanese],
+  )
+  const aheadHook = useMemo(
+    () => (aheadCues === subtitleCues ? hook : hookFor(aheadCues, subtitlePosition)),
+    [aheadCues, subtitleCues, hook, hookFor, subtitlePosition],
   )
   // The cover's picture wears the video's film look.
   const coverGrade = hook.opening?.grade ?? null
   const coverStrength = hook.opening?.strength ?? 1
   const coverLook = useMemo(() => (coverGrade ? { grade: coverGrade, strength: coverStrength } : null), [coverGrade, coverStrength])
-  // ...and its hook lasts just the first line rather than the whole take.
-  const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
 
   // YouTube用も書き出す, and the BGM it swaps in for the usual one.
   const youtubeEnabled = settings.youtubeExportEnabled
@@ -625,20 +641,28 @@ export default function FinalizePage() {
     [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount, coverLook],
   )
 
+  // It starts sooner when the Japanese came with the script: while the 結合
+  // result is still being watched on the trim step, as the subtitles that
+  // step will open with are known by then. Not before the lines' images are
+  // in, which the look depends on.
+  const reviewingSubtitles = step === 'subtitle' && subtitleStage === 'reviewing'
+  // A 一発撮り take's hook lasts just the first line rather than the whole take.
+  const aheadHookEnd = oneTake && aheadCues.length > 0 ? aheadCues[0].end : undefined
+  const watchingCombined = step === 'trim' && combinedIsCurrent && !lineImagesLoading
   useEffect(() => {
-    if (step !== 'subtitle' || subtitleStage !== 'reviewing' || combinedClips.length === 0) return
-    if (subtitleCues.length === 0 || !subtitleCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
+    if (!(reviewingSubtitles || watchingCombined) || combinedClips.length === 0) return
+    if (aheadCues.length === 0 || !aheadCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     let cancelled = false
     const timer = setTimeout(() => {
-      void burnCoverFor(subtitleCues).then(cover => {
+      void burnCoverFor(aheadCues).then(cover => {
         if (cancelled) return
         const cache = getEncodeCache()
-        for (const request of shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd, cover)) {
+        for (const request of shotBurnRequests(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd, cover)) {
           cache.prefetch(request)
         }
         // The YouTube version has no cover: its first shot is burned without it.
         if (cover && youtubeEnabled) {
-          cache.prefetch(shotBurnRequests(combinedClips, subtitleCues, subtitlePosition, hook, hookEnd)[0])
+          cache.prefetch(shotBurnRequests(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd)[0])
         }
       })
     }, BACKGROUND_ENCODE_DELAY_MS)
@@ -646,7 +670,7 @@ export default function FinalizePage() {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [step, subtitleStage, subtitleCues, subtitlePosition, combinedClips, hook, hookEnd, burnCoverFor, youtubeEnabled])
+  }, [reviewingSubtitles, watchingCombined, aheadCues, subtitlePosition, combinedClips, aheadHook, aheadHookEnd, burnCoverFor, youtubeEnabled])
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
