@@ -59,16 +59,19 @@ function withStore<T>(
   })
 }
 
-export function saveShotVideo(scriptId: string, shotId: string, blob: Blob): Promise<void> {
-  return withStore('readwrite', store => {
+/** Saves the take and resolves with its `updatedAt`, which identifies it (see shotAnalysisStore). */
+export async function saveShotVideo(scriptId: string, shotId: string, blob: Blob): Promise<string> {
+  const updatedAt = new Date().toISOString()
+  await withStore<void>('readwrite', store => {
     store.put({
       key: makeKey(scriptId, shotId),
       scriptId,
       shotId,
       blob,
-      updatedAt: new Date().toISOString(),
+      updatedAt,
     })
   })
+  return updatedAt
 }
 
 export function getShotVideo(scriptId: string, shotId: string): Promise<Blob | null> {

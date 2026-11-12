@@ -7,6 +7,8 @@ import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
+import { analyzeTake } from '../utils/analyzeTake'
+import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
@@ -108,7 +110,11 @@ export default function RecordPage() {
         const processed = await processRecordedVideo(file, mimeType, { normalizeAudio: globalSettings.normalizeAudio })
         // remuxMp4 always falls back to the original blob on failure, so this
         // is still worth saving — just flagged as degraded rather than dropped.
-        await saveShotVideo(safeScript.id, shot.id, processed.blob)
+        const savedAt = await saveShotVideo(safeScript.id, shot.id, processed.blob)
+        // Only where the finalize step would look for the speech itself.
+        if (safeScript.oneTake || resolveShotTrimSettings(shot, globalSettings).trimEnabled) {
+          await analyzeTake(safeScript.id, shot.id, savedAt, processed.blob)
+        }
         if (!processed.ok) {
           degradedShotTexts.push(stripEmphasis(shot.text))
         }
