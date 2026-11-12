@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import ClaudeInbox from '../components/ClaudeInbox'
 import { listStoredShots, pruneRemovedShotVideos } from '../utils/shotVideoStore'
+import type { Script } from '../types'
 import styles from './HomePage.module.css'
+
+// How long 元に戻す stays up before a deleted script is really deleted.
+const UNDO_DELETE_MS = 6000
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -12,9 +16,44 @@ export default function HomePage() {
   const [settings] = useSettings()
   const [scriptsWithVideos, setScriptsWithVideos] = useState<Set<string>>(new Set())
 
-  const sorted = [...scripts].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  )
+  // A script taken off the list by 🗑 but not deleted yet: its videos go
+  // with it for good, so 元に戻す gets a few seconds first. It is deleted
+  // when the toast runs out, another script is deleted, or the page is left.
+  const [pendingDelete, setPendingDelete] = useState<Script | null>(null)
+  const pendingRef = useRef<{ script: Script; timer: ReturnType<typeof setTimeout> } | null>(null)
+  // The latest render's, for the timer and the unmount to delete with.
+  const deleteScriptRef = useRef(deleteScript)
+  deleteScriptRef.current = deleteScript
+
+  function commitPendingDelete() {
+    const pending = pendingRef.current
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pendingRef.current = null
+    deleteScriptRef.current(pending.script.id)
+  }
+
+  function handleDelete(script: Script) {
+    commitPendingDelete()
+    const timer = setTimeout(() => {
+      commitPendingDelete()
+      setPendingDelete(null)
+    }, UNDO_DELETE_MS)
+    pendingRef.current = { script, timer }
+    setPendingDelete(script)
+  }
+
+  function handleUndoDelete() {
+    if (pendingRef.current) clearTimeout(pendingRef.current.timer)
+    pendingRef.current = null
+    setPendingDelete(null)
+  }
+
+  useEffect(() => commitPendingDelete, [])
+
+  const sorted = scripts
+    .filter(script => script.id !== pendingDelete?.id)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
   // Drop the videos of shots no longer in their script first (shot
   // editing's undo is gone once the user is back here), then find which
@@ -102,11 +141,7 @@ export default function HomePage() {
               )}
               <button
                 className={styles.deleteBtn}
-                onClick={() => {
-                  if (confirm(`「${script.title}」を削除しますか？`)) {
-                    deleteScript(script.id)
-                  }
-                }}
+                onClick={() => handleDelete(script)}
                 aria-label="削除"
               >
                 🗑
@@ -114,6 +149,15 @@ export default function HomePage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {pendingDelete && (
+        <div className={styles.undoToast} role="status">
+          <span className={styles.undoText}>「{pendingDelete.title}」を削除しました</span>
+          <button className={styles.undoBtn} onClick={handleUndoDelete}>
+            元に戻す
+          </button>
+        </div>
       )}
     </div>
   )
