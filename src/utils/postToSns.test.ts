@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverOffsetMs, diagnose, nextSlot, postTimeLabel, upcomingSlots, whenLabel, youtubeScheduleHint } from './postToSns'
+import { coverOffsetMs, diagnose, fullNetworks, nextSlot, OTHER_HOURS, postTimeLabel, roomLabel, upcomingSlots, whenLabel, youtubeScheduleHint } from './postToSns'
 
 describe('nextSlot', () => {
   it('is today when the hour is still ahead, tomorrow when it has passed', () => {
@@ -77,5 +77,37 @@ describe('diagnose', () => {
     expect(diagnose({ upload: bad, publicRead: bad })).toContain('R2_ACCESS_KEY_ID')
     expect(diagnose({ upload: good, publicRead: { ok: false, detail: 'HTTP 401' } })).toContain('R2_PUBLIC_URL')
     expect(diagnose({ upload: good, publicRead: good })).toContain('CORS')
+  })
+})
+
+describe('OTHER_HOURS', () => {
+  it('is every hour but the daily 12:00 and 20:00', () => {
+    expect(OTHER_HOURS).toHaveLength(22)
+    expect(OTHER_HOURS).toContain(13)
+    expect(OTHER_HOURS).not.toContain(12)
+    expect(OTHER_HOURS).not.toContain(20)
+  })
+
+  it('reads as today or tomorrow like the slots', () => {
+    const noon = new Date(2026, 10, 7, 12, 30)
+    expect(postTimeLabel(13, noon)).toBe('今日 13:00')
+    expect(postTimeLabel(11, noon)).toBe('明日 11:00')
+  })
+})
+
+describe('roomLabel and fullNetworks', () => {
+  const networks = [
+    { service: 'instagram', reserved: 7, left: 3 },
+    { service: 'tiktok', reserved: 10, left: 0 },
+    { service: 'twitter', reserved: 8, left: 2 },
+  ]
+
+  it('says how many more fit by the fullest network, and each count', () => {
+    expect(roomLabel(networks)).toBe('Bufferの予約: あと0本（Instagram 7・TikTok 10・X 8 / 10本）')
+  })
+
+  it('names the full networks, or none', () => {
+    expect(fullNetworks(networks)).toBe('TikTok')
+    expect(fullNetworks([networks[0]])).toBe('')
   })
 })

@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  bufferRoom,
+  fullNetworks,
   nextFreeSlot,
   nextSlot,
   postStatus,
   postTimeLabel,
   postToSns,
+  roomLabel,
   serviceLabel,
   whenLabel,
+  OTHER_HOURS,
+  SLOT_HOURS,
   type ChannelResult,
+  type NetworkRoom,
   type PostTime,
   type PostWhen,
 } from '../utils/postToSns'
-import { NOW_DELAY_MINUTES } from '../../shared/posting'
+import { BUFFER_POST_LIMIT, NOW_DELAY_MINUTES } from '../../shared/posting'
 import styles from './PostToSns.module.css'
 
 interface Props {
@@ -36,8 +42,13 @@ type State =
   | { kind: 'done'; results: ChannelResult[]; when: PostWhen; recovered: boolean }
   | { kind: 'failed'; message: string }
 
-const TIMES: PostTime[] = ['now', 12, 20, 'free']
+const TIMES: PostTime[] = ['now', ...SLOT_HOURS, 'free']
 const NO_FREE_SLOT = '次の空きがありません。5日先まで埋まっています'
+
+/** Buffer refuses a post past its limit, so the app says so before uploading. */
+function fullMessage(networks: string): string {
+  return `Bufferの予約が${BUFFER_POST_LIMIT}本たまっています（${networks}）。どれかが投稿されて空くまで予約できません`
+}
 
 /**
  * 今すぐ is held NOW_DELAY_MINUTES so a failure can take it back; Threads
@@ -56,8 +67,12 @@ function reservedAt(when: PostWhen): string | undefined {
 
 /**
  * 投稿する: Instagram, TikTok and X through Buffer, and Threads by its own API, in one tap — right away
- * at the next 12:00 / 20:00, or at the next of those nothing is reserved at
- * (次の空き). The caption is the one Claude sent.
+ * at the next 12:00 / 20:00, at the next of those nothing is reserved at
+ * (次の空き), or at any other hour (ほかの時刻, for a video on top of the
+ * daily slots). The caption is the one Claude sent.
+ *
+ * Buffer's free plan holds 10 reservations per network: the screen says how
+ * many more fit, and a new post waits when one network is full.
  *
  * All or nothing: when one network fails, the server takes the others back,
  * and pressing again sends to all of them.
@@ -70,6 +85,8 @@ function reservedAt(when: PostWhen): string | undefined {
 export default function PostToSns({ video, caption, inboxKey, ready, coverOffsetMs, onPosted }: Props) {
   const [time, setTime] = useState<PostTime>('now')
   const [state, setState] = useState<State>({ kind: 'idle' })
+  // What Buffer has room for; null until known (or when it could not be asked).
+  const [room, setRoom] = useState<NetworkRoom[] | null>(null)
   const postIdRef = useRef(crypto.randomUUID())
   const uploadedRef = useRef<string | undefined>(undefined)
   // A publish went out for this post id: its answer may be lost, not missing.
@@ -85,6 +102,20 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     sentRef.current = false
     setState({ kind: 'idle' })
   }, [video])
+
+  // How full Buffer is, for the line under the times; asked again after each post.
+  const doneCount = state.kind === 'done' ? 1 : 0
+  useEffect(() => {
+    if (!inboxKey) return
+    let live = true
+    bufferRoom(inboxKey).then(
+      networks => live && setRoom(networks),
+      () => live && setRoom(null),
+    )
+    return () => {
+      live = false
+    }
+  }, [inboxKey, doneCount])
 
   // Back from another app with the answer lost: ask the server what was sent.
   useEffect(() => {
@@ -105,6 +136,9 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
   const someFailed = results.some(r => !r.ok)
   // One failed and the rest were taken back: nothing went out.
   const noneSent = someFailed && !results.some(r => r.ok)
+  // A retry only sends what is already counted in, so only a new post waits on room.
+  const full = room ? fullNetworks(room) : ''
+  const waitsOnRoom = full !== '' && !sentRef.current
 
   if (!inboxKey) {
     return (
@@ -146,9 +180,26 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
     }
   }
 
+  /** Whether Buffer has room for one more, asked right before posting; false (with why) when a network is full. */
+  async function hasRoom(): Promise<boolean> {
+    setState({ kind: 'finding' })
+    let networks: NetworkRoom[]
+    try {
+      networks = await bufferRoom(inboxKey)
+    } catch {
+      // Unknown: Buffer itself refuses a post past its limit, and the rest are taken back.
+      return true
+    }
+    setRoom(networks)
+    const fullNow = fullNetworks(networks)
+    if (fullNow) setState({ kind: 'failed', message: fullMessage(fullNow) })
+    return !fullNow
+  }
+
   async function handlePost() {
     if (!video || busy || allSent) return
     const retry = sentRef.current
+    if (!retry && !(await hasRoom())) return
     // A retry goes out with the first try, so all the networks post together.
     const when = retry ? whenRef.current : await chooseWhen()
     if (when === null) return
@@ -221,7 +272,26 @@ export default function PostToSns({ video, caption, inboxKey, ready, coverOffset
           </button>
         ))}
       </div>
-      <button className={styles.postBtn} onClick={handlePost} disabled={!video || !ready || busy || allSent}>
+      <select
+        className={`${styles.timeBtn} ${typeof time === 'number' && !SLOT_HOURS.includes(time) ? styles.timeBtnActive : ''}`}
+        aria-label="ほかの時刻"
+        value={typeof time === 'number' && !SLOT_HOURS.includes(time) ? String(time) : ''}
+        disabled={busy || sentRef.current}
+        onChange={e => e.target.value !== '' && setTime(Number(e.target.value))}
+      >
+        <option value="">ほかの時刻...</option>
+        {OTHER_HOURS.map(hour => (
+          <option key={hour} value={hour}>
+            {postTimeLabel(hour)}
+          </option>
+        ))}
+      </select>
+      {room && room.length > 0 && (
+        <span className={`${styles.sub} ${waitsOnRoom ? styles.failed : ''}`}>
+          {waitsOnRoom ? fullMessage(full) : roomLabel(room)}
+        </span>
+      )}
+      <button className={styles.postBtn} onClick={handlePost} disabled={!video || !ready || busy || allSent || waitsOnRoom}>
         {buttonLabel}
       </button>
       {state.kind === 'finding' && <p className={styles.status}>空いている枠を探しています...</p>}

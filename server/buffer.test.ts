@@ -69,6 +69,31 @@ describe('createBufferClient', () => {
     expect(asked.filter).toEqual({ status: ['scheduled'], dueAt: { start: '2026-11-08T00:00:00.000Z', end: '2026-11-13T00:00:00.000Z' } })
   })
 
+  it('counts the reservations of each posted network', async () => {
+    const fetchImpl = fakeFetch(({ query }) => {
+      if (query.includes('organizations')) return { data: { account: { organizations: [{ id: 'o1' }] } } }
+      return {
+        data: {
+          posts: {
+            edges: [
+              { node: { dueAt: '2026-11-08T03:00:00.000Z', channelService: 'tiktok' } },
+              { node: { dueAt: '2026-11-08T11:00:00.000Z', channelService: 'tiktok' } },
+              { node: { dueAt: '2026-11-08T03:00:00.000Z', channelService: 'twitter' } },
+              { node: { dueAt: '2026-11-08T07:00:00.000Z', channelService: 'youtube' } },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      }
+    })
+    const client = createBufferClient('key', fetchImpl as unknown as typeof fetch)
+    expect(await client.scheduledCounts('2026-11-08T00:00:00.000Z', '2027-11-08T00:00:00.000Z')).toEqual({
+      instagram: 0,
+      tiktok: 2,
+      twitter: 1,
+    })
+  })
+
   it('posts an Instagram video as a reel with its cover frame, right away', async () => {
     const fetchImpl = fakeFetch(() => ({ data: { createPost: { post: { id: 'p1', dueAt: '2026-11-07T03:00:00.000Z' } } } }))
     const client = createBufferClient('key', fetchImpl as unknown as typeof fetch)

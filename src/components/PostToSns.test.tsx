@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PostToSns from './PostToSns'
-import { nextFreeSlot, postStatus, postToSns, whenLabel, type PostOptions } from '../utils/postToSns'
+import { bufferRoom, nextFreeSlot, postStatus, postToSns, whenLabel, type NetworkRoom, type PostOptions } from '../utils/postToSns'
 
 vi.mock('../utils/postToSns', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/postToSns')>()),
   postToSns: vi.fn(),
   postStatus: vi.fn(async () => []),
   nextFreeSlot: vi.fn(),
+  bufferRoom: vi.fn(),
 }))
+
+const room = (reserved: [number, number, number]): NetworkRoom[] =>
+  (['instagram', 'tiktok', 'twitter'] as const).map((service, i) => ({ service, reserved: reserved[i], left: 10 - reserved[i] }))
 
 const VIDEO = new Blob(['video'], { type: 'video/mp4' })
 
@@ -21,6 +25,7 @@ function renderPost(onPosted = vi.fn()) {
 
 beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(bufferRoom).mockResolvedValue(room([3, 3, 2]))
 })
 
 afterEach(() => {
@@ -29,6 +34,7 @@ afterEach(() => {
   vi.mocked(postStatus).mockReset()
   vi.mocked(postStatus).mockResolvedValue([])
   vi.mocked(nextFreeSlot).mockReset()
+  vi.mocked(bufferRoom).mockReset()
 })
 
 describe('PostToSns', () => {
@@ -204,5 +210,65 @@ describe('PostToSns', () => {
     expect(new Date(first.when).getHours()).toBe(20)
     expect(second.when).toBe(first.when)
     expect(nextFreeSlot).not.toHaveBeenCalled()
+  })
+
+  it('reserves any other hour picked from ほかの時刻', async () => {
+    vi.mocked(postToSns).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
+    const onPosted = renderPost()
+    fireEvent.change(screen.getByLabelText('ほかの時刻'), { target: { value: '13' } })
+    fireEvent.click(screen.getByText(/13:00に予約する/))
+    await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(1))
+    const at = new Date(vi.mocked(postToSns).mock.calls[0][0].when)
+    expect([at.getHours(), at.getMinutes()]).toEqual([13, 0])
+    expect(onPosted).toHaveBeenCalledWith(at.toISOString())
+  })
+
+  describe('Bufferの予約数', () => {
+    it('says how many more fit, by the fullest network', async () => {
+      renderPost()
+      expect(await screen.findByText('Bufferの予約: あと7本（Instagram 3・TikTok 3・X 2 / 10本）')).toBeInTheDocument()
+    })
+
+    it('waits when one network is full, and says which', async () => {
+      vi.mocked(bufferRoom).mockResolvedValue(room([9, 10, 9]))
+      renderPost()
+      expect(await screen.findByText(/Bufferの予約が10本たまっています（TikTok）/)).toBeInTheDocument()
+      expect(screen.getByText('今すぐ投稿する')).toBeDisabled()
+    })
+
+    it('asks again right before posting, and posts nothing when it filled up meanwhile', async () => {
+      renderPost()
+      await screen.findByText(/あと7本/)
+      vi.mocked(bufferRoom).mockResolvedValue(room([10, 10, 10]))
+      fireEvent.click(screen.getByText('今すぐ投稿する'))
+      expect(await screen.findAllByText(/10本たまっています（Instagram・TikTok・X）/)).not.toHaveLength(0)
+      expect(postToSns).not.toHaveBeenCalled()
+      expect(window.confirm).not.toHaveBeenCalled()
+    })
+
+    it('posts anyway when Buffer cannot be asked (Buffer itself refuses past its limit)', async () => {
+      vi.mocked(bufferRoom).mockRejectedValue(new Error('down'))
+      vi.mocked(postToSns).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
+      renderPost()
+      fireEvent.click(screen.getByText('今すぐ投稿する'))
+      await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(1))
+      expect(screen.queryByText(/Bufferの予約/)).not.toBeInTheDocument()
+    })
+
+    it('lets a retry through when full, since its posts are already counted', async () => {
+      vi.mocked(postToSns).mockResolvedValue([{ service: 'tiktok', name: 'yuji', ok: true }])
+      vi.mocked(postToSns).mockImplementationOnce(async (options: PostOptions) => {
+        options.onUploaded?.('https://pub.r2.dev/posts/v.mp4')
+        return [
+          { service: 'instagram', name: 'yuji', ok: true },
+          { service: 'tiktok', name: 'yuji', ok: false, message: 'busy' },
+        ]
+      })
+      renderPost()
+      fireEvent.click(screen.getByText('今すぐ投稿する'))
+      vi.mocked(bufferRoom).mockResolvedValue(room([10, 9, 9]))
+      fireEvent.click(await screen.findByText('失敗したものだけ送り直す'))
+      await waitFor(() => expect(postToSns).toHaveBeenCalledTimes(2))
+    })
   })
 })

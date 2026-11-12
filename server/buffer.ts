@@ -45,6 +45,12 @@ interface ScheduledPage {
   pageInfo: { hasNextPage: boolean; endCursor?: string | null }
 }
 
+/** A post waiting in Buffer: when it goes out, and where. */
+interface Reservation {
+  dueAt: string
+  service: PostedService
+}
+
 export class BufferError extends Error {}
 
 export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
@@ -82,8 +88,9 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
     return lists.flat()
   }
 
-  async function scheduledIn(organizationId: string, start: string, end: string): Promise<string[]> {
-    const times: string[] = []
+  /** The reserved posts to the posted networks in one organization, between two ISO times. */
+  async function scheduledIn(organizationId: string, start: string, end: string): Promise<Reservation[]> {
+    const found: Reservation[] = []
     let after: string | null = null
     do {
       const { posts }: { posts: ScheduledPage } = await graphql<{ posts: ScheduledPage }>(
@@ -96,17 +103,30 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
         { after, input: { organizationId, filter: { status: ['scheduled'], dueAt: { start, end } } } },
       )
       for (const { node } of posts.edges ?? []) {
-        if (node.dueAt && (POSTED_SERVICES as readonly string[]).includes(node.channelService)) times.push(node.dueAt)
+        if (node.dueAt && (POSTED_SERVICES as readonly string[]).includes(node.channelService)) {
+          found.push({ dueAt: node.dueAt, service: node.channelService as PostedService })
+        }
       }
       after = posts.pageInfo.hasNextPage ? (posts.pageInfo.endCursor ?? null) : null
     } while (after)
-    return times
+    return found
+  }
+
+  async function scheduled(start: string, end: string): Promise<Reservation[]> {
+    const lists = await Promise.all((await organizationIds()).map(org => scheduledIn(org, start, end)))
+    return lists.flat()
   }
 
   /** When the reserved posts to the posted networks go out, between two ISO times. */
   async function scheduledTimes(start: string, end: string): Promise<string[]> {
-    const lists = await Promise.all((await organizationIds()).map(org => scheduledIn(org, start, end)))
-    return lists.flat()
+    return (await scheduled(start, end)).map(r => r.dueAt)
+  }
+
+  /** How many posts each posted network has reserved, between two ISO times. */
+  async function scheduledCounts(start: string, end: string): Promise<Record<PostedService, number>> {
+    const counts = Object.fromEntries(POSTED_SERVICES.map(service => [service, 0])) as Record<PostedService, number>
+    for (const { service } of await scheduled(start, end)) counts[service]++
+    return counts
   }
 
   async function createVideoPost(channel: BufferChannel, post: VideoPost): Promise<ChannelResult> {
@@ -158,7 +178,7 @@ export function createBufferClient(apiKey: string, fetchImpl: Fetch = fetch) {
     if (!deletePost.id) throw new BufferError(`Buffer API: ${deletePost.message ?? '不明なエラー'}`)
   }
 
-  return { channels, scheduledTimes, createVideoPost, deletePost }
+  return { channels, scheduledTimes, scheduledCounts, createVideoPost, deletePost }
 }
 
 export type BufferClient = ReturnType<typeof createBufferClient>

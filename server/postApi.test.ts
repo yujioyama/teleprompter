@@ -18,6 +18,7 @@ const VIDEO = 'https://pub-abc.r2.dev/posts/2026-11-07/x.mp4'
 let posted: { channel: BufferChannel; post: VideoPost }[]
 let deleted: string[]
 let booked: string[]
+let counts: { instagram: number; tiktok: number; twitter: number }
 let buffer: BufferClient
 
 beforeEach(() => {
@@ -25,8 +26,10 @@ beforeEach(() => {
   posted = []
   deleted = []
   booked = []
+  counts = { instagram: 0, tiktok: 0, twitter: 0 }
   buffer = {
     scheduledTimes: async () => booked,
+    scheduledCounts: async () => counts,
     channels: async () => [
       { id: 'ig', service: 'instagram', name: 'yuji', isLocked: false, isDisconnected: false },
       { id: 'tt', service: 'tiktok', name: 'yuji', isLocked: false, isDisconnected: false },
@@ -181,6 +184,41 @@ describe('handlePostRequest freeSlot', () => {
     expect((await ask([])).status).toBe(400)
     expect((await ask(['tomorrow'])).status).toBe(400)
     expect((await ask(Array(11).fill(SLOTS[0]))).status).toBe(400)
+  })
+})
+
+describe('handlePostRequest room', () => {
+  const ask = async (extra: Partial<PostDeps> = {}) => {
+    const res = await handlePostRequest(post({ action: 'room' }), deps(extra))
+    return { status: res.status, body: await res.json() }
+  }
+
+  it('gives each posted network its reservations and how many more fit', async () => {
+    counts = { instagram: 4, tiktok: 10, twitter: 12 }
+    expect(await ask()).toEqual({
+      status: 200,
+      body: {
+        networks: [
+          { service: 'instagram', reserved: 4, left: 6 },
+          { service: 'tiktok', reserved: 10, left: 0 },
+          { service: 'twitter', reserved: 12, left: 0 },
+        ],
+      },
+    })
+  })
+
+  it('leaves out a network with no usable channel', async () => {
+    const all = await buffer.channels()
+    buffer.channels = async () => all.map(c => (c.service === 'twitter' ? { ...c, isDisconnected: true } : c))
+    expect((await ask()).body.networks.map((n: { service: string }) => n.service)).toEqual(['instagram', 'tiktok'])
+  })
+
+  it('says why when Buffer cannot be asked', async () => {
+    buffer.scheduledCounts = async () => {
+      throw new Error('Buffer API: down')
+    }
+    expect(await ask()).toEqual({ status: 502, body: { error: 'Buffer API: down' } })
+    expect((await ask({ buffer: () => null })).status).toBe(503)
   })
 })
 

@@ -1,14 +1,17 @@
 // 投稿する (api/post.ts): the finished video goes to R2, then Buffer posts it
 // to Instagram, TikTok and X — right away or at a set time.
 
-import { FREE_SLOT_COUNT } from '../../shared/posting'
+import { BUFFER_POST_LIMIT, FREE_SLOT_COUNT } from '../../shared/posting'
 
-/** The choices on the screen; 'free' is the next slot nothing is reserved at. */
-export type PostTime = 'now' | 12 | 20 | 'free'
+/** The choices on the screen: right away, an hour of the day, or 'free' (the next 12:00 or 20:00 nothing is reserved at). */
+export type PostTime = 'now' | number | 'free'
 /** Right away, or the ISO time the post goes out. */
 export type PostWhen = 'now' | string
 
-const SLOT_HOURS = [12, 20]
+/** The daily slots: their own buttons, and the ones 次の空き looks at. */
+export const SLOT_HOURS = [12, 20]
+/** Every other hour of the day, for a video on top of the daily slots. */
+export const OTHER_HOURS = Array.from({ length: 24 }, (_, hour) => hour).filter(hour => !SLOT_HOURS.includes(hour))
 /** A slot closer than this could pass while the video uploads. */
 const SLOT_MARGIN_MS = 10 * 60 * 1000
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
@@ -176,6 +179,31 @@ export async function nextFreeSlot(key: string, now = new Date()): Promise<strin
   const candidates = upcomingSlots(now).map(at => at.toISOString())
   const { slot } = await api<{ slot: string | null }>(key, { action: 'freeSlot', candidates })
   return slot
+}
+
+/** A network posted through Buffer: how many reservations it has, and how many more it takes. */
+export interface NetworkRoom {
+  service: string
+  reserved: number
+  left: number
+}
+
+/** How many more posts each Buffer network takes (its free plan holds 10). */
+export async function bufferRoom(key: string): Promise<NetworkRoom[]> {
+  const { networks } = await api<{ networks: NetworkRoom[] }>(key, { action: 'room' })
+  return networks
+}
+
+/** The networks with no room left, by name ('TikTok・X'); empty when every one has room. */
+export function fullNetworks(networks: NetworkRoom[]): string {
+  return networks.filter(n => n.left <= 0).map(n => serviceLabel(n.service)).join('・')
+}
+
+/** How the room reads: 'Bufferの予約: あと3本（Instagram 7・TikTok 7・X 8 / 10本）'. */
+export function roomLabel(networks: NetworkRoom[]): string {
+  const left = Math.min(...networks.map(n => n.left))
+  const each = networks.map(n => `${serviceLabel(n.service)} ${n.reserved}`).join('・')
+  return `Bufferの予約: あと${left}本（${each} / ${BUFFER_POST_LIMIT}本）`
 }
 
 /**
