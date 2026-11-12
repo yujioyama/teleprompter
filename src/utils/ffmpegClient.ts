@@ -30,8 +30,10 @@ export async function getFFmpeg(): Promise<FFmpeg> {
     const instance = ffmpeg
     const load = () =>
       instance.load({
-        coreURL: `${origin}/ffmpeg/ffmpeg-core.js`,
-        wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm`,
+        // The version makes each core its own URL: the service worker keeps
+        // these files for good (see public/sw.js).
+        coreURL: `${origin}/ffmpeg/ffmpeg-core.js?v=${__FFMPEG_CORE_VERSION__}`,
+        wasmURL: `${origin}/ffmpeg/ffmpeg-core.wasm?v=${__FFMPEG_CORE_VERSION__}`,
       })
     const attempt = guardAgainstStall(load, { timeoutMs: FFMPEG_LOAD_TIMEOUT_MS }).then(
       () => undefined,
