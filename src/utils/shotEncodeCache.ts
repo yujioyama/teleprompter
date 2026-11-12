@@ -90,6 +90,19 @@ export class ShotEncodeCache {
     this.unfinished.clear()
   }
 
+  /**
+   * Let go of a slot's finished clip, so its memory can be freed: for clips
+   * nothing ahead needs, on a phone short of memory. A later request for it
+   * encodes again. A clip still being made (or waited on) is left alone.
+   */
+  release(slot: string): void {
+    const key = this.latestKeyBySlot.get(slot)
+    if (key === undefined || this.unfinished.has(key)) return
+    this.results.delete(key)
+    this.demanded.delete(key)
+    this.latestKeyBySlot.delete(slot)
+  }
+
   /** Stop the running encode and never start the queued ones. */
   dispose(): void {
     this.disposed = true

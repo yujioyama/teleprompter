@@ -146,6 +146,35 @@ describe('ShotEncodeCache', () => {
     expect(seen).toEqual([['k1', 0.5]])
   })
 
+  it('release() lets go of a finished clip, which is then encoded again when asked for', async () => {
+    const run = vi.fn<EncodeJob>(async () => new Blob(['out']))
+    const cache = new ShotEncodeCache()
+    await cache.get(request('s1', 'k1', run))
+    await cache.get(request('s2', 'k2', run))
+
+    cache.release('s1')
+    await cache.get(request('s2', 'k2', run))
+    expect(run).toHaveBeenCalledTimes(2)
+    await cache.get(request('s1', 'k1', run))
+    expect(run).toHaveBeenCalledTimes(3)
+  })
+
+  it('release() leaves a clip that is still being made', async () => {
+    const d = deferred<Blob>()
+    const run = vi.fn<EncodeJob>(() => d.promise)
+    const cache = new ShotEncodeCache()
+    const waiting = cache.get(request('s1', 'k1', run))
+    await flush()
+
+    cache.release('s1')
+    const again = cache.get(request('s1', 'k1', run))
+    const out = new Blob(['out'])
+    d.resolve(out)
+    expect(await waiting).toBe(out)
+    expect(await again).toBe(out)
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
   it('does not start queued work after dispose', async () => {
     const gate = deferred<Blob>()
     const run = vi.fn<EncodeJob>(async () => gate.promise)
