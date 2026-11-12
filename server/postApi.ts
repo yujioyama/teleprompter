@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { FREE_SLOT_COUNT, NOW_DELAY_MINUTES } from '../shared/posting.js'
+import { BUFFER_POST_LIMIT, FREE_SLOT_COUNT, NOW_DELAY_MINUTES } from '../shared/posting.js'
 import { channelsToPost, type BufferClient, type ChannelResult } from './buffer.js'
 import { withAuthedJson } from './http.js'
 import type { PostStore } from './postStore.js'
@@ -10,7 +10,8 @@ import { threadsJobUrl, type ThreadsJob } from './threadsJobApi.js'
 // 投稿する: the app asks for somewhere to upload the finished video
 // (action "upload"), PUTs it there, then asks for it to be posted through
 // Buffer to Instagram, TikTok and X, and to Threads by its own API
-// (action "publish"). "freeSlot" picks the next slot nothing is reserved at.
+// (action "publish"). "freeSlot" picks the next slot nothing is reserved at,
+// and "room" says how many more posts each network's Buffer queue takes.
 //
 // All or nothing: every network gets a reservation (今すぐ is NOW_DELAY_MINUTES
 // out), and when any one of them fails the others are taken back, so the
@@ -44,6 +45,8 @@ const bodySchema = z.discriminatedUnion('action', [
     action: z.literal('freeSlot'),
     candidates: z.array(z.string().datetime({ offset: true })).min(1).max(FREE_SLOT_COUNT),
   }),
+  /** How many more posts Buffer takes for each network (its free plan holds BUFFER_POST_LIMIT). */
+  z.object({ action: z.literal('room') }),
   z.object({
     action: z.literal('publish'),
     /** The app's id for this video's post: publishing it again skips the networks that already have it. */
@@ -81,6 +84,7 @@ export function handlePostRequest(request: Request, deps: PostDeps): Promise<Res
     const posts = deps.posts?.() ?? null
     if (body.action === 'status') return Response.json({ results: posts ? await posts.results(body.postId) : [] })
     if (body.action === 'freeSlot') return freeSlot(deps.buffer(), body.candidates, now)
+    if (body.action === 'room') return room(deps.buffer(), now)
 
     // Only videos this app uploaded: the endpoint never posts someone else's URL.
     if (!body.videoUrl.startsWith(`${r2.publicUrl}/posts/`)) {
@@ -142,6 +146,34 @@ async function freeSlot(buffer: BufferClient | null, candidates: string[], now: 
       new Date(Math.max(...times) + MINUTE_MS).toISOString(),
     )
     return Response.json({ slot: firstFreeSlot(candidates, reserved, now) })
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 })
+  }
+}
+
+export interface NetworkRoom {
+  service: string
+  reserved: number
+  /** How many more posts Buffer takes; 0 means the next one is refused. */
+  left: number
+}
+
+/** Reservations further out than this aren't looked for: nothing here books that far. */
+const ROOM_HORIZON_MS = 365 * 24 * 60 * MINUTE_MS
+
+/** Each network posted through Buffer, with how many reservations it has and how many more it takes. */
+async function room(buffer: BufferClient | null, now: Date): Promise<Response> {
+  if (!buffer) return Response.json({ error: 'Buffer is not configured' }, { status: 503 })
+  try {
+    const [channels, counts] = await Promise.all([
+      buffer.channels(),
+      buffer.scheduledCounts(now.toISOString(), new Date(now.getTime() + ROOM_HORIZON_MS).toISOString()),
+    ])
+    const networks: NetworkRoom[] = channelsToPost(channels).map(({ service }) => {
+      const reserved = counts[service as keyof typeof counts] ?? 0
+      return { service, reserved, left: Math.max(0, BUFFER_POST_LIMIT - reserved) }
+    })
+    return Response.json({ networks })
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 })
   }
