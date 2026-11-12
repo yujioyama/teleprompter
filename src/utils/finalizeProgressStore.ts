@@ -1,6 +1,9 @@
 import type { TrimRecord } from '../../shared/videoRecord'
+import type { BurnCover } from './shotEncoding'
 import type { SubtitleCue } from './subtitleCues'
+import type { HookOptions } from './subtitleHook'
 import type { SubtitlePosition } from './subtitlePosition'
+import type { BurnInputs } from './videoRecord'
 
 // A database of its own, for the same reason as shotAnalysisStore's: adding
 // a store to an existing database means a version upgrade, which an older
@@ -48,21 +51,38 @@ export interface SavedSubtitles {
 }
 
 /**
+ * The video with the subtitles burned in. Burning encodes every shot again,
+ * and the steps after it (BGM, export) are where an iPhone most often runs
+ * out of memory and reloads the page.
+ */
+export interface SavedBurn {
+  blob: Blob
+  /** The cover the burn put in ahead of the first shot; null when it put none in. */
+  cover: BurnCover | null
+  /** combinedClipsSignature() of the 結合 it was burned from. */
+  combinedClips: string
+  /** The subtitles and the look it was burned with (also the video record's). */
+  inputs: BurnInputs
+}
+
+/**
  * Where the finalize page was left, so going away — or iOS reloading the
- * page for memory — doesn't throw away the cuts, the 結合 and its subtitles.
+ * page for memory — doesn't throw away the cuts, the 結合, its subtitles
+ * and the video they were burned into.
  */
 export interface FinalizeProgress {
   /** Only the shots cut by hand; the rest reopen at their detected cut. */
   trims: Record<string, SavedTrim>
   combined: SavedCombined | null
   subtitles: SavedSubtitles | null
+  burned: SavedBurn | null
 }
 
 interface StoredFinalizeProgress extends FinalizeProgress {
   scriptId: string
 }
 
-const EMPTY: FinalizeProgress = { trims: {}, combined: null, subtitles: null }
+const EMPTY: FinalizeProgress = { trims: {}, combined: null, subtitles: null, burned: null }
 
 /** Open the database, run `body` in one transaction, and close it again. */
 function withStore<T>(
@@ -97,8 +117,12 @@ export function loadFinalizeProgress(scriptId: string): Promise<FinalizeProgress
     const req = store.get(scriptId)
     req.onsuccess = () => {
       const record = req.result as StoredFinalizeProgress | undefined
-      // Saved before subtitles were kept, a record has none.
-      done(record ? { trims: record.trims, combined: record.combined, subtitles: record.subtitles ?? null } : EMPTY)
+      // Saved before subtitles or the burn were kept, a record has none.
+      done(
+        record
+          ? { trims: record.trims, combined: record.combined, subtitles: record.subtitles ?? null, burned: record.burned ?? null }
+          : EMPTY,
+      )
     }
   })
 }
@@ -113,6 +137,7 @@ export function updateFinalizeProgress(scriptId: string, changes: Partial<Finali
         trims: existing.trims,
         combined: existing.combined,
         subtitles: existing.subtitles ?? null,
+        burned: existing.burned ?? null,
         ...changes,
         scriptId,
       }
@@ -147,4 +172,25 @@ export function combinedForTakes(
 /** Identifies a 結合 by the takes and cuts it was made from. */
 export function combinedClipsSignature(clips: SavedCombinedClip[]): string {
   return clips.map(c => `${c.shotId}:${c.videoUpdatedAt}:${c.start}:${c.end}`).join('|')
+}
+
+/**
+ * The saved burn if it's what burning now would make: the same 結合, the
+ * same subtitles at the same position, the same look (`hook`, as the
+ * settings and the script have it now). Anything else has to be burned again.
+ */
+export function burnedForSubtitles(
+  burned: SavedBurn | null,
+  combinedClips: string,
+  cues: SubtitleCue[],
+  position: SubtitlePosition,
+  hook: HookOptions,
+): SavedBurn | null {
+  if (!burned || burned.combinedClips !== combinedClips) return null
+  const { inputs } = burned
+  const same =
+    inputs.position === position &&
+    JSON.stringify(inputs.cues) === JSON.stringify(cues) &&
+    JSON.stringify(inputs.hook) === JSON.stringify(hook)
+  return same ? burned : null
 }

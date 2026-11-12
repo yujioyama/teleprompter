@@ -4,6 +4,7 @@ import { useScripts } from '../hooks/useScripts'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { listShotAnalyses, updateShotAnalysis, type ShotAnalysis } from '../utils/shotAnalysisStore'
 import {
+  burnedForSubtitles,
   combinedClipsSignature,
   combinedForTakes,
   loadFinalizeProgress,
@@ -300,7 +301,7 @@ export default function FinalizePage() {
       // Likewise an unreadable save only means trimming and combining again.
       const progress = await loadFinalizeProgress(script.id).catch((err): FinalizeProgress => {
         console.warn('[FinalizePage] could not read the saved trims and 結合:', err)
-        return { trims: {}, combined: null, subtitles: null }
+        return { trims: {}, combined: null, subtitles: null, burned: null }
       })
       return { stored, takes, analyses, progress }
     }).then(({ stored, takes, analyses, progress }) => {
@@ -357,6 +358,26 @@ export default function FinalizePage() {
           if (cues.length > 0) {
             setCompletedSteps(['trim'])
             setStep('subtitle')
+          }
+          // And the video they were burned into, back on the BGM step: unless
+          // burning now would come out different (a setting changed since).
+          const hookNow = withVideoType(
+            hookOptionsOf(script.oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
+            script.videoType,
+            cues,
+            position,
+            script.look,
+          )
+          const burn = burnedForSubtitles(progress.burned, subtitles.combinedClips, cues, position, hookNow)
+          if (burn) {
+            setBurned({ blob: burn.blob, cover: burn.cover })
+            // The export's made cover is the one already in, as after the burn.
+            if (burn.cover) setMadeCover({ png: burn.cover.image, drawing: false })
+            setBurnInputs(burn.inputs)
+            // The BGM isn't kept: the usual one is mixed in again, as after the burn.
+            setBgmAutoPending(defaultTrack !== null)
+            setCompletedSteps(['trim', 'subtitle'])
+            setStep('bgm')
           }
         }
       }
@@ -482,7 +503,15 @@ export default function FinalizePage() {
     // its input may change (e.g. re-combining after adjusting a trim).
     const targetIndex = STEP_ORDER.indexOf(target)
     setCompletedSteps(prev => prev.filter(s => STEP_ORDER.indexOf(s) < targetIndex))
-    if (STEP_ORDER.indexOf('subtitle') >= targetIndex) setBurned(null)
+    if (STEP_ORDER.indexOf('subtitle') >= targetIndex) {
+      setBurned(null)
+      // Not to be reopened on: the subtitles are being worked on again.
+      if (script && burned) {
+        updateFinalizeProgress(script.id, { burned: null }).catch(err =>
+          console.warn('[FinalizePage] could not forget the burned video:', err),
+        )
+      }
+    }
     if (STEP_ORDER.indexOf('bgm') >= targetIndex) setMixed(null)
     setBgmAutoPending(false)
     setStep(target)
@@ -711,10 +740,14 @@ export default function FinalizePage() {
   const savable =
     exportBlob !== null && !(madeCoverWanted && (madeCover.drawing || (!madeCover.png && autoCover !== 'failed')))
 
-  // A cover made for another 結合 shows another video.
+  // A cover made for another 結合 shows another video. Not the one its burn
+  // put in, though: a 結合 reopened along with its burn keeps that cover.
   useEffect(() => {
-    setMadeCover(c => (c.png || c.drawing ? { png: null, drawing: false } : c))
+    const kept = burnedCover?.image ?? null
+    setMadeCover(c => (c.png !== kept || c.drawing ? { png: kept, drawing: false } : c))
     setAutoCover('idle')
+    // burnedCover is read as of the 結合 arriving; a burn made later sets the cover itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combinedBlob])
 
   // The cover frames want the made cover but none has been drawn: make the
@@ -823,8 +856,8 @@ export default function FinalizePage() {
     showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips, Boolean(script?.oneTake)), trim })
     if (script) {
       const saved = savedClipsOf(clips, takesRef.current)
-      // Subtitles made on the previous 結合 no longer line up with this one.
-      updateFinalizeProgress(script.id, { combined: { blob: joined, clips: saved, trim }, subtitles: null }).catch(err =>
+      // Subtitles made on the previous 結合 no longer line up with this one, nor does its burn.
+      updateFinalizeProgress(script.id, { combined: { blob: joined, clips: saved, trim }, subtitles: null, burned: null }).catch(err =>
         console.warn('[FinalizePage] could not save the 結合:', err),
       )
     }
@@ -1089,6 +1122,18 @@ export default function FinalizePage() {
                   // The export's made cover is the one already in, until it's changed there.
                   if (cover) setMadeCover({ png: cover.image, drawing: false })
                   setBurnInputs(burnInputsRef.current)
+                  // Kept, so a reload from here on doesn't mean burning again.
+                  if (burnInputsRef.current) {
+                    const saved = {
+                      blob,
+                      cover,
+                      combinedClips: combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current)),
+                      inputs: burnInputsRef.current,
+                    }
+                    updateFinalizeProgress(script.id, { burned: saved }).catch(err =>
+                      console.warn('[FinalizePage] could not save the burned video:', err),
+                    )
+                  }
                   setBgmAutoPending(defaultTrack !== null)
                   markStepDone('subtitle', 'bgm')
                 }}
