@@ -2,17 +2,57 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import SubtitleOverlayPreview from './SubtitleOverlayPreview'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { clampedSubtitlePosition } from '../utils/subtitlePosition'
+import { SUBTITLE_POSITION_BOTTOM, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { createCanvasMeasure, layoutCue } from '../utils/subtitleLayout'
 import { placeSticker } from '../utils/stickerMotion'
 import { styleCues } from '../utils/subtitleHook'
 import { STICKER_EMOJI_PX, STICKER_PLACEMENTS } from '../utils/subtitleSticker'
 import type { FairyAppearance } from '../utils/fairyPlan'
+import { LINE_IMAGE_SLOT, layoutLineImage } from '../utils/lineImages'
 
 const CUES: SubtitleCue[] = [
   { id: 'c1', start: 0, end: 2, en: 'Hello there', ja: 'こんにちは' },
   { id: 'c2', start: 2, end: 4, en: 'General Kenobi', ja: 'ケノービ将軍' },
 ]
+
+describe('SubtitleOverlayPreview with a line image', () => {
+  const IMAGE = { cueId: 'c2', imageId: 'i', blob: new Blob(['i']), width: 800, height: 600, credit: 'Ann / CC BY 4.0' }
+  const HOOK = { style: false, position: 22.5, punchIn: null, sticker: 'off' as const, fairies: false, lineImages: [IMAGE] }
+
+  it('shows it only during its cue, with its credit, where the burn draws it', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:i', revokeObjectURL: () => {} }))
+    const { rerender } = render(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={1} hook={HOOK} />)
+    expect(screen.queryByTestId('subtitle-line-image')).not.toBeInTheDocument()
+
+    rerender(<SubtitleOverlayPreview cues={CUES} position={72} currentTime={3} hook={HOOK} />)
+    const image = await screen.findByTestId('subtitle-line-image')
+    const box = layoutLineImage(800, 600, 1, LINE_IMAGE_SLOT)
+    expect(image).toHaveAttribute('src', 'blob:i')
+    expect(parseFloat((image as HTMLElement).style.top)).toBeCloseTo((box.image.y / 1920) * 100)
+    expect(parseFloat((image as HTMLElement).style.left)).toBeCloseTo((box.image.x / 1080) * 100)
+    expect(screen.getByTestId('subtitle-line-image-credit')).toHaveTextContent('Ann / CC BY 4.0')
+  })
+
+  it('drops the subtitle of a line with an image to the bottom, where the burn does', () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:i', revokeObjectURL: () => {} }))
+    render(<SubtitleOverlayPreview cues={CUES} position={22.5} currentTime={3} hook={HOOK} />)
+    const { height } = layoutCue(CUES[1], createCanvasMeasure())
+    expect(parseFloat(screen.getByTestId('subtitle-overlay-box').style.top)).toBeCloseTo(clampedSubtitlePosition(SUBTITLE_POSITION_BOTTOM, height))
+  })
+
+  it('leaves the subtitle of a line without an image at its usual position', () => {
+    render(<SubtitleOverlayPreview cues={CUES} position={22.5} currentTime={1} hook={HOOK} />)
+    const { height } = layoutCue(CUES[0], createCanvasMeasure())
+    expect(parseFloat(screen.getByTestId('subtitle-overlay-box').style.top)).toBeCloseTo(clampedSubtitlePosition(22.5, height))
+  })
+
+  it('shows no sticker for the emoji on the first line', () => {
+    const cues = [{ ...CUES[0], en: 'Toast🍞 hurts' }, CUES[1]]
+    render(<SubtitleOverlayPreview cues={cues} position={72} currentTime={1} hook={{ ...HOOK, style: true }} firstShotDuration={2} />)
+    expect(screen.queryByTestId('subtitle-sticker')).not.toBeInTheDocument()
+    expect(screen.queryByText(/🍞/)).not.toBeInTheDocument()
+  })
+})
 
 describe('SubtitleOverlayPreview', () => {
   it('renders the cue whose start/end window contains currentTime', () => {

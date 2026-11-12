@@ -2,13 +2,22 @@ import { SUBTITLE_FONT_FAMILY, OUTLINE_WIDTH_RATIO, SUBTITLE_SHADOW } from './su
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
 import { STICKER_EMOJI_PX, STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type StickerPlacement } from './subtitleSticker'
 import { dieCutSticker } from './stickerCanvas'
+import { drawCinemaLook } from './drawCinemaLook'
+import type { CinemaLook } from '../../shared/cinemaLook'
 
 /**
  * A cover image for the profile grid: a frame of the video with the
  * episode's English phrase (yellow, the `*…*` one) and its Japanese word
  * (mint, the `{…}` one) drawn large, so the grid reads like a word list,
  * and the first shot's sticker where the video's first frame has it.
+ * The frame wears the video's film look; the words and sticker keep their colors.
  */
+
+/** The video's film look and its strength (0-1), for the picture under the words. */
+export interface CoverLook {
+  grade: CinemaLook
+  strength: number
+}
 
 export const COVER_WIDTH = 1080
 export const COVER_HEIGHT = 1920
@@ -42,16 +51,17 @@ function firstMatch(texts: (string | null | undefined)[], pattern: RegExp): stri
  * The words for the cover, taken from the shots' text and (for the kana)
  * the Japanese subtitle lines, where the translator marks the same word in
  * `{…}`. Either is an empty string when the script has no such marker, and
- * the sticker is one when the first line has no emoji.
+ * the sticker is one when the first line has no emoji, or when the script has
+ * line images, whose videos show no stickers (the cover goes in as frames too).
  */
-export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = []): CoverWords {
+export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = [], hasLineImages = false): CoverWords {
   const en = firstMatch(shotTexts, STAR) ?? ''
   const romaji = firstMatch(shotTexts, BRACE) ?? ''
   const kana = firstMatch(jaLines, BRACE) ?? ''
   // Show the kana only when it adds something: not when the translator
   // left the romaji as it was.
   const ja = kana && kana.toLowerCase() !== romaji.toLowerCase() ? [romaji, kana].filter(Boolean).join(' ') : romaji
-  const sticker = findSticker(shotTexts[0] ?? '') ?? ''
+  const sticker = hasLineImages ? '' : (findSticker(shotTexts[0] ?? '') ?? '')
   return { en, ja, sticker }
 }
 
@@ -223,6 +233,7 @@ export function drawCover(
   words: CoverWords,
   position = COVER_TEXT_POSITION_DEFAULT,
   sticker: PlacedSticker = coverStickerSpot('right', null),
+  look: CoverLook | null = null,
 ): void {
   ctx.clearRect(0, 0, COVER_WIDTH, COVER_HEIGHT)
   ctx.fillStyle = '#000'
@@ -230,6 +241,8 @@ export function drawCover(
   if (sourceWidth > 0 && sourceHeight > 0) {
     const { x, y, width, height } = coverFitRect(sourceWidth, sourceHeight, COVER_WIDTH, COVER_HEIGHT)
     ctx.drawImage(source, x, y, width, height)
+    // Always the same t: the grain must not change a cover drawn again the same way (see sameBytes).
+    if (look) drawCinemaLook(ctx, look.grade, 0, look.strength, COVER_WIDTH, COVER_HEIGHT)
   }
 
   const measure: MeasureWidth = (text, font) => {

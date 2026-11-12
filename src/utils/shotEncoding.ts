@@ -87,6 +87,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   if (!cover && translated.length === 0 && !extras && fairies.length === 0 && midZoom.length === 0) return normalizeRequest(clip)
   const hasNormalCue = translated.some(c => c.variant === 'normal')
   const hasHookCue = translated.some(c => c.variant === 'hook')
+  const images = (look.hook.lineImages ?? []).filter(i => translated.some(c => c.id === i.cueId))
   const placement = JSON.stringify([
     hasNormalCue ? look.position : null,
     hasHookCue ? look.hook.position : null,
@@ -99,6 +100,9 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     'after-bars-v1',
     fairies.map(f => f.key),
     midZoom.map(z => [z.kind, z.start.toFixed(3), z.end.toFixed(3)]),
+    // Only a shot with one gets this entry, so the others keep their cached burns.
+    // The subtitle moved down and the image above the head (2026-11-06); old burns with an image are stale.
+    ...(images.length > 0 ? ['image-above-v1', images.map(i => [i.cueId, i.imageId, blobId(i.blob), i.credit ?? null])] : []),
   ])
   const opening = openingPlan(look.hook, look.firstShotDuration)
   const firstShot = JSON.stringify(extras ? (opening ? [look.hook.punchIn, opening] : look.hook.punchIn) : null)

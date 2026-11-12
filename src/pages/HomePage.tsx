@@ -63,6 +63,7 @@ export default function HomePage() {
         // A new key starts from an empty list, never one fetched with the old key.
         key={settings.inboxKey}
         inboxKey={settings.inboxKey}
+        scripts={scripts}
         onOpen={item => navigate('/scripts/new', { state: { inboxItem: item } })}
       />
 

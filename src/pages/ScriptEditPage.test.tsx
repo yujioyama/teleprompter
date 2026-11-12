@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import ScriptEditPage from './ScriptEditPage'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import type { Script } from '../types'
 
 vi.mock('../utils/inbox', () => ({ deleteInboxItem: vi.fn(async () => {}) }))
+// jsdom has no IndexedDB or decoding: these only reach the device's image store.
+vi.mock('../utils/lineImageDownload', () => ({
+  ensureLineImages: vi.fn(async () => []),
+  saveChosenImage: vi.fn(async () => 'chosen-id'),
+}))
+vi.mock('../utils/lineImageStore', () => ({
+  getLineImages: vi.fn(async () => new Map()),
+  pruneLineImages: vi.fn(async () => {}),
+}))
 
 const ITEM: InboxItem = {
   id: 'inbox-1',
@@ -53,6 +62,70 @@ beforeEach(() => {
   sessionStorage.clear()
   vi.mocked(deleteInboxItem).mockClear()
   localStorage.setItem('teleprompter_settings', JSON.stringify({ inboxKey: 'secret' }))
+})
+
+describe('ScriptEditPage line images', () => {
+  const URL_A = 'https://x.test/a.jpg'
+  const WITH_IMAGE: InboxItem = { ...ITEM, images: [{ line: 2, url: URL_A, credit: 'Ann / CC BY 4.0' }] }
+
+  async function submit() {
+    fireEvent.click(screen.getByRole('button', { name: '編集へ進む →' }))
+    await screen.findByText('ショット編集')
+    return stored()[0]
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('keeps the images Claude sent, each on its line', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: WITH_IMAGE } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    expect(screen.getByLabelText('二行目 のクレジット')).toHaveValue('Ann / CC BY 4.0')
+    expect(screen.queryByLabelText('一行目 のクレジット')).not.toBeInTheDocument()
+    expect(screen.getByText(/ステッカーと妖精は出ません/)).toBeInTheDocument()
+    expect((await submit()).lineImages).toEqual([{ en: '二行目', imageId: URL_A, url: URL_A, credit: 'Ann / CC BY 4.0' }])
+  })
+
+  it('stores none when none was sent, and says nothing about stickers', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    expect(screen.queryByText(/ステッカーと妖精は出ません/)).not.toBeInTheDocument()
+    expect(await submit()).not.toHaveProperty('lineImages')
+  })
+
+  it('deletes an image', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: WITH_IMAGE } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    fireEvent.click(screen.getByRole('button', { name: '画像を削除' }))
+    expect(await submit()).not.toHaveProperty('lineImages')
+  })
+
+  it('replaces an image from a URL, dropping the old credit', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('https://x.test/b.jpg')
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: WITH_IMAGE } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    fireEvent.click(screen.getByRole('button', { name: 'URLで差し替え' }))
+    expect((await submit()).lineImages).toEqual([{ en: '二行目', imageId: 'https://x.test/b.jpg', url: 'https://x.test/b.jpg' }])
+  })
+
+  it('adds a picture chosen on the device to a line without one', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: WITH_IMAGE } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    fireEvent.change(screen.getByLabelText('一行目 の画像を選ぶ'), { target: { files: [new File(['x'], 'x.png', { type: 'image/png' })] } })
+    await screen.findByLabelText('一行目 のクレジット')
+    const { lineImages } = await submit()
+    expect(lineImages).toContainEqual({ en: '一行目', imageId: 'chosen-id' })
+    expect(lineImages).toHaveLength(2)
+  })
+
+  it('keeps an image with its line when the line is edited', async () => {
+    const item: InboxItem = { ...ITEM, body: 'First line of it\nI ate toast this morning', images: [{ line: 2, url: URL_A }] }
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })
+    fireEvent.change(screen.getByLabelText('スクリプト全文'), { target: { value: 'A new opening line\nFirst line of it\nI ate a toast this morning' } })
+    fireEvent.click(screen.getByRole('button', { name: '行に分ける' }))
+    expect((await submit()).lineImages).toEqual([{ en: 'I ate a toast this morning', imageId: URL_A, url: URL_A }])
+  })
 })
 
 describe('ScriptEditPage from the Claude inbox', () => {
@@ -104,25 +177,20 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(stored()[0].videoType).toBe('A')
   })
 
-  it('keeps the film look Claude sent', async () => {
-    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A', look: 'glitch' } } })
+  it('ignores a film look on an item that was waiting in the inbox', async () => {
+    const waiting = { ...ITEM, videoType: 'A', look: 'glitch' } as InboxItem
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: waiting } })
     fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
-    expect(stored()[0]).toMatchObject({ videoType: 'A', look: 'glitch' })
-  })
-
-  it('stores no film look when none was sent', async () => {
-    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'A' } } })
-    fireEvent.click(screen.getByText('行に分ける'))
-    fireEvent.click(screen.getByText('編集へ進む →'))
-    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0]).toMatchObject({ videoType: 'A' })
     expect(stored()[0]).not.toHaveProperty('look')
   })
 
   it('stores no type when none was picked', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
-    expect(screen.getByLabelText('なし（設定のズーム）')).toBeChecked()
+    expect(within(screen.getByRole('group', { name: '動画の型' })).getByLabelText('なし')).toBeChecked()
+    expect(screen.getByText('動画の型（分析用の記録です。冒頭の演出は変わりません）')).toBeInTheDocument()
     fireEvent.click(screen.getByText('行に分ける'))
     fireEvent.click(screen.getByText('編集へ進む →'))
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()

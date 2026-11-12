@@ -11,6 +11,8 @@ export const videoRecordSchema = z.object({
   hookLine: z.string().max(1_000),
   /** ISO timestamp of the save. */
   savedAt: z.string().max(40),
+  /** ISO time a reserved post goes out; absent when it went out at once or was only saved. */
+  postAt: z.string().max(40).optional(),
   durationSec: z.number().nonnegative(),
   shotCount: z.number().int().nonnegative(),
   effects: z.object({
@@ -50,13 +52,15 @@ export const videoRecordSchema = z.object({
     /** Type A (2021-style daily thing) or B (expression-note story); absent = untyped or before 2026-11-02. */
     videoType: z.enum(['A', 'B']).optional(),
     /**
-     * Type A/B's opening (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03);
+     * The opening (letterbox = black bars; colorPop = color filled in at line 1's keyword, Type B before 2026-11-03);
      * null = none, absent = before it. `look` is the film look graded under the bars; null = none, absent = before it.
      */
     opening: z
       .object({ kind: z.enum(['letterbox', 'colorPop']), at: z.number(), look: z.enum(CINEMA_LOOKS).nullable().optional() })
       .nullable()
       .optional(),
+    /** How many line images were shown (that video has no sticker or fairies); absent = none, or before them. */
+    lineImages: z.number().int().positive().optional(),
   }),
 })
 

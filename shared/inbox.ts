@@ -1,11 +1,28 @@
-import type { CinemaLook } from './cinemaLook.js'
 
 /**
  * Which of the two daily formats a script is (from 2026-11-02): 'A' is the
- * short 2021-style daily thing, 'B' the expression-note story. Both get the
- * opening bars (see openingLookFor).
+ * short 2021-style daily thing, 'B' the expression-note story. It only labels
+ * the video for the weekly comparison: every script gets the opening bars
+ * (see withOpening).
  */
 export type VideoType = 'A' | 'B'
+
+/** An image Claude picked for one line of a script. */
+export interface InboxImage {
+  /** Which line of `body`, counting non-empty lines from 1. */
+  line: number
+  url: string
+  /** Shown small under the image; absent when its license asks for none. */
+  credit?: string
+  /** The page it came from, for the caption's credit line. */
+  source?: string
+}
+
+/** The caption with a line for each image whose license asks for a credit. */
+export function captionWithCredits(caption: string, images: InboxImage[]): string {
+  const credits = images.flatMap(image => (image.credit ? [`画像: ${[image.credit, image.source].filter(Boolean).join(' ')}`] : []))
+  return [caption, credits.join('\n')].filter(Boolean).join('\n\n')
+}
 
 // A script Claude chat sent to the teleprompter, waiting in the inbox
 // until a device turns it into a script (or it expires).
@@ -20,8 +37,8 @@ export interface InboxItem {
   japanese?: string[]
   /** Type A or B; absent when Claude sent none. */
   videoType?: VideoType
-  /** The film look under the opening bars of a Type A/B script; absent = the bars alone. */
-  look?: CinemaLook
+  /** Images for some of the lines; absent when none were sent. */
+  images?: InboxImage[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }

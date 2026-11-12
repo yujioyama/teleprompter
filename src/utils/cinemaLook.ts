@@ -1,5 +1,6 @@
 import type { CinemaLook } from '../../shared/cinemaLook'
 import { random as rng } from './seededRandom'
+import { ZOOM_ANCHOR_Y } from './subtitleHook'
 
 /**
  * The math of the film looks (2026-11-03), ported from the comparison page
@@ -142,31 +143,52 @@ export function lutApply(lut: Lut, r: number, g: number, b: number): [number, nu
   return [out[0], out[1], out[2]]
 }
 
-const vignetteCache = new Map<string, Float32Array>()
-/** The preview's size and the output's; a few more is plenty. */
-const VIGNETTE_CACHE_MAX = 4
+const maskCache = new Map<string, Float32Array>()
+/** Plain and lit, at the preview's size and the output's; a few more is plenty. */
+const MASK_CACHE_MAX = 4
 
-/**
- * How much of the picture is kept at each pixel (row by row): 1 in the
- * middle, 1 − 0.6 × 0.75 in the far corners. The ellipse is centered a
- * little above the middle (0.45), where the face is.
- */
-export function vignetteMask(width: number, height: number): Float32Array {
-  const key = `${width}x${height}`
-  const cached = vignetteCache.get(key)
+function cachedMask(key: string, width: number, height: number, at: (x: number, y: number) => number): Float32Array {
+  const cached = maskCache.get(key)
   if (cached) return cached
   const m = new Float32Array(width * height)
   for (let y = 0; y < height; y++) {
-    const dy = (y - height * 0.45) / (height / 2)
-    for (let x = 0; x < width; x++) {
-      const dx = (x - width / 2) / (width / 2)
-      const d = Math.sqrt(dx * dx + dy * dy * 0.85)
-      m[y * width + x] = 1 - 0.6 * 0.75 * smooth(0.35, 1.3, d)
-    }
+    for (let x = 0; x < width; x++) m[y * width + x] = at(x, y)
   }
-  if (vignetteCache.size >= VIGNETTE_CACHE_MAX) vignetteCache.delete(vignetteCache.keys().next().value!)
-  vignetteCache.set(key, m)
+  if (maskCache.size >= MASK_CACHE_MAX) maskCache.delete(maskCache.keys().next().value!)
+  maskCache.set(key, m)
   return m
+}
+
+/** 1 in the middle, 1 − 0.6 × 0.75 in the far corners, about an ellipse a little above the middle (0.45). */
+function vignetteAt(x: number, y: number, width: number, height: number): number {
+  const dx = (x - width / 2) / (width / 2)
+  const dy = (y - height * 0.45) / (height / 2)
+  return 1 - 0.6 * 0.75 * smooth(0.35, 1.3, Math.sqrt(dx * dx + dy * dy * 0.85))
+}
+
+/** How much of the picture is kept at each pixel (row by row). */
+export function vignetteMask(width: number, height: number): Float32Array {
+  return cachedMask(`${width}x${height}`, width, height, (x, y) => vignetteAt(x, y, width, height))
+}
+
+/**
+ * The light on hollywood's face (2026-11-06): the look sinks the whole picture,
+ * so the face is kept this much brighter than the rest. Nothing finds the face:
+ * it's a soft ellipse where the face roughly is, wide enough to allow for
+ * moving around, and fading out slowly enough to show no edge.
+ */
+const FACE_LIGHT = 0.18
+
+function faceLightAt(x: number, y: number, width: number, height: number): number {
+  const dx = (x - width / 2) / (width * 0.3)
+  const dy = (y - height * ZOOM_ANCHOR_Y) / (height * 0.2)
+  return 1 + FACE_LIGHT * (1 - smooth(0.6, 1.5, Math.sqrt(dx * dx + dy * dy)))
+}
+
+/** The mask a look is graded through: the vignette, with hollywood's light on the face. */
+export function lookMask(look: CinemaLook, width: number, height: number): Float32Array {
+  if (look !== 'hollywood') return vignetteMask(width, height)
+  return cachedMask(`lit:${width}x${height}`, width, height, (x, y) => vignetteAt(x, y, width, height) * faceLightAt(x, y, width, height))
 }
 
 /**
@@ -226,12 +248,12 @@ export function fastTableBuilds(): number {
 /** Drops the LUTs, the fast table and the vignette masks; they are rebuilt on the next draw. */
 export function releaseLookTables(): void {
   lutCache.clear()
-  vignetteCache.clear()
+  maskCache.clear()
   fastCache = null
   fastBuiltAt = -Infinity
 }
 
-/** In place: each pixel through the look, then darkened by the vignette. Alpha is left alone. */
+/** In place: each pixel through the look, then scaled by the mask (`data` clips what goes past 255). Alpha is left alone. */
 export function gradePixels(data: Uint8ClampedArray, width: number, height: number, lut: Lut, mask: Float32Array): void {
   const table = fastTableFor(lut)
   const count = width * height

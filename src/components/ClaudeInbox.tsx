@@ -1,26 +1,34 @@
 import { useState } from 'react'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { deleteInboxItem, fetchInbox, type InboxItem } from '../utils/inbox'
+import { receiveInboxImages } from '../utils/lineImageDownload'
+import type { Script } from '../types'
 import styles from './ClaudeInbox.module.css'
 
 interface Props {
   inboxKey: string
   onOpen: (item: InboxItem) => void
+  /** Their images stay on this device whatever the inbox holds. */
+  scripts: Pick<Script, 'lineImages'>[]
 }
 
 /**
  * Scripts sent from Claude chat and not yet made into a script, checked on
  * mount and whenever the app returns to the foreground. Any failure just
  * hides the section: Home must work the same without the inbox. One that is
- * no longer wanted can be thrown away with ×.
+ * no longer wanted can be thrown away with ×. The images that came with them
+ * are downloaded as soon as they are seen here, so filming and the export
+ * don't need the network.
  */
-export default function ClaudeInbox({ inboxKey, onOpen }: Props) {
+export default function ClaudeInbox({ inboxKey, onOpen, scripts }: Props) {
   const [items, setItems] = useState<InboxItem[]>([])
 
   useForegroundCheck(inboxKey || null, (key, isStale) => {
     fetchInbox(key)
       .then(next => {
-        if (!isStale()) setItems(next)
+        if (isStale()) return
+        setItems(next)
+        void receiveInboxImages(next, scripts, key)
       })
       .catch(err => {
         if (isStale()) return

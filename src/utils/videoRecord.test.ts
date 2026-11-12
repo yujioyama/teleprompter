@@ -54,6 +54,11 @@ function build(changes: Partial<Parameters<typeof buildVideoRecord>[0]> = {}) {
 }
 
 describe('buildVideoRecord', () => {
+  it('keeps when a reserved post goes out, and nothing for one that went out at once', () => {
+    expect(build({ postAt: '2026-11-12T11:00:00.000Z' }).postAt).toBe('2026-11-12T11:00:00.000Z')
+    expect('postAt' in build()).toBe(false)
+  })
+
   it('records a Type A/B script’s type and opening look, for the weekly A/B comparison', () => {
     const opening = { kind: 'letterbox' as const, at: 0.8, height: 0.18, grade: null }
     const record = build({ script: { ...SCRIPT, videoType: 'B' }, burn: { ...BURN, hook: { ...HOOK, punchIn: null, opening } } })
@@ -146,5 +151,14 @@ describe('buildVideoRecord for a one-take script', () => {
 
   it('marks a usual script as not one-take', () => {
     expect(build().effects.oneTake).toBe(false)
+  })
+
+  it('counts the line images, on a video with no sticker or fairies', () => {
+    const lineImages = [{ cueId: '2', imageId: 'i', blob: new Blob(['i']), width: 8, height: 6 }]
+    const { effects } = build({ burn: { ...BURN, hook: { ...HOOK, sticker: 'off', fairies: false, lineImages } } })
+    expect(effects.lineImages).toBe(1)
+    expect(effects.sticker).toBeNull()
+    expect(effects.fairies).toEqual({ enabled: false, cameoEmojis: [], finale: false })
+    expect(build({ burn: BURN }).effects).not.toHaveProperty('lineImages')
   })
 })

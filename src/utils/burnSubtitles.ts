@@ -20,6 +20,7 @@ import {
   type HookOptions,
   type PunchInPlan,
   type StyledCue,
+  subtitlePositionOf,
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
@@ -27,6 +28,7 @@ import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
+import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from './lineImages'
 import { openingFilterStages, type OpeningLook } from './openingLook'
 import {
   EN_STYLE,
@@ -51,7 +53,7 @@ import {
  * level (see burnSubtitles below), so no `enable=` time-window expression is
  * needed here — simpler and less error-prone than threading per-overlay timing
  * through the filter string itself. `baseFilter` (the zoom in) is applied
- * to the video first, then `opening` (Type A/B's look), both under the overlays.
+ * to the video first, then `opening` (the bars and film look), both under the overlays.
  */
 export function buildOverlayFilterGraph(
   ys: number[],
@@ -131,9 +133,9 @@ export interface SubtitleLook {
   midZoom?: MidZoomSegment[]
 }
 
-/** Where a cue is centered: hook cues have a position of their own. */
+/** Where a cue is centered (see subtitlePositionOf). */
 export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePosition {
-  return cue.variant === 'hook' ? look.hook.position : look.position
+  return subtitlePositionOf(cue, look.position, look.hook)
 }
 
 /**
@@ -287,10 +289,46 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
 }
 
 /**
+ * Render a line's image with its credit under it, rounded, on a transparent
+ * PNG as wide as the video and only as tall as the two: every overlay is
+ * decoded for the whole encode. The image is decoded here and let go again.
+ */
+export async function renderLineImage(lineImage: CueImage): Promise<{ image: Blob; y: number }> {
+  const slot = LINE_IMAGE_SLOT
+  const measure = canvasMeasure()
+  const credit = wrapCredit(lineImage.credit, slot.width, text => measure(text, CREDIT_FONT))
+  const layout = layoutLineImage(lineImage.width, lineImage.height, credit.length, slot)
+  const { canvas, ctx } = overlayCanvas(Math.ceil(layout.height))
+  ctx.font = CREDIT_FONT
+
+  const bitmap = await createImageBitmap(lineImage.blob)
+  ctx.save()
+  ctx.beginPath()
+  ctx.roundRect(layout.image.x, 0, layout.image.width, layout.image.height, LINE_IMAGE_RADIUS)
+  ctx.clip()
+  ctx.drawImage(bitmap, layout.image.x, 0, layout.image.width, layout.image.height)
+  ctx.restore()
+  bitmap.close()
+
+  ctx.textAlign = 'center'
+  credit.forEach((line, i) => {
+    const lineY = layout.creditTop - slot.top + (i + 0.5) * layout.creditLineHeight
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = outlineWidth(CREDIT_FONT_PX)
+    ctx.lineJoin = 'round'
+    ctx.strokeText(line, layout.creditCenterX, lineY)
+    ctx.fillStyle = '#fff'
+    ctx.fillText(line, layout.creditCenterX, lineY)
+  })
+  return { image: await toPng(canvas), y: slot.top }
+}
+
+/**
  * Render each cue that has a `ja` translation to its PNG and place it:
  * shown over [start, start + duration), centered on its position (the
  * hook position for hook cues) but kept fully on screen. Cues without a
- * translation aren't burned in. An emoji in a hook cue isn't drawn in its
+ * translation aren't burned in. A cue's line image goes under every subtitle,
+ * over the same window. An emoji in a hook cue isn't drawn in its
  * text: it becomes the sticker, from 0 s to the end of the first shot,
  * travelling around or sitting still, with its sparkles, as the hook says,
  * unless `still` (the ffmpeg path, which can only place it). No cue draws an emoji in its
@@ -303,6 +341,12 @@ export async function renderSubtitleOverlays(
   { still = false }: { still?: boolean } = {},
 ): Promise<SubtitleOverlay[]> {
   const overlays: SubtitleOverlay[] = []
+  for (const cue of cues) {
+    const lineImage = cue.ja === null ? undefined : look.hook.lineImages?.find(i => i.cueId === cue.id)
+    if (!lineImage) continue
+    const { image, y } = await renderLineImage(lineImage)
+    overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
+  }
   for (const cue of cues) {
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.

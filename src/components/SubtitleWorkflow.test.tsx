@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import SubtitleWorkflow, { INITIAL_SUBTITLE_STATE, SubtitleState } from './SubtitleWorkflow'
 import { ShotCueInput, SubtitleCue } from '../utils/subtitleCues'
 import { WhisperProgress } from '../utils/transcribeSpeech'
 import * as burnModule from '../utils/burnSubtitles'
 import { hookOptionsOf, type HookSettings } from '../utils/subtitleHook'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
-import type { LineJapanese, VideoType } from '../types'
+import type { LineJapanese } from '../types'
 import type { CinemaLook } from '../../shared/cinemaLook'
 import { HOLD_DELAY_MS, HOLD_REPEAT_MS } from '../hooks/useHoldRepeat'
+import { encodesHeld } from '../utils/webcodecs/encodeHold'
 
 vi.mock('../utils/burnSubtitles')
 // jsdom has no canvas: the look's pixels aren't under test here, only when it is on.
@@ -58,7 +59,6 @@ function ControlledSubtitleWorkflow({
   initialHookSettings,
   scriptJapanese,
   oneTake,
-  videoType,
   cinemaLook,
   onCinemaLookChange,
 }: {
@@ -71,7 +71,6 @@ function ControlledSubtitleWorkflow({
   initialHookSettings?: Partial<HookSettings>
   scriptJapanese?: LineJapanese[]
   oneTake?: boolean
-  videoType?: VideoType
   cinemaLook?: CinemaLook | null
   onCinemaLookChange?: (look: CinemaLook | null) => void
 }) {
@@ -100,7 +99,6 @@ function ControlledSubtitleWorkflow({
       inboxKey={inboxKey}
       scriptJapanese={scriptJapanese}
       oneTake={oneTake}
-      videoType={videoType}
       cinemaLook={cinemaLook}
       onCinemaLookChange={onCinemaLookChange}
     />
@@ -111,7 +109,7 @@ function ControlledSubtitleWorkflow({
 const positionGroup = () => within(screen.getByRole('group', { name: '字幕の位置' }))
 
 describe('SubtitleWorkflow position controls', () => {
-  it('defaults to the bottom preset and burns in with it when advancing', async () => {
+  it('defaults to the top preset and burns in with it when advancing', async () => {
     seedBurnMock()
     const onBurned = vi.fn()
     render(<ControlledSubtitleWorkflow combinedBlob={BLOB} shotCueInputs={SHOT_CUE_INPUTS} onBurned={onBurned} />)
@@ -124,14 +122,14 @@ describe('SubtitleWorkflow position controls', () => {
     })
     fireEvent.click(screen.getByText('日本語を反映'))
 
-    expect(positionGroup().getByText('下部')).toHaveAttribute('aria-pressed', 'true')
+    expect(positionGroup().getByText('上部')).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(screen.getByText('次へ'))
     await waitFor(() => expect(onBurned).toHaveBeenCalled())
     expect(burnModule.burnSubtitles).toHaveBeenCalledWith(
       BLOB,
       expect.anything(),
-      expect.objectContaining({ position: 72.2917 }),
+      expect.objectContaining({ position: 22.5 }),
     )
   })
 
@@ -532,8 +530,8 @@ describe('SubtitleWorkflow hook controls', () => {
   })
 })
 
-describe('SubtitleWorkflow punch-in', () => {
-  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>, videoType?: VideoType, cinemaLook?: CinemaLook | null) {
+describe('SubtitleWorkflow first shot and zooms', () => {
+  async function renderTranslated(onHookSettingsChange = vi.fn(), initialHookSettings?: Partial<HookSettings>, cinemaLook?: CinemaLook | null) {
     seedBurnMock()
     render(
       <ControlledSubtitleWorkflow
@@ -542,7 +540,6 @@ describe('SubtitleWorkflow punch-in', () => {
         onBurned={vi.fn()}
         onHookSettingsChange={onHookSettingsChange}
         initialHookSettings={initialHookSettings}
-        videoType={videoType}
         cinemaLook={cinemaLook}
       />,
     )
@@ -558,24 +555,11 @@ describe('SubtitleWorkflow punch-in', () => {
     Object.defineProperty(video, 'currentTime', { value: t, configurable: true })
   }
 
-  it('zooms the preview video in about (50%, 40%) during the first shot while playing, unless the zoom is off', async () => {
-    const onChange = await renderTranslated()
-    const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 1.2)
-    fireEvent.play(video)
-    fireEvent.timeUpdate(video)
-    expect(video.style.transform).toBe('scale(1.125)')
-    expect(video.style.transformOrigin).toBe('50% 40%')
-
-    fireEvent.click(screen.getByLabelText('ズーム'))
-    expect(onChange).toHaveBeenCalledWith({ punchInEnabled: false })
-    expect(video.style.transform).toBe('')
-  })
-
-  it.each(['A', 'B'] as const)('gives a Type %s script black bars instead of the zoom, only while playing', async type => {
-    await renderTranslated(vi.fn(), undefined, type)
+  it('gives every script black bars instead of the first shot\'s zoom, only while playing', async () => {
+    await renderTranslated()
     expect(screen.queryByLabelText('ズーム')).toBeNull()
-    expect(screen.getByText(`Type ${type}: 冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます（ズームは使いません）`)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'ズーム倍率' })).toBeNull()
+    expect(screen.getByText('冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開きます')).toBeInTheDocument()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.timeUpdate(video)
@@ -598,9 +582,52 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(screen.queryByTestId('letterbox-top')).toBeNull()
   })
 
+  it('offers a way to stop the preview while it plays, since the picture covers the player controls', async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    await renderTranslated(vi.fn())
+    const video = document.querySelector('video') as HTMLVideoElement
+    expect(screen.queryByRole('button', { name: 'プレビューを止める' })).toBeNull()
+
+    fireEvent.play(video)
+    fireEvent.click(screen.getByRole('button', { name: 'プレビューを止める' }))
+    expect(pause).toHaveBeenCalledOnce()
+
+    // Paused, the player's own controls are back.
+    fireEvent.pause(video)
+    expect(screen.queryByRole('button', { name: 'プレビューを止める' })).toBeNull()
+    pause.mockRestore()
+  })
+
+  it('holds the encodes ahead only while the preview plays', async () => {
+    await renderTranslated(vi.fn())
+    const video = document.querySelector('video') as HTMLVideoElement
+    expect(encodesHeld()).toBe(false)
+
+    fireEvent.play(video)
+    expect(encodesHeld()).toBe(true)
+    fireEvent.pause(video)
+    expect(encodesHeld()).toBe(false)
+
+    fireEvent.play(video)
+    cleanup()
+    expect(encodesHeld()).toBe(false)
+  })
+
+  it('does not hold the burn the user is waiting on, even if the player has yet to report its pause', async () => {
+    seedBurnMock()
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    await renderTranslated(vi.fn())
+    fireEvent.play(document.querySelector('video') as HTMLVideoElement)
+    expect(encodesHeld()).toBe(true)
+
+    fireEvent.click(screen.getByText('次へ'))
+    expect(encodesHeld()).toBe(false)
+    vi.restoreAllMocks()
+  })
+
   it('previews the picked film look under the bars, only while the opening plays', async () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
-    await renderTranslated(vi.fn(), undefined, 'A', 'oldFilm')
+    await renderTranslated(vi.fn(), undefined, 'oldFilm')
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.timeUpdate(video)
@@ -624,7 +651,7 @@ describe('SubtitleWorkflow punch-in', () => {
   })
 
   it('shows no film look canvas when none is picked', async () => {
-    await renderTranslated(vi.fn(), undefined, 'A')
+    await renderTranslated()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
     fireEvent.play(video)
@@ -632,7 +659,7 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(screen.queryByTestId('opening-look')).toBeNull()
   })
 
-  it('picks the film look under the Type hint, none included, and reports the choice', async () => {
+  it('picks the film look under the bars\' hint, none included, and reports the choice', async () => {
     const onLook = vi.fn()
     seedBurnMock()
     render(
@@ -640,7 +667,6 @@ describe('SubtitleWorkflow punch-in', () => {
         combinedBlob={BLOB}
         shotCueInputs={SHOT_CUE_INPUTS}
         onBurned={vi.fn()}
-        videoType="B"
         cinemaLook="oldFilm"
         onCinemaLookChange={onLook}
       />,
@@ -663,23 +689,14 @@ describe('SubtitleWorkflow punch-in', () => {
   })
 
   it('shows なし as picked when no film look is', async () => {
-    await renderTranslated(vi.fn(), undefined, 'A', null)
+    await renderTranslated(vi.fn(), undefined, null)
     const group = within(screen.getByRole('group', { name: '冒頭の色' }))
     expect(group.getByText('なし')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('has no film look picker without a type, and ignores a look it was given (Review Focus 1)', async () => {
-    await renderTranslated(vi.fn(), undefined, undefined, 'mono')
-    expect(screen.queryByRole('group', { name: '冒頭の色' })).toBeNull()
-    const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 0)
-    fireEvent.play(video)
-    expect(screen.queryByTestId('opening-look')).toBeNull()
-  })
-
-  it('shows the picker and the film look canvas for a Type A script given the same look (Review Focus 1)', async () => {
+  it('uses a film look on a script without a type', async () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
-    await renderTranslated(vi.fn(), undefined, 'A', 'mono')
+    await renderTranslated(vi.fn(), undefined, 'mono')
     expect(screen.getByRole('group', { name: '冒頭の色' })).toBeInTheDocument()
     const video = document.querySelector('video') as HTMLVideoElement
     setTime(video, 0)
@@ -688,33 +705,8 @@ describe('SubtitleWorkflow punch-in', () => {
     vi.restoreAllMocks()
   })
 
-  it('ignores a film look on a script without the opening', async () => {
-    await renderTranslated(vi.fn(), undefined, undefined, 'oldFilm')
-    const video = document.querySelector('video') as HTMLVideoElement
-    fireEvent.play(video)
-    expect(screen.queryByTestId('opening-look')).toBeNull()
-  })
-
-  it('shows the preview at 1x when paused, even inside the zoom, so the controls stay reachable', async () => {
-    await renderTranslated()
-    const video = document.querySelector('video') as HTMLVideoElement
-    setTime(video, 1.2)
-    fireEvent.timeUpdate(video)
-    expect(video.style.transform).toBe('')
-
-    fireEvent.play(video)
-    expect(video.style.transform).toBe('scale(1.125)')
-    fireEvent.pause(video)
-    expect(video.style.transform).toBe('')
-
-    fireEvent.play(video)
-    fireEvent.ended(video)
-    expect(video.style.transform).toBe('')
-  })
-
-  it('drifts in on a peak and punches in on the punchline while playing, unless 中盤のズーム is off', async () => {
+  async function renderWithPeak(onChange = vi.fn()) {
     seedBurnMock()
-    const onChange = vi.fn()
     render(
       <ControlledSubtitleWorkflow
         combinedBlob={BLOB}
@@ -726,7 +718,6 @@ describe('SubtitleWorkflow punch-in', () => {
         ]}
         onBurned={vi.fn()}
         onHookSettingsChange={onChange}
-        initialHookSettings={{ punchInEnabled: false }}
       />,
     )
     await screen.findByDisplayValue('Hello')
@@ -734,7 +725,28 @@ describe('SubtitleWorkflow punch-in', () => {
       target: { value: '1. こんにちは\n2. 山場\n3. 前振り\n4. オチ' },
     })
     fireEvent.click(screen.getByText('日本語を反映'))
-    const video = document.querySelector('video') as HTMLVideoElement
+    return document.querySelector('video') as HTMLVideoElement
+  }
+
+  it('shows the preview at 1x when paused, even inside a zoom, so the controls stay reachable', async () => {
+    const video = await renderWithPeak()
+    setTime(video, 3)
+    fireEvent.timeUpdate(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    expect(video.style.transform).toBe('scale(1.06)')
+    fireEvent.pause(video)
+    expect(video.style.transform).toBe('')
+
+    fireEvent.play(video)
+    fireEvent.ended(video)
+    expect(video.style.transform).toBe('')
+  })
+
+  it('drifts in on a peak and punches in on the punchline while playing, unless 中盤のズーム is off', async () => {
+    const onChange = vi.fn()
+    const video = await renderWithPeak(onChange)
     fireEvent.play(video)
 
     // Halfway through the peak (2-4s): 1 + 0.12 * 0.5.
@@ -769,40 +781,22 @@ describe('SubtitleWorkflow punch-in', () => {
       const video = document.querySelector('video') as HTMLVideoElement
       setTime(video, 0.1)
       fireEvent.play(video)
-      expect(video.style.transform).toBe('')
+      expect(screen.getByTestId('letterbox-top').style.height).toBe('22%')
 
-      setTime(video, 1.2)
+      // The bars are halfway gone at 1.6s (they slide over 0.8s, done by the 2s first shot's end).
+      setTime(video, 1.6)
       act(() => frames.shift()!(0))
-      expect(video.style.transform).toBe('scale(1.125)')
+      expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
 
       // Past the first shot (2s) plus the short tail: the frame is ignored,
-      // so the last update (inside the zoom) still stands.
+      // so the last update (mid-slide) still stands.
       setTime(video, 5)
       act(() => frames.shift()!(0))
-      expect(video.style.transform).toBe('scale(1.125)')
+      expect(screen.getByTestId('letterbox-top').style.height).toBe('11%')
       // The slower timeupdate still moves the preview on.
       fireEvent.timeUpdate(video)
-      expect(video.style.transform).toBe('')
+      expect(screen.queryByTestId('letterbox-top')).toBeNull()
     })
-  })
-
-  it('sets the zoom and when it starts, reporting them to be saved', async () => {
-    const onChange = await renderTranslated()
-    const zoomGroup = within(screen.getByRole('group', { name: 'ズーム倍率' }))
-    expect(zoomGroup.getByText('1.25倍')).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(zoomGroup.getByText('1.5倍'))
-    expect(onChange).toHaveBeenCalledWith({ punchInZoom: 1.5 })
-
-    fireEvent.change(screen.getByLabelText('動き始めるタイミング'), { target: { value: '0.8' } })
-    expect(onChange).toHaveBeenLastCalledWith({ punchInAt: 0.8 })
-  })
-
-  it('sets how fast the zoom moves', async () => {
-    const onChange = await renderTranslated()
-    const speed = within(screen.getByRole('group', { name: 'ズームの速さ' }))
-    expect(speed.getByText('ゆっくり')).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(speed.getByText('速い'))
-    expect(onChange).toHaveBeenCalledWith({ punchInDuration: 0.6 })
   })
 
   it('picks where the sticker goes', async () => {
@@ -850,13 +844,6 @@ describe('SubtitleWorkflow punch-in', () => {
     expect(screen.queryByText('ルートを変える')).toBeNull()
   })
 
-  it('switches the zoom between pulling back and pushing in', async () => {
-    const onChange = await renderTranslated()
-    const direction = within(screen.getByRole('group', { name: 'ズームの向き' }))
-    expect(direction.getByText('ズームイン')).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(direction.getByText('ズームアウト'))
-    expect(onChange).toHaveBeenCalledWith({ punchInDirection: 'out' })
-  })
 })
 
 describe('SubtitleWorkflow Japanese sent back by Claude', () => {

@@ -58,6 +58,22 @@ beforeEach(() => {
 })
 
 describe('burnRequest', () => {
+  it('re-encodes a shot only when its own line image changes', () => {
+    const shot = { shotId: 's', blob: new Blob(['s']), start: 0, end: 2 }
+    const cue: StyledCue = { id: 'c1', start: 0, end: 2, en: 'Hi', ja: 'やあ', variant: 'normal' }
+    const image = { cueId: 'c1', imageId: 'i', blob: new Blob(['i']), width: 8, height: 6 }
+    const keyWith = (lineImages: HookOptions['lineImages']) =>
+      burnRequest(shot, [cue], { position: 72, hook: { ...NO_HOOK, lineImages }, firstShotDuration: null }).key
+    const plain = keyWith(undefined)
+    expect(keyWith([])).toBe(plain)
+    expect(keyWith([{ ...image, cueId: 'another shot' }])).toBe(plain)
+    const shown = keyWith([image])
+    expect(shown).not.toBe(plain)
+    expect(shown).toContain('image-above-v1')
+    expect(keyWith([{ ...image, credit: 'Ann / CC BY 4.0' }])).not.toBe(shown)
+    expect(keyWith([{ ...image, imageId: 'j', blob: new Blob(['j']) }])).not.toBe(shown)
+  })
+
   const shot = clip('s1', 0.5, 2.5)
   const cue: StyledCue = { id: 'shot-0', start: 0, end: 2, en: 'Hi', ja: 'やあ', variant: 'normal' }
 

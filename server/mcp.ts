@@ -6,7 +6,7 @@ import type { InboxStore } from './inboxStore.js'
 import type { SubtitleStore } from './subtitleStore.js'
 import type { RecordStore } from './recordStore.js'
 import { JAPANESE_SUBTITLE_RULES } from '../shared/japaneseSubtitles.js'
-import { CINEMA_LOOKS, CINEMA_LOOK_LABELS } from '../shared/cinemaLook.js'
+import { captionWithCredits } from '../shared/inbox.js'
 
 export const TOOL_NAME = 'send_to_teleprompter'
 export const SUBTITLES_TOOL_NAME = 'send_subtitles'
@@ -26,9 +26,11 @@ const DESCRIPTION = [
   '各行で要になる語句は *…* で囲みます（1行に0〜1か所。例: I *carry a torch* for him）。字幕でその語句が黄色になり、読み上げ画面では * は表示されません。',
   'その回に紹介する日本語の単語は {…} で囲みます（台本全体で1か所。例: In Japanese, we call it {ukon}.）。字幕でその単語がミント色になり（日本語字幕の対応する単語も同じ色）、読み上げ画面では { } は表示されません。',
   '1行目（最初のショット）には、その回の話題のモノや場面を表す絵文字を1つだけ入れます（例: I put *Vaseline*🧴 on my eyebrows every night.）。抽象的な英語フレーズの回は、文字どおりの意味の絵文字にします（例: carry a torch → 🔦）。この絵文字は字幕の文字には出ず、最初のショットの間、顔の横に大きなステッカーとして表示されます。途中の行（1行目と最終行以外）のうち、話の山場（話が転がる行や、オチの直前の盛り上がり）の行に、合計で最大2行まで絵文字を1つずつ入れます。モノの名前が出てくるだけの行には入れません。これも字幕の文字には出ず、そのショットで小さな妖精として一瞬横切り、その行では画面がじわっと寄ります（ただし最後の行の直前の行は寄らず、最後の行でカットの瞬間に寄ります）。最終行には絵文字を入れません（1行目の絵文字が最後のショットで自動的に戻ってきます）。',
-  'type には動画の型を入れます。A＝2021年型（3〜6行の短い日常の話）、B＝表現ノート型（1つの英単語から小さな話を重ねる話）。アプリが冒頭の演出を自動で付けます（A・Bとも、映画のような黒帯が上下に出て、1行目のあいだ映ってから開く）。どちらでもない台本は省略します。',
-  'look には、Type A/B の台本の冒頭（黒帯のあいだ）に重ねる映像の色味を入れます。hollywood＝ハリウッド風（色はそのままで少し暗く、影が黒く沈む）、oldFilm＝昔のフィルム（薄く黄ばんで色あせ、かすかな粒子とほこり）、nightBlue＝夜の青（色が抜けて青く暗い）、mono＝白黒（コントラスト強めで粒子）、glitch＝グリッチ（壊れたテレビ風に赤と青がずれ、帯がちぎれ、動くたびに跳ねる）。選び方: 思い出や懐かしい話なら oldFilm、まじめな話なら nightBlue、ふだんの出来事を大きく語るなら hollywood、静かな話やドラマチックな場面なら mono。glitch は選ばないでください（感動系のピアノとステッカーに合わないため。ユーザーが自分で選ぶ分には構いません）。none か省略なら黒帯だけです。type を付けないときは効果がありません。ユーザーはアプリの字幕画面で変えられます。',
+  'type には動画の型を入れます。A＝2021年型（3〜6行の短い日常の話）、B＝表現ノート型（1つの英単語から小さな話を重ねる話）。週ごとの分析で動画を型別に比べるための記録で、演出は変わりません（型があってもなくても、冒頭は映画のような黒帯が上下に出て、1行目のあいだ映ってから開く）。どちらでもない台本は省略します。',
   'caption には投稿用のキャプション（ハッシュタグ込み）を入れます。無ければ省略します。',
+  'images には、行ごとに見せる画像を入れます（任意。1行に0〜1枚。例: [{ line: 4, url: "https://….jpg", credit: "KKPCW / CC BY-SA 4.0", source: "https://commons.wikimedia.org/wiki/File:…" }]）。line は script の何行目か（1から数える）、url は https の画像そのものの URL（幅1280px程度。SVG は不可）です。その行の字幕が出ているあいだ、頭の上に角丸の枠で表示され、その行の字幕は胸のあたりに下がります（1行目も同じ。画像のない行の字幕は上に出ます）。1行目の画像は、オチを先に見せないものを選んでください。',
+  '画像を1枚でも付けた回は、絵文字のステッカーも妖精も一切出ません（1行目の絵文字はこれまでどおり書いてください。出すかどうかはアプリが決めます）。画像が無い回は今までどおりです。',
+  '画像を選ぶときは、クレジットが要らない画像を優先してください（CC0、パブリックドメイン、Unsplash、Pexels）。そのときは credit と source を省略します。それで見つからないときだけ CC BY を、最後の手段として CC BY-SA を選び、credit に「作者名 / ライセンス」、source に出典ページの URL を入れます。credit は画像の下に小さく表示され、source とともにキャプションの末尾に自動で追記されるので、caption には書かないでください。',
   '送ったあとに直した版を送り直すときは、前と同じ title で送ってください。受け取り箱でまだ開かれていない同じタイトルの前の版が、新しい版に置き換わります。',
   'japanese には、script の各行の日本語字幕を、番号なしで1行ずつ、script と同じ順番・同じ行数で入れます。アプリの字幕画面に最初から入ります。*…* と絵文字は日本語には入れません（{…} は下のルールどおりに付けます）。日本語字幕は次のルールで作ります。',
   JAPANESE_SUBTITLE_RULES,
@@ -41,8 +43,8 @@ const SUBTITLES_DESCRIPTION = [
 
 const RECORDS_DESCRIPTION = [
   'teleprompterアプリで「保存する」を押した完成動画の制作記録を返します（1台本につき最後の保存の1件、新しい順のJSON）。',
-  'TikTokなどの動画を、hookLine（字幕の1行目。*や絵文字なし）と savedAt（保存日時。投稿はその後）で突き合わせると、その動画の作り方が分かります。',
-  'effects: hookStyle/hookPosition（最初のショットのフック字幕）、zoom（最初のショットのズーム。direction=outは寄った画から始まる）、sticker（顔の横の絵文字ステッカー）、fairies（途中の妖精と最後のフィナーレ）、subtitles、bgm、voicePreset、trim（無音の余白の秒数: firstStart=最初のショットの前、start/end=各ショットの前後、lastEnd=最後のショットの後ろ、pauseShots=「間を残す」にしたショット数。nullは不明）、midZoom（中盤のズーム: 山場の行でじわっと寄り、最後の行で寄る。trueなら使った。項目が無いのは導入前の記録）、oneTake（一発撮り: 台本全体を1回で撮り、字幕を行ごとに切り替えた。trueなら一発撮り。項目が無いのは導入前の記録）、videoType（A＝2021年型、B＝表現ノート型。無いのは型なしか2026-11-02より前）、opening（冒頭の演出: letterbox＝黒帯が開く、colorPop＝1行目の語句で色づく（2026-11-03より前のType B）。atは動き始める秒、look（冒頭の色: hollywood/oldFilm/nightBlue/mono/glitch。nullは無し、項目が無いのは導入前）。openingそのものがnullなら無し、項目が無いのは導入前）。',
+  'TikTokなどの動画を、hookLine（字幕の1行目。*や絵文字なし）と savedAt（保存日時。投稿はその後。予約投稿なら postAt が投稿される日時で、数日後のことがある）で突き合わせると、その動画の作り方が分かります。',
+  'effects: hookStyle/hookPosition（最初のショットのフック字幕）、zoom（最初のショットのズーム。direction=outは寄った画から始まる）、sticker（顔の横の絵文字ステッカー）、fairies（途中の妖精と最後のフィナーレ）、subtitles、bgm、voicePreset、trim（無音の余白の秒数: firstStart=最初のショットの前、start/end=各ショットの前後、lastEnd=最後のショットの後ろ、pauseShots=「間を残す」にしたショット数。nullは不明）、midZoom（中盤のズーム: 山場の行でじわっと寄り、最後の行で寄る。trueなら使った。項目が無いのは導入前の記録）、oneTake（一発撮り: 台本全体を1回で撮り、字幕を行ごとに切り替えた。trueなら一発撮り。項目が無いのは導入前の記録）、videoType（A＝2021年型、B＝表現ノート型。無いのは型なしか2026-11-02より前）、opening（冒頭の演出: letterbox＝黒帯が開く、colorPop＝1行目の語句で色づく（2026-11-03より前のType B）。atは動き始める秒、look（冒頭の色: hollywood/oldFilm/nightBlue/mono/glitch。nullは無し、項目が無いのは導入前）。openingそのものがnullなら無し、項目が無いのは導入前）、lineImages（行ごとの画像を見せた枚数。その回は sticker も fairies も出ない。項目が無いのは画像なしか導入前）。',
 ].join('\n')
 
 // The app's request id ends in its English line count (e.g. "1x9kq2c-6").
@@ -70,19 +72,27 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
         title: z.string().trim().min(1).max(100).describe('動画のタイトル（スクリプト一覧に出る名前）'),
         script: z.string().trim().min(1).max(10_000).describe('読み上げる本文。1ショット＝1行'),
         caption: z.string().trim().max(4_000).optional().describe('TikTokに投稿するキャプション（ハッシュタグ込み）'),
-        type: z.enum(['A', 'B']).optional().describe('動画の型。A＝2021年型（短い日常）、B＝表現ノート型'),
-        look: z
-          .enum(['none', ...CINEMA_LOOKS])
-          .optional()
-          .describe('Type A/B の冒頭の色味。none か省略＝黒帯だけ。type が無いときは無視される'),
+        type: z.enum(['A', 'B']).optional().describe('動画の型（分析用の記録）。A＝2021年型（短い日常）、B＝表現ノート型'),
         japanese: z
           .array(z.string().trim().min(1).max(200))
           .max(300)
           .optional()
           .describe('日本語字幕。番号なしで1行ずつ、script と同じ順番・同じ行数'),
+        images: z
+          .array(
+            z.object({
+              line: z.number().int().min(1).describe('script の何行目か（1から数える）'),
+              url: z.string().url().max(2_000).startsWith('https://').describe('画像そのものの https の URL'),
+              credit: z.string().trim().min(1).max(120).optional().describe('「作者名 / ライセンス」。クレジットが要らない画像は省略'),
+              source: z.string().url().max(2_000).optional().describe('出典ページの URL。クレジットが要らない画像は省略'),
+            }),
+          )
+          .max(300)
+          .optional()
+          .describe('行ごとに見せる画像。1枚でもあるとステッカーと妖精は出ない'),
       },
     },
-    async ({ title, script, caption, japanese, type, look }) => {
+    async ({ title, script, caption, japanese, type, images }) => {
       const body = script.replace(/\r\n?/g, '\n')
       const lines = body.split('\n').filter(line => line.trim()).length
       if (japanese) {
@@ -96,20 +106,26 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           )
         }
       }
+      for (const [i, image] of (images ?? []).entries()) {
+        if (image.line > lines) {
+          return textResult(`images の ${image.line}行目がありません。script は${lines}行です。`, true)
+        }
+        if (images!.findIndex(other => other.line === image.line) !== i) {
+          return textResult(`images の ${image.line}行目に画像が2枚あります。1行に1枚で送り直してください。`, true)
+        }
+      }
       try {
-        // Kept even without a type (the app ignores it until the script gets one).
-        const pickedLook = look && look !== 'none' ? look : undefined
         const { item, replaced } = await inbox().add({
           title,
           body,
-          caption: caption ?? '',
+          caption: captionWithCredits(caption ?? '', images ?? []),
           japanese,
+          images,
           ...(type ? { videoType: type } : {}),
-          ...(pickedLook ? { look: pickedLook } : {}),
         })
         const note = replaced > 0 ? '受け取り箱にあった同じタイトルの前の版は置き換えました。' : ''
         const withJapanese = (japanese ? '・日本語訳つき' : '') + (type ? `・Type ${type}` : '') +
-          (type && item.look ? `・${CINEMA_LOOK_LABELS[item.look]}` : '')
+          (images?.length ? `・画像${images.length}枚つき` : '')
         return textResult(
           `『${item.title}』をteleprompterに送りました（${lines}行${withJapanese}）。${note}teleprompterのホーム画面に届いています。`,
         )

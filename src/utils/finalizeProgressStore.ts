@@ -188,6 +188,7 @@ export function burnedForSubtitles(
 ): SavedBurn | null {
   if (!burned || burned.combinedClips !== combinedClips) return null
   const { inputs } = burned
+  // A line image's file doesn't show in the JSON; its imageId does.
   const same =
     inputs.position === position &&
     JSON.stringify(inputs.cues) === JSON.stringify(cues) &&

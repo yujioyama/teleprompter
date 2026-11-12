@@ -168,6 +168,12 @@
   margin-top: 12px;
 }
 
+.youtubeScheduleHint {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .versionSwitch {
   display: flex;
   gap: 8px;

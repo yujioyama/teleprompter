@@ -10,6 +10,7 @@ import {
   loadFinalizeProgress,
   updateFinalizeProgress,
   type FinalizeProgress,
+  type SavedBurn,
   type SavedCombinedClip,
   type SavedSubtitles,
 } from '../utils/finalizeProgressStore'
@@ -17,6 +18,7 @@ import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
 import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { releaseCinemaLookCaches } from '../utils/drawCinemaLook'
+import { filmLookOf } from '../../shared/cinemaLook'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
@@ -32,7 +34,9 @@ import { useCoverFrames, type CoverChange } from '../hooks/useCoverFrames'
 import { useYoutubeExport } from '../hooks/useYoutubeExport'
 import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
-import { hookOptionsOf, oneTakeHookSettings, withVideoType, type HookSettings } from '../utils/subtitleHook'
+import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
+import { withLineImages } from '../utils/lineImages'
+import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
 import CancelProcessing from '../components/CancelProcessing'
@@ -42,6 +46,8 @@ import MusicMixer, { type MixedVideo } from '../components/MusicMixer'
 import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
+import PostToSns from '../components/PostToSns'
+import { coverOffsetMs, youtubeScheduleHint } from '../utils/postToSns'
 import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
 import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
@@ -187,6 +193,8 @@ export default function FinalizePage() {
   const burnCoverRef = useRef<{ key: string; png: Promise<Blob | null> } | null>(null)
   // The burn without the cover, for the YouTube version; made at the export.
   const [plainBurned, setPlainBurned] = useState<{ of: Blob; blob: Blob | null } | null>(null)
+  // The burn saved on an earlier visit, until it's known whether it still stands.
+  const [savedBurn, setSavedBurn] = useState<SavedBurn | null>(null)
   const [mixed, setMixed] = useState<MixedVideo | null>(null)
   // What `burnedBlob` and `mixed` were made from, for the video record; only
   // read while those are set. The refs hold the run in flight.
@@ -223,9 +231,12 @@ export default function FinalizePage() {
   const [madeCover, setMadeCover] = useState<{ png: Blob | null; drawing: boolean }>({ png: null, drawing: false })
   // The made cover's starting point, drawn without opening カバー画像を作る (see makeCover).
   const [autoCover, setAutoCover] = useState<'idle' | 'making' | 'failed'>('idle')
-  const autoCoverForRef = useRef<Blob | null>(null)
+  // What it was last made from (結合 and film look); a made one for anything else is dropped.
+  const autoCoverForRef = useRef<string | null>(null)
   // Which of the two versions the export step's preview plays.
   const [previewYoutube, setPreviewYoutube] = useState(false)
+  // The time 投稿する reserved this video at, for YouTube to be scheduled at by hand.
+  const [reservation, setReservation] = useState<{ video: Blob | null; at: string } | null>(null)
   const captionCopyTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(captionCopyTimerRef.current), [])
   const encodeCacheRef = useRef<ShotEncodeCache | null>(null)
@@ -359,26 +370,9 @@ export default function FinalizePage() {
             setCompletedSteps(['trim'])
             setStep('subtitle')
           }
-          // And the video they were burned into, back on the BGM step: unless
-          // burning now would come out different (a setting changed since).
-          const hookNow = withVideoType(
-            hookOptionsOf(script.oneTake ? oneTakeHookSettings(hookSettings) : hookSettings),
-            script.videoType,
-            cues,
-            position,
-            script.look,
-          )
-          const burn = burnedForSubtitles(progress.burned, subtitles.combinedClips, cues, position, hookNow)
-          if (burn) {
-            setBurned({ blob: burn.blob, cover: burn.cover })
-            // The export's made cover is the one already in, as after the burn.
-            if (burn.cover) setMadeCover({ png: burn.cover.image, drawing: false })
-            setBurnInputs(burn.inputs)
-            // The BGM isn't kept: the usual one is mixed in again, as after the burn.
-            setBgmAutoPending(defaultTrack !== null)
-            setCompletedSteps(['trim', 'subtitle'])
-            setStep('bgm')
-          }
+          // And the video they were burned into, once the look it would be
+          // burned with now is known (see below).
+          if (cues.length > 0) setSavedBurn(progress.burned)
         }
       }
       setLoading(false)
@@ -572,13 +566,31 @@ export default function FinalizePage() {
   )
   const oneTake = Boolean(script?.oneTake)
   // A 一発撮り take has no fairies or mid-video zooms (see oneTakeHookSettings).
-  // A Type A/B script gets the opening look instead of the zoom.
-  const videoType = script?.videoType
-  const cinemaLook = script?.look
-  const hook = useMemo(
-    () => withVideoType(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), videoType, subtitleCues, subtitlePosition, cinemaLook),
-    [hookSettings, oneTake, videoType, subtitleCues, subtitlePosition, cinemaLook],
+  // Every script gets the opening look instead of the zoom.
+  const cinemaLook = filmLookOf(script?.look)
+  // A script with line images shows those instead of any sticker.
+  const hasLineImages = Boolean(script?.lineImages?.length)
+  const { stored: storedLineImages, loading: lineImagesLoading } = useLineImages(script?.lineImages, settings.inboxKey)
+  const lineImages = useMemo(
+    () => ({
+      images: script?.lineImages ?? [],
+      stored: storedLineImages,
+      lines: (script?.shots ?? []).flatMap(s => takeLinesOf(s.text)),
+      loading: lineImagesLoading,
+    }),
+    [script, storedLineImages, lineImagesLoading],
   )
+  const hook = useMemo(
+    () => withLineImages(
+      withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), subtitleCues, subtitlePosition, cinemaLook),
+      { ...lineImages, cues: subtitleCues },
+    ),
+    [hookSettings, oneTake, subtitleCues, subtitlePosition, cinemaLook, lineImages],
+  )
+  // The cover's picture wears the video's film look.
+  const coverGrade = hook.opening?.grade ?? null
+  const coverStrength = hook.opening?.strength ?? 1
+  const coverLook = useMemo(() => (coverGrade ? { grade: coverGrade, strength: coverStrength } : null), [coverGrade, coverStrength])
   // ...and its hook lasts just the first line rather than the whole take.
   const hookEnd = oneTake && subtitleCues.length > 0 ? subtitleCues[0].end : undefined
 
@@ -597,11 +609,11 @@ export default function FinalizePage() {
   const burnCoverFor = useCallback(
     async (cues: SubtitleCue[]): Promise<BurnCover | undefined> => {
       if (!coverInBurn || !combinedBlob || !script) return undefined
-      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja))
+      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length))
       const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
-      const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker])
+      const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker, coverLook])
       if (burnCoverRef.current?.key !== key) {
-        const png = makeCover(combinedBlob, words, coverTextPosition, sticker).catch(err => {
+        const png = makeCover(combinedBlob, words, coverTextPosition, sticker, coverLook).catch(err => {
           console.warn('[FinalizePage] could not make the cover for the burn:', err)
           return null
         })
@@ -610,7 +622,7 @@ export default function FinalizePage() {
       const image = await burnCoverRef.current.png
       return image ? { image, count: burnCoverCount } : undefined
     },
-    [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount],
+    [coverInBurn, combinedBlob, script, stickerPlacement, movedCoverSticker, coverTextPosition, burnCoverCount, coverLook],
   )
 
   useEffect(() => {
@@ -740,42 +752,72 @@ export default function FinalizePage() {
   const savable =
     exportBlob !== null && !(madeCoverWanted && (madeCover.drawing || (!madeCover.png && autoCover !== 'failed')))
 
-  // A cover made for another 結合 shows another video. Not the one its burn
-  // put in, though: a 結合 reopened along with its burn keeps that cover.
+  // A cover made for another 結合 shows another video, and one made under another film look another color.
+  // Not the one its burn put in, though: a 結合 reopened along with its burn keeps that cover.
   useEffect(() => {
     const kept = burnedCover?.image ?? null
     setMadeCover(c => (c.png !== kept || c.drawing ? { png: kept, drawing: false } : c))
     setAutoCover('idle')
+    // So a look picked again is made again: the saves wait for a cover, and the old one is gone.
+    autoCoverForRef.current = null
     // burnedCover is read as of the 結合 arriving; a burn made later sets the cover itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [combinedBlob])
+  }, [combinedBlob, coverLook])
+
+  // A burn saved on an earlier visit, back on the BGM step: unless burning
+  // now would come out different (a setting changed since, or a line's
+  // image isn't on this device). Decided once the images are in, as the
+  // look depends on them; anything done to the subtitles meanwhile wins.
+  // Below the effect above on purpose: run in the same pass, that one would
+  // clear the cover this one brings back.
+  useEffect(() => {
+    if (!savedBurn || lineImagesLoading) return
+    setSavedBurn(null)
+    if (step !== 'subtitle' || subtitleStage !== 'reviewing') return
+    const combinedNow = combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current))
+    const burn = burnedForSubtitles(savedBurn, combinedNow, subtitleCues, subtitlePosition, hook)
+    if (!burn) return
+    setBurned({ blob: burn.blob, cover: burn.cover })
+    // The export's made cover is the one already in, as after the burn.
+    if (burn.cover) setMadeCover({ png: burn.cover.image, drawing: false })
+    setBurnInputs(burn.inputs)
+    // The BGM isn't kept: the usual one is mixed in again, as after the burn.
+    setBgmAutoPending(defaultTrack !== null)
+    setCompletedSteps(['trim', 'subtitle'])
+    setStep('bgm')
+    // Only the saved burn arriving and the images settling decide this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedBurn, lineImagesLoading])
 
   // The cover frames want the made cover but none has been drawn: make the
   // one カバー画像を作る would start with, so it goes in without opening it.
-  // Once per 結合; the maker's own cover, when it comes, takes its place.
+  // Once per 結合 and film look; the maker's own cover, when it comes, takes its place.
   useEffect(() => {
     if (step !== 'export' || !combinedBlob || !script || !madeCoverWanted) return
-    if (madeCover.png || coverOpen || autoCoverForRef.current === combinedBlob) return
-    autoCoverForRef.current = combinedBlob
+    const madeFrom = JSON.stringify([blobId(combinedBlob), coverLook])
+    if (madeCover.png || coverOpen || autoCoverForRef.current === madeFrom) return
+    autoCoverForRef.current = madeFrom
     setAutoCover('making')
     makeCover(
       combinedBlob,
-      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja)),
+      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja), hasLineImages),
       settings.coverTextPosition,
       coverStickerSpot(stickerPlacement, settings.coverStickerSpot),
+      coverLook,
     ).then(
       png => {
+        if (autoCoverForRef.current !== madeFrom) return
         setMadeCover(c => (c.png ? c : { ...c, png }))
         setAutoCover('idle')
       },
       err => {
         console.warn('[FinalizePage] could not make the cover:', err)
-        setAutoCover('failed')
+        if (autoCoverForRef.current === madeFrom) setAutoCover('failed')
       },
     )
     // The words and spots are read once, as the maker reads them on opening.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, combinedBlob, madeCoverWanted, madeCover.png, coverOpen])
+  }, [step, combinedBlob, madeCoverWanted, madeCover.png, coverOpen, coverLook])
   // YouTube用も書き出す: the same video with the YouTube BGM in place of
   // the usual one, mixed the same way, and no cover frames. Made once the
   // normal version is ready, not alongside it.
@@ -894,23 +936,43 @@ export default function FinalizePage() {
     ])
   }
 
+  // YouTubeに投稿: YouTube can't be posted to by API without Google's audit,
+  // so the YouTube version goes alone into the share sheet (pick YouTube
+  // there), with the caption copied for the description.
+  async function handleShareYoutube() {
+    if (!youtubeBlob || !script) return
+    // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
+    if (script.caption) void copyCaption(script.caption)
+    await shareOrDownload(youtubeBlob, `${script.title}-youtube`)
+  }
+
+  // 投稿する's cover: the frame the cover frames are at in the video posted,
+  // so Instagram and TikTok show it; none when no cover went in.
+  async function postCoverOffsetMs(): Promise<number | undefined> {
+    const coverIn = coverFrameState !== 'failed' && (burnedCover !== null || coverImage !== null)
+    const placement = coverIn ? coverFramePlacement : 'none'
+    const duration = placement === 'last' && exportBlob ? await probeVideoDuration(exportBlob) : 0
+    return coverOffsetMs(placement, clampCoverFrameCount(coverFrameCount), duration)
+  }
+
   // Saving the video is "this is the version": record how it was made,
   // without holding up or failing the save.
-  function recordSavedVideo() {
+  function recordSavedVideo(postAt?: string) {
     if (!settings.inboxKey) return
     try {
-      sendVideoRecord(settings.inboxKey)
+      sendVideoRecord(settings.inboxKey, postAt)
     } catch (err) {
       console.warn('[FinalizePage] could not build the video record:', err)
     }
   }
 
   // Built from what the burn and the mix actually used (see buildVideoRecord).
-  function sendVideoRecord(key: string) {
+  function sendVideoRecord(key: string, postAt?: string) {
     if (!script) return
     const record = buildVideoRecord({
       script,
       savedAt: new Date().toISOString(),
+      postAt,
       durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
       shotCount: combinedClips.length,
       burn: burnedBlob ? burnInputs : null,
@@ -1092,10 +1154,10 @@ export default function FinalizePage() {
                 inboxKey={settings.inboxKey}
                 scriptJapanese={script?.japanese}
                 oneTake={oneTake}
-                videoType={videoType}
+                lineImages={lineImages}
                 cinemaLook={cinemaLook}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
-                onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? undefined })}
+                onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? 'none' })}
                 burn={async (cues, position, onProgress, signal) => {
                   burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null
@@ -1282,6 +1344,25 @@ export default function FinalizePage() {
                       : 'キャプションをコピー'}
                 </button>
               )}
+              <PostToSns
+                video={exportBlob}
+                caption={script.caption ?? ''}
+                inboxKey={settings.inboxKey}
+                ready={savable && coverFrameState !== 'inserting'}
+                coverOffsetMs={postCoverOffsetMs}
+                onPosted={postAt => {
+                  setReservation(postAt ? { video: exportBlob, at: postAt } : null)
+                  recordSavedVideo(postAt)
+                }}
+              />
+              {youtubeEnabled && youtubeState !== 'failed' && (
+                <button className={styles.copyCaptionBtn} onClick={handleShareYoutube} disabled={!youtubeBlob}>
+                  {youtubeBlob ? 'YouTubeに投稿（共有シートで YouTube を選ぶ）' : 'YouTube用を作っています...'}
+                </button>
+              )}
+              {youtubeEnabled && youtubeState !== 'failed' && reservation?.video === exportBlob && (
+                <p className={styles.youtubeScheduleHint}>{youtubeScheduleHint(reservation.at)}</p>
+              )}
               {combinedUrl && (
                 <button className={styles.copyCaptionBtn} onClick={() => setCoverOpen(open => !open)}>
                   {coverOpen ? 'カバー画像を閉じる' : 'カバー画像を作る'}
@@ -1293,6 +1374,7 @@ export default function FinalizePage() {
                   initialWords={coverWordsOf(
                     script.shots.map(s => s.text),
                     subtitleCues.map(c => c.ja),
+                    hasLineImages,
                   )}
                   filenameBase={script.title}
                   initialPosition={settings.coverTextPosition}
@@ -1300,6 +1382,7 @@ export default function FinalizePage() {
                   stickerPlacement={stickerPlacement}
                   initialStickerSpot={settings.coverStickerSpot}
                   onStickerSpotChange={coverStickerSpot => updateSettings({ coverStickerSpot })}
+                  look={coverLook}
                   onCoverDrawing={() => setMadeCover(c => (c.drawing ? c : { ...c, drawing: true }))}
                   onCoverDrawn={png => setMadeCover(c => ({ png: png ?? c.png, drawing: false }))}
                   saveAll={{

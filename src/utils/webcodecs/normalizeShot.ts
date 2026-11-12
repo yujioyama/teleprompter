@@ -8,6 +8,7 @@ import {
   Mp4OutputFormat,
   Output,
   Quality,
+  type VideoSample,
 } from 'mediabunny'
 import {
   aacEncoderDelay,
@@ -17,6 +18,7 @@ import {
   OUTPUT_SAMPLE_RATE,
   OUTPUT_WIDTH,
 } from './support'
+import { encodesHeld, whenNotHeld } from './encodeHold'
 import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
 import { coverLeadSeconds, withCoverFrames, withCoverSilence, type CoverLead } from './coverLead'
@@ -47,9 +49,11 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  *
  * `options.punchIn` zooms the first shot's picture in during the same encode,
  * and `options.midZoom` a peak's or the punchline's; `options.opening` gives
- * it Type A/B's opening look. `options.cover` puts the
+ * it the opening look. `options.cover` puts the
  * cover image in as frames before the shot's first, over silence, with the
  * shot (overlays in its own timeline as before) following it.
+ *
+ * Every frame waits while the preview holds the encodes (see encodeHold).
  */
 export async function normalizeShotWebCodecs(
   blob: Blob,
@@ -95,9 +99,10 @@ export async function normalizeShotWebCodecs(
         quality: new Quality('high'),
         allowTransformationMetadata: false,
         forceTranscode: true,
-        ...(cover
-          ? { process: withCoverFrames(overlay?.process, cover) }
-          : overlay && { process: overlay.process }),
+        process: whenNotHeld<VideoSample, VideoSample | VideoSample[] | OffscreenCanvas>(
+          cover ? withCoverFrames(overlay?.process, cover) : (overlay?.process ?? (sample => sample)),
+          signal,
+        ),
       },
       audio: {
         codec: 'aac',
@@ -124,7 +129,7 @@ export async function normalizeShotWebCodecs(
           }
           return conversion.execute()
         },
-        { onStall: cancel },
+        { onStall: cancel, paused: encodesHeld },
       )
     } finally {
       unregister()

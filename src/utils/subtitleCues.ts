@@ -108,7 +108,7 @@ export function lineJapaneseOf(body: string, japanese: string[]): LineJapanese[]
   return takeLinesOf(body).flatMap((en, i) => (japanese[i] ? [{ en, ja: japanese[i] }] : []))
 }
 
-function lineKey(text: string): string {
+export function lineKey(text: string): string {
   return text.trim().replace(/\s+/g, ' ')
 }
 

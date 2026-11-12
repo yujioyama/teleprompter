@@ -52,7 +52,7 @@ export interface AppSettings {
   fairyEnabled: boolean
   /** Peaks drift in and the punchline punches in (中盤のズーム). */
   midZoomEnabled: boolean
-  /** Type A/B: the opening's film look stays on to the end, after the bars have gone (2026-11-03). */
+  /** The opening's film look stays on to the end, after the bars have gone (2026-11-03). */
   cinemaLookThrough: boolean
   /** How strong the film look is, 0.2-1 (色の強さ; lower for night takes). */
   cinemaLookStrength: number
@@ -78,6 +78,7 @@ export interface AppSettings {
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
   bgmDefaultRev: number
+  subtitlePositionRev: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -90,7 +91,7 @@ const DEFAULTS: AppSettings = {
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
-  subtitlePosition: SUBTITLE_POSITION_BOTTOM,
+  subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,
   punchInEnabled: true,
@@ -116,6 +117,7 @@ const DEFAULTS: AppSettings = {
   youtubeBgmId: 'youtube-touching-moment',
   inboxKey: '',
   bgmDefaultRev: 1,
+  subtitlePositionRev: 1,
 }
 
 /** Stored settings brought up to date with the current shape. */
@@ -151,6 +153,12 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // music box follows. Saved since, a settings object has bgmDefaultRev.
   if (!('bgmDefaultRev' in next) && next.defaultBgmId === 'musicbox-lilis-dream') {
     next.defaultBgmId = DEFAULTS.defaultBgmId
+  }
+  // Subtitles moved up top, with only a line with an image down on the chest
+  // (2026-11-06); ones left on the old default follow. Saved since, a settings
+  // object has subtitlePositionRev.
+  if (!('subtitlePositionRev' in next) && next.subtitlePosition === SUBTITLE_POSITION_BOTTOM) {
+    next.subtitlePosition = SUBTITLE_POSITION_TOP
   }
   return next as Partial<AppSettings>
 }

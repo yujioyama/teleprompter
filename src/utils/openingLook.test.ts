@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CINEMA_LOOKS } from '../../shared/cinemaLook'
 import {
   LETTERBOX,
-  hasOpening,
   letterboxBarHeight,
   letterboxHeight,
   lookOpacity,
@@ -11,7 +10,7 @@ import {
   openingFilterStages,
   openingLookFor,
 } from './openingLook'
-import { hasFirstShotExtras, openingPlan, withVideoType, type HookOptions } from './subtitleHook'
+import { hasFirstShotExtras, openingPlan, withOpening, type HookOptions } from './subtitleHook'
 import { layoutCue, type MeasureText } from './subtitleLayout'
 import { clampedSubtitleY } from './subtitlePosition'
 import { drawOpening } from './webcodecs/pictureEffects'
@@ -31,15 +30,6 @@ const HOOK: HookOptions = {
 const measure: MeasureText = text => text.length * 30
 const top = (c: { en: string; ja: string | null }, position: number) => clampedSubtitleY(position, layoutCue(c, measure).height)
 const bars = (at: number, height: number = LETTERBOX.height) => ({ kind: 'letterbox' as const, at, height, grade: null })
-
-describe('hasOpening', () => {
-  it('gives Type A and Type B the bars, and others nothing', () => {
-    expect(hasOpening('A')).toBe(true)
-    expect(hasOpening('B')).toBe(true)
-    expect(hasOpening(undefined)).toBe(false)
-    expect(hasOpening(null)).toBe(false)
-  })
-})
 
 describe('openingLookFor', () => {
   it('slides the bars away as line 1 ends, held long enough to be seen but not past the hook', () => {
@@ -120,7 +110,7 @@ describe('the film look over time', () => {
   })
 
   it('is gone by the first shot’s end even when the opening is moved early', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)], 72, 'oldFilm')
+    const typed = withOpening({ ...HOOK, punchIn: null }, [cue('A long first line.', 0, 2.4)], 72, 'oldFilm')
     const plan = openingPlan(typed, 1.5)!
     expect(plan.grade).toBe('oldFilm')
     expect(lookOpacity(1.5, plan)).toBe(0)
@@ -149,7 +139,7 @@ describe('the film look kept to the end', () => {
   })
 
   it('goes on every later shot too, with the bars already gone', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null, lookThrough: true, lookStrength: 0.7 }, 'A', [cue('Line one.', 0, 1.5)], 72, 'hollywood')
+    const typed = withOpening({ ...HOOK, punchIn: null, lookThrough: true, lookStrength: 0.7 }, [cue('Line one.', 0, 1.5)], 72, 'hollywood')
     const later = openingPlan(typed, null)!
     expect(later.grade).toBe('hollywood')
     expect(later.height).toBe(0)
@@ -159,7 +149,7 @@ describe('the film look kept to the end', () => {
   })
 
   it('leaves later shots alone when the look fades with the bars', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('Line one.', 0, 1.5)], 72, 'hollywood')
+    const typed = withOpening({ ...HOOK, punchIn: null }, [cue('Line one.', 0, 1.5)], 72, 'hollywood')
     expect(openingPlan(typed, null)).toBeNull()
   })
 })
@@ -171,44 +161,37 @@ describe('openingLookFor with a look', () => {
   })
 })
 
-describe('withVideoType', () => {
-  it('swaps the zoom for the same bars on Type A and Type B', () => {
-    const typed = withVideoType(HOOK, 'A', [], 72)
+describe('withOpening', () => {
+  it('swaps the zoom for the bars', () => {
+    const typed = withOpening(HOOK, [], 72)
     expect(typed.punchIn).toBeNull()
     expect(typed.opening).toEqual(bars(LETTERBOX.minHold))
-    const lines = [cue('*Hankering*. A word I love.', 0, 1.8, '欲しくてたまらない')]
-    expect(withVideoType(HOOK, 'B', lines, 72)).toEqual(withVideoType(HOOK, 'A', lines, 72))
   })
 
   it('keeps the bars clear of the hook position, or the subtitles’ without the hook style', () => {
     const lines = [cue('Every single morning I eat toast with honey.', 0, 1.8, '毎朝トースト')]
-    const atHook = withVideoType({ ...HOOK, position: 22.5 }, 'A', lines, 72).opening!
+    const atHook = withOpening({ ...HOOK, position: 22.5 }, lines, 72).opening!
     expect(atHook.height).toBeLessThan(LETTERBOX.height)
-    expect(withVideoType({ ...HOOK, style: false, position: 22.5 }, 'A', lines, 72).opening!.height).toBe(LETTERBOX.height)
-    expect(withVideoType({ ...HOOK, style: false, position: 50 }, 'A', lines, 22.5).opening!.height).toBe(atHook.height)
-  })
-
-  it('leaves an untyped script as set', () => {
-    expect(withVideoType(HOOK, undefined, [], 72)).toBe(HOOK)
-    expect(withVideoType(HOOK, undefined, [], 72, 'oldFilm')).toBe(HOOK)
+    expect(withOpening({ ...HOOK, style: false, position: 22.5 }, lines, 72).opening!.height).toBe(LETTERBOX.height)
+    expect(withOpening({ ...HOOK, style: false, position: 50 }, lines, 22.5).opening!.height).toBe(atHook.height)
   })
 
   it('puts the picked look under the bars, or none', () => {
-    expect(withVideoType(HOOK, 'A', [], 72, 'oldFilm').opening!.grade).toBe('oldFilm')
-    expect(withVideoType(HOOK, 'B', [], 72, 'glitch').opening!.grade).toBe('glitch')
-    expect(withVideoType(HOOK, 'A', [], 72).opening!.grade).toBeNull()
-    expect(withVideoType(HOOK, 'A', [], 72, null).opening!.grade).toBeNull()
+    expect(withOpening(HOOK, [], 72, 'oldFilm').opening!.grade).toBe('oldFilm')
+    expect(withOpening(HOOK, [], 72, 'glitch').opening!.grade).toBe('glitch')
+    expect(withOpening(HOOK, [], 72).opening!.grade).toBeNull()
+    expect(withOpening(HOOK, [], 72, null).opening!.grade).toBeNull()
   })
 
   it('needs an encode for the first shot only', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [], 72)
+    const typed = withOpening({ ...HOOK, punchIn: null }, [], 72)
     expect(hasFirstShotExtras(typed, 2)).toBe(true)
     expect(openingPlan(typed, null)).toBeNull()
     expect(hasFirstShotExtras(typed, null)).toBe(false)
   })
 
   it('moves the look earlier when it would outlast the first shot', () => {
-    const typed = withVideoType({ ...HOOK, punchIn: null }, 'A', [cue('A long first line.', 0, 2.4)], 72)
+    const typed = withOpening({ ...HOOK, punchIn: null }, [cue('A long first line.', 0, 2.4)], 72)
     expect(openingPlan(typed, 5)).toEqual(bars(2.4))
     const plan = openingPlan(typed, 2.6)!
     expect(plan.at).toBeCloseTo(2.6 - LETTERBOX.duration, 5)

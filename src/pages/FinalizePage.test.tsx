@@ -1901,6 +1901,28 @@ describe('FinalizePage export step: YouTube version', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({ youtubeExportEnabled: true })
   })
 
+  it('hands the YouTube version alone to the share sheet, with the caption copied', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: 'toast hurt again #esl' }]))
+    useSettingsOf({ youtubeExportEnabled: true })
+    await walkToExport()
+
+    const button = await screen.findByText('YouTubeに投稿（共有シートで YouTube を選ぶ）')
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    expect(writeText).toHaveBeenCalledWith('toast hurt again #esl')
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(YOUTUBE_MIX, 'テスト動画-youtube'))
+    expect(vi.mocked(shareOrDownload).mock.calls[0][0]).toBe(YOUTUBE_MIX)
+    delete (navigator as { clipboard?: unknown }).clipboard
+  })
+
+  it('has no YouTube post button while YouTube用も書き出す is off', async () => {
+    useSettingsOf({})
+    await walkToExport()
+    expect(screen.queryByText(/YouTubeに投稿/)).not.toBeInTheDocument()
+  })
+
   it('mixes the BGM chosen in the settings', async () => {
     useSettingsOf({ youtubeExportEnabled: true, youtubeBgmId: 'lofi-sunny-cafe' })
     await walkToExport()
@@ -1988,7 +2010,35 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!).hookStyleEnabled).toBe(false)
   })
 
-  it('burns the punch-in into the first shot', async () => {
+  it('burns no sticker or fairies for a script with a line image, keeping the bars', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    const scripts = JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify(scripts.map(s => (
+      s.id === 'script-1' ? { ...s, lineImages: [{ en: s.shots[0].text, imageId: 'https://x.test/a.jpg', url: 'https://x.test/a.jpg' }] } : s
+    ))))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    expect(screen.queryByText('ステッカーの位置')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+
+    await waitFor(() => {
+      const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { sticker: 'off', fairies: false, opening: { kind: 'letterbox' } } })
+    }, { timeout: 3000 })
+  })
+
+  it('burns the bars, not the zoom, into the first shot of a script with no type', async () => {
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
     renderFinalizePage('script-1')
@@ -2007,7 +2057,53 @@ describe('FinalizePage subtitle step: hook on the first shot', () => {
 
     await waitFor(() => {
       const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
-      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: { zoom: 1.25, direction: 'out', at: 0.4 } }, firstShotDuration: 5 })
+      expect(looks[looks.length - 1]).toMatchObject({ hook: { punchIn: null, opening: { kind: 'letterbox' } }, firstShotDuration: 5 })
     }, { timeout: 3000 })
+  })
+
+  describe('the film look', () => {
+    async function toSubtitles(look?: Script['look']) {
+      seedScript()
+      const script = JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0] as Script
+      localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...script, ...(look ? { look } : {}) }]))
+      vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+      vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+      renderFinalizePage('script-1')
+
+      await screen.findByText('ショット1')
+      const shotVideo = document.querySelector('video') as HTMLVideoElement
+      Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+      fireEvent(shotVideo, new Event('loadedmetadata'))
+      fireEvent.click(screen.getByText('結合する'))
+      fireEvent.click(await screen.findByText('次へ'))
+      await screen.findByDisplayValue('ショット1')
+      fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+        target: { value: '1. こんにちは' },
+      })
+      fireEvent.click(screen.getByText('日本語を反映'))
+    }
+
+    it.each([
+      [undefined, 'hollywood', 'ハリウッド風'],
+      ['mono', 'mono', '白黒'],
+      ['none', null, 'なし'],
+    ] as const)('with %s stored, burns %s and shows %s as picked', async (stored, grade, label) => {
+      await toSubtitles(stored)
+
+      await waitFor(() => {
+        const looks = vi.mocked(burnModule.burnShotSubtitles).mock.calls.map(c => c[4])
+        expect(looks[looks.length - 1]).toMatchObject({ hook: { opening: { grade } } })
+      }, { timeout: 3000 })
+      const group = within(screen.getByRole('group', { name: '冒頭の色' }))
+      expect(group.getByText(label)).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('saves なし as a pick, so it stays off', async () => {
+      await toSubtitles()
+
+      fireEvent.click(within(await screen.findByRole('group', { name: '冒頭の色' })).getByText('なし'))
+
+      expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0].look).toBe('none')
+    })
   })
 })

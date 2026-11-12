@@ -151,7 +151,43 @@
   opacity: 0.4;
 }
 
-/* Type A/B's cinema bars in the preview, as burned in (over the picture, under the subtitles). */
+/* Over the whole playing preview, so a tap anywhere stops it. */
+.previewStop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.previewStopIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  /* Seen over the bars too. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+/* The pause sign, drawn since a font's own can come out as one block. */
+.previewStopIcon::before {
+  content: '';
+  box-sizing: border-box;
+  width: 14px;
+  height: 16px;
+  border-left: 5px solid #fff;
+  border-right: 5px solid #fff;
+}
+
+/* The opening's cinema bars in the preview, as burned in (over the picture, under the subtitles). */
 .letterbox {
   position: absolute;
   left: 0;

@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import {
+  COVER_HEIGHT,
+  COVER_TEXT_POSITION_DEFAULT,
   COVER_TEXT_WIDTH,
+  COVER_WIDTH,
   GRID_BOTTOM,
   GRID_TOP,
   clampStickerSpot,
@@ -8,16 +11,26 @@ import {
   coverStickerSpot,
   coverFitRect,
   coverWordsOf,
+  drawCover,
   fitFontPx,
   type MeasureWidth,
 } from './coverImage'
+import { drawCinemaLook } from './drawCinemaLook'
 import { STICKER_PLACEMENTS } from './subtitleSticker'
 import { EMPHASIS_COLOR, WORD_COLOR } from './subtitleEmphasis'
+
+vi.mock('./drawCinemaLook', () => ({ drawCinemaLook: vi.fn() }))
 
 // Every character is 0.6em wide.
 const measure: MeasureWidth = (text, font) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.6
 
 describe('coverWordsOf', () => {
+  it('has no sticker for a script with line images, keeping the words', () => {
+    const words = coverWordsOf(['I put *Vaseline*🧴 on'], [], true)
+    expect(words.sticker).toBe('')
+    expect(words.en).toBe('Vaseline')
+  })
+
   it('takes the first *phrase* and {word} from the shots, and the kana from the Japanese lines', () => {
     const words = coverWordsOf(
       ['Every time an Australian says *reckon*,', 'I see {renkon}. That is lotus root.', 'And *later* {again}'],
@@ -168,5 +181,52 @@ describe('coverFitRect', () => {
 
   it('scales a picture of the same shape to fit exactly', () => {
     expect(coverFitRect(540, 960, 1080, 1920)).toEqual({ x: 0, y: 0, width: 1080, height: 1920 })
+  })
+})
+
+describe('drawCover', () => {
+  /** What was drawn, in order; jsdom has no canvas. */
+  let drawn: string[]
+
+  function fakeCtx() {
+    const noop = () => {}
+    return {
+      clearRect: noop,
+      fillRect: noop,
+      save: noop,
+      restore: noop,
+      strokeText: noop,
+      measureText: (text: string) => ({ width: text.length * 10 }),
+      createLinearGradient: () => {
+        drawn.push('band')
+        return { addColorStop: noop }
+      },
+      drawImage: () => drawn.push('picture'),
+      fillText: (text: string) => drawn.push(`text:${text}`),
+    } as unknown as CanvasRenderingContext2D
+  }
+
+  const words = { en: 'reckon', ja: '', sticker: '' }
+  const picture = {} as CanvasImageSource
+  const draw = (ctx: CanvasRenderingContext2D, look?: { grade: 'hollywood'; strength: number } | null) =>
+    drawCover(ctx, picture, 1080, 1920, words, COVER_TEXT_POSITION_DEFAULT, coverStickerSpot('right', null), look)
+
+  beforeEach(() => {
+    drawn = []
+    vi.mocked(drawCinemaLook).mockReset()
+    vi.mocked(drawCinemaLook).mockImplementation(() => void drawn.push('look'))
+  })
+
+  it("puts the video's film look on the picture, under the band and the words", () => {
+    const ctx = fakeCtx()
+    draw(ctx, { grade: 'hollywood', strength: 0.6 })
+    expect(drawn).toEqual(['picture', 'look', 'band', 'text:reckon'])
+    expect(drawCinemaLook).toHaveBeenCalledWith(ctx, 'hollywood', 0, 0.6, COVER_WIDTH, COVER_HEIGHT)
+  })
+
+  it('leaves the picture as shot without a look', () => {
+    draw(fakeCtx())
+    expect(drawCinemaLook).not.toHaveBeenCalled()
+    expect(drawn).toEqual(['picture', 'band', 'text:reckon'])
   })
 })

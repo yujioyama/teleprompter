@@ -1,5 +1,5 @@
 import type { VideoType } from '../shared/inbox'
-import type { CinemaLook } from '../shared/cinemaLook'
+import type { StoredCinemaLook } from '../shared/cinemaLook'
 
 export type { VideoType }
 
@@ -20,6 +20,18 @@ export interface LineJapanese {
   ja: string
 }
 
+/** The image of one script line. The bytes are on the device (lineImageStore). */
+export interface LineImage {
+  /** The line it goes with, by its text. */
+  en: string
+  /** Its key on the device: `url`, or a new id for a picture chosen there. */
+  imageId: string
+  /** Where to get it again (a restored backup); absent for a picture chosen on the device. */
+  url?: string
+  /** Shown small under the image; absent when its license asks for none. */
+  credit?: string
+}
+
 export interface Script {
   id: string
   title: string
@@ -37,12 +49,14 @@ export interface Script {
    */
   japanese?: LineJapanese[]
   /**
-   * Type A (short daily thing) or B (expression-note story). Picks the
-   * opening look on its own; absent = the settings' zoom as before.
+   * Type A (short daily thing) or B (expression-note story). Only labels the
+   * video for the weekly comparison; every script gets the opening bars.
    */
   videoType?: VideoType
-  /** The film look under a Type A/B opening's bars; absent = the bars alone. */
-  look?: CinemaLook
+  /** The film look picked on screen; see filmLookOf for what it means. */
+  look?: StoredCinemaLook
+  /** Images for some of the lines. With any, the video has no emoji stickers. */
+  lineImages?: LineImage[]
   createdAt: string
   updatedAt: string
 }

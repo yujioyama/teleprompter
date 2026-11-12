@@ -35,6 +35,7 @@ const NO_FAIRIES = { enabled: false, cameoEmojis: [], finale: false }
 export function buildVideoRecord(input: {
   script: Script
   savedAt: string
+  postAt?: string
   durationSec: number
   shotCount: number
   burn: BurnInputs | null
@@ -49,6 +50,7 @@ export function buildVideoRecord(input: {
     // A 一発撮り shot holds every line; line 1 is the hook.
     hookLine: stripStickers(stripEmphasis(takeLinesOf(script.shots[0]?.text ?? '')[0] ?? '')),
     savedAt: input.savedAt,
+    ...(input.postAt ? { postAt: input.postAt } : {}),
     durationSec: input.durationSec,
     shotCount: input.shotCount,
     effects: {
@@ -72,6 +74,7 @@ export function buildVideoRecord(input: {
       oneTake: Boolean(script.oneTake),
       ...(script.videoType ? { videoType: script.videoType } : {}),
       opening: burn?.hook.opening ? { kind: burn.hook.opening.kind, at: burn.hook.opening.at, look: burn.hook.opening.grade } : null,
+      ...(burn?.hook.lineImages?.length ? { lineImages: burn.hook.lineImages.length } : {}),
     },
   }
 }

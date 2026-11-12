@@ -127,6 +127,18 @@ describe('useScripts', () => {
     expect(result.current.scripts[0].caption).toBe('新しいキャプション')
   })
 
+  it('keeps なし picked as the film look, as it is no longer the same as no pick', () => {
+    const { result } = renderHook(() => useScripts())
+    act(() => {
+      result.current.createScript('元', [])
+    })
+    const id = result.current.scripts[0].id
+    act(() => {
+      result.current.updateScript(id, { look: 'none' })
+    })
+    expect(JSON.parse(localStorage.getItem('teleprompter_scripts')!)[0].look).toBe('none')
+  })
+
   it('drops the caption when it is cleared, the same as creating without one', () => {
     const { result } = renderHook(() => useScripts())
     act(() => {

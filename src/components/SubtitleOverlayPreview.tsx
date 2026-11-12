@@ -1,7 +1,7 @@
 import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
-import { styleCues, type HookOptions } from '../utils/subtitleHook'
+import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
 import {
   SUBTITLE_BLOCK_GAP,
@@ -14,10 +14,13 @@ import {
   createCanvasMeasure,
   layoutCue,
   outlineWidth,
+  type MeasureText,
 } from '../utils/subtitleLayout'
 import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers } from '../utils/subtitleSticker'
 import { placeSticker, type StickerPose } from '../utils/stickerMotion'
 import type { FairyAppearance } from '../utils/fairyPlan'
+import { useObjectUrl } from '../hooks/useObjectUrl'
+import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_FRAME, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from '../utils/lineImages'
 import { drawSparkles } from '../utils/sparkles'
 import styles from './SubtitleOverlayPreview.module.css'
 
@@ -97,6 +100,50 @@ function StickerSprite({ emoji, pose, scale, testId }: { emoji: string; pose: St
   )
 }
 
+/** A line's image and its credit, where and how big the burn draws them. */
+function LineImageBox({ image, measure }: { image: CueImage; measure: MeasureText }) {
+  const url = useObjectUrl(image.blob)
+  const slot = LINE_IMAGE_SLOT
+  const credit = wrapCredit(image.credit, slot.width, text => measure(text, CREDIT_FONT))
+  const box = layoutLineImage(image.width, image.height, credit.length, slot)
+  return (
+    <>
+      {url && (
+        <img
+          className={styles.lineImage}
+          data-testid="subtitle-line-image"
+          alt=""
+          src={url}
+          style={{
+            left: `${(box.image.x / LINE_IMAGE_FRAME.width) * 100}%`,
+            top: `${(box.image.y / LINE_IMAGE_FRAME.height) * 100}%`,
+            width: cqw(box.image.width),
+            height: cqw(box.image.height),
+            borderRadius: cqw(LINE_IMAGE_RADIUS),
+          }}
+        />
+      )}
+      {credit.map((line, i) => (
+        <span
+          key={i}
+          className={styles.lineImageCredit}
+          data-testid="subtitle-line-image-credit"
+          style={{
+            left: `${(box.creditCenterX / LINE_IMAGE_FRAME.width) * 100}%`,
+            top: `${((box.creditTop + i * box.creditLineHeight) / LINE_IMAGE_FRAME.height) * 100}%`,
+            fontFamily: SUBTITLE_FONT_FAMILY,
+            fontSize: cqw(CREDIT_FONT_PX),
+            lineHeight: cqw(box.creditLineHeight),
+            WebkitTextStroke: `${cqw(outlineWidth(CREDIT_FONT_PX))} #000`,
+          }}
+        >
+          {line}
+        </span>
+      ))}
+    </>
+  )
+}
+
 /**
  * Cheap DOM/CSS mirror of the burned-in subtitle: the same outlined text,
  * line breaks and sizes (scaled to the preview's width), at the same
@@ -137,13 +184,14 @@ export default function SubtitleOverlayPreview({
   const showSticker = sticker !== null && currentTime >= sticker.start && currentTime < sticker.end
   const pose = sticker && (sticker.path ? sticker.path(currentTime) : { ...sticker.home, scale: 1 })
 
-  const hookPosition = hook?.position ?? position
+  // As burned: only a translated cue shows its image.
+  const lineImage = cue && cue.ja !== null ? hook?.lineImages?.find(i => i.cueId === cue.id) : undefined
 
   const cueBox = cue && layout && (
     <div
       className={styles.wrapper}
       style={{
-        top: `${clampedSubtitlePosition(cue.variant === 'hook' ? hookPosition : position, layout.height)}%`,
+        top: `${clampedSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)}%`,
         width: cqw(SUBTITLE_TEXT_WIDTH),
         padding: `${cqw(SUBTITLE_PADDING_Y)} 0`,
       }}
@@ -206,6 +254,7 @@ export default function SubtitleOverlayPreview({
   if (!cueBox && !showCanvas) return null
   return (
     <>
+      {lineImage && <LineImageBox key={lineImage.cueId} image={lineImage} measure={measure} />}
       {cueBox}
       {showCanvas && <canvas ref={canvasRef} className={styles.sparkles} />}
       {stickerBox}
