@@ -1,8 +1,13 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+
+const ffmpegCore = JSON.parse(readFileSync(new URL('./node_modules/@ffmpeg/core/package.json', import.meta.url), 'utf8')) as { version: string }
 
 export default defineConfig({
   plugins: [react()],
+  // Part of the ffmpeg.wasm core's URL (see ffmpegClient).
+  define: { __FFMPEG_CORE_VERSION__: JSON.stringify(ffmpegCore.version) },
   // @ffmpeg/ffmpeg loads its worker via `new Worker(new URL('./worker.js', import.meta.url))`.
   // Vite's dev-server dependency pre-bundling rewrites that in a way that breaks the worker's
   // own relative URL resolution (the browser requests a nonexistent .vite/deps/worker.js),

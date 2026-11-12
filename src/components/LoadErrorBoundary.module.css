@@ -1,0 +1,30 @@
+.wrapper {
+  min-height: 60dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.message {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.reload {
+  margin-top: 8px;
+  padding: 12px 24px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+}
