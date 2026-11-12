@@ -4,8 +4,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   clearFinalizeProgress,
   combinedForTakes,
+  burnedForSubtitles,
   loadFinalizeProgress,
   updateFinalizeProgress,
+  type SavedBurn,
   type SavedCombined,
   type SavedSubtitles,
 } from './finalizeProgressStore'
@@ -30,9 +32,26 @@ const SUBTITLES: SavedSubtitles = {
   source: 'speech',
 }
 
+const BURNED: SavedBurn = {
+  blob: new Blob(['burned'], { type: 'video/mp4' }),
+  cover: null,
+  combinedClips: SUBTITLES.combinedClips,
+  inputs: { hook: { style: true, position: 30, punchIn: null }, cues: SUBTITLES.cues, position: 70, durations: [2.5, 4] },
+}
+
 describe('finalizeProgressStore', () => {
   it('starts empty', async () => {
-    expect(await loadFinalizeProgress('script-1')).toEqual({ trims: {}, combined: null, subtitles: null })
+    expect(await loadFinalizeProgress('script-1')).toEqual({ trims: {}, combined: null, subtitles: null, burned: null })
+  })
+
+  it('keeps the burned video alongside the subtitles it was burned from', async () => {
+    await updateFinalizeProgress('script-1', { subtitles: SUBTITLES })
+    await updateFinalizeProgress('script-1', { burned: BURNED })
+
+    const progress = await loadFinalizeProgress('script-1')
+    expect(progress.subtitles).toEqual(SUBTITLES)
+    expect(progress.burned!.blob).toBeInstanceOf(Blob)
+    expect(progress.burned!.inputs).toEqual(BURNED.inputs)
   })
 
   it('keeps the subtitles alongside the 結合', async () => {
@@ -59,6 +78,7 @@ describe('finalizeProgressStore', () => {
       }
     })
     expect((await loadFinalizeProgress('script-1')).subtitles).toBeNull()
+    expect((await loadFinalizeProgress('script-1')).burned).toBeNull()
   })
 
   it('keeps the trims and the 結合 saved separately', async () => {
@@ -95,5 +115,33 @@ describe('combinedForTakes', () => {
     expect(combinedForTakes(COMBINED, [['shot-a', 'take-1']])).toBeNull()
     expect(combinedForTakes(COMBINED, [['shot-b', 'take-1'], ['shot-a', 'take-1']])).toBeNull()
     expect(combinedForTakes(COMBINED, [['shot-a', 'take-1'], ['shot-b', 'take-1'], ['shot-c', 'take-1']])).toBeNull()
+  })
+})
+
+describe('burnedForSubtitles', () => {
+  const { combinedClips, inputs } = BURNED
+
+  it('keeps a burn made from exactly this 結合, these subtitles and this look', () => {
+    // As read back from the database: equal, not the same objects.
+    const cues = structuredClone(inputs.cues)
+    expect(burnedForSubtitles(BURNED, combinedClips, cues, inputs.position, { ...inputs.hook })).toBe(BURNED)
+  })
+
+  it('drops it once the video was combined again', () => {
+    expect(burnedForSubtitles(BURNED, 'shot-a:take-2:0.5:3', inputs.cues, inputs.position, inputs.hook)).toBeNull()
+  })
+
+  it('drops it once a subtitle or the position has changed', () => {
+    const edited = [{ ...inputs.cues[0], ja: 'やあ' }]
+    expect(burnedForSubtitles(BURNED, combinedClips, edited, inputs.position, inputs.hook)).toBeNull()
+    expect(burnedForSubtitles(BURNED, combinedClips, inputs.cues, 20, inputs.hook)).toBeNull()
+  })
+
+  it('drops it once the first shot would look different', () => {
+    expect(burnedForSubtitles(BURNED, combinedClips, inputs.cues, inputs.position, { ...inputs.hook, style: false })).toBeNull()
+  })
+
+  it('has nothing to keep when no burn was saved', () => {
+    expect(burnedForSubtitles(null, combinedClips, inputs.cues, inputs.position, inputs.hook)).toBeNull()
   })
 })

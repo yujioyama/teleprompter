@@ -669,6 +669,133 @@ describe('FinalizePage subtitle step: picks up where it was left', () => {
   })
 })
 
+describe('FinalizePage BGM step: picks up where it was left', () => {
+  const BURNED = new Blob(['burned-video'], { type: 'video/mp4' })
+
+  function useSettingsOf(settings: object) {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmStopBeforePunchline: true, ...settings }))
+  }
+
+  // Trim/combine → subtitle (translated) → 次へ, which burns.
+  async function burnOnce() {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: 5, configurable: true })
+    fireEvent(video, new Event('loadedmetadata'))
+    fireEvent.click(await screen.findByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).burned).not.toBeNull())
+    // The subtitles are saved a moment after the last change to them.
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).subtitles?.cues[0]?.ja).toBe('こんにちは'))
+  }
+
+  // As iOS reloading the page for memory: everything in memory is gone.
+  function reload() {
+    cleanup()
+    vi.mocked(burnModule.burnSubtitles).mockClear()
+    vi.mocked(burnModule.burnShotSubtitles).mockClear()
+    vi.mocked(trimAndNormalizeShot).mockClear()
+    vi.mocked(mixModule.mixMusic).mockClear()
+    vi.mocked(makeCover).mockClear()
+    renderFinalizePage('script-1')
+  }
+
+  beforeEach(() => {
+    vi.mocked(burnModule.burnSubtitles).mockResolvedValue(BURNED)
+  })
+
+  it('reopens on the BGM step with the burned video, without burning again', async () => {
+    await burnOnce()
+    await screen.findByText('BGMなしで進む')
+    reload()
+
+    fireEvent.click(await screen.findByText('BGMなしで進む'))
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
+    expect(trimAndNormalizeShot).not.toHaveBeenCalled()
+  })
+
+  it('adds the usual BGM to the burned video again and goes straight to export', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo' })
+    await burnOnce()
+    await screen.findByText('保存する')
+    reload()
+
+    expect(await screen.findByText('保存する')).toBeInTheDocument()
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
+    expect(mixModule.mixMusic).toHaveBeenCalledTimes(1)
+  })
+
+  it('still sends the record of how the video was made', async () => {
+    useSettingsOf({ defaultBgmId: null, inboxKey: 'secret' })
+    await burnOnce()
+    reload()
+
+    fireEvent.click(await screen.findByText('BGMなしで進む'))
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(buildVideoRecord).toHaveBeenCalled())
+    expect(vi.mocked(buildVideoRecord).mock.lastCall![0].burn?.cues[0]).toMatchObject({ ja: 'こんにちは' })
+  })
+
+  it('reopens on the subtitle step once the subtitles were gone back to', async () => {
+    await burnOnce()
+    fireEvent.click(screen.getByRole('button', { name: /字幕/ }))
+    await screen.findByLabelText('日本語字幕 1')
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).burned).toBeNull())
+    reload()
+
+    expect(await screen.findByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    expect(screen.queryByText('BGMなしで進む')).not.toBeInTheDocument()
+  })
+
+  it('reopens on the subtitle step when the first shot would now look different', async () => {
+    await burnOnce()
+    cleanup()
+    useSettingsOf({ defaultBgmId: null, hookStyleEnabled: false })
+
+    renderFinalizePage('script-1')
+    expect(await screen.findByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    expect(screen.queryByText('BGMなしで進む')).not.toBeInTheDocument()
+  })
+
+  it('forgets the burned video once the video is combined again', async () => {
+    await burnOnce()
+    fireEvent.click(screen.getByRole('button', { name: /トリミング/ }))
+    fireEvent.click(await screen.findByText('結合する'))
+    await screen.findByText('結合結果')
+    await waitFor(async () => expect((await loadFinalizeProgress('script-1')).burned).toBeNull())
+  })
+
+  it('keeps the cover the burn put in, so the export still has nothing to insert', async () => {
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo', coverFramePlacement: 'first', coverFrameSource: 'made', coverFrameCount: 2 })
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    vi.mocked(prepareFinalAudio).mockResolvedValue(new Blob(['prepared'], { type: 'audio/mp4' }))
+    vi.mocked(joinVideoAndAudio).mockResolvedValue(new Blob(['joined'], { type: 'video/mp4' }))
+    vi.mocked(finishAudio).mockImplementation(async blob => blob)
+    const mixed = new Blob(['mixed-again'], { type: 'video/mp4' })
+    vi.mocked(mixModule.mixMusic).mockResolvedValue(mixed)
+    await burnOnce()
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    reload()
+
+    await waitFor(() => expect(screen.getByText('保存する')).toBeEnabled())
+    expect(makeCover).not.toHaveBeenCalled()
+    expect(burnModule.burnShotSubtitles).not.toHaveBeenCalled()
+    expect(insertCoverFrames).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('保存する'))
+    await waitFor(() => expect(shareOrDownload).toHaveBeenCalledWith(mixed, 'テスト動画-final'))
+  })
+})
+
 describe('FinalizePage wizard', () => {
   it('enables 結合 from probed durations, without any shot player reporting one (issue #12)', async () => {
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5)
