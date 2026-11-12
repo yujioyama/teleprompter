@@ -8,9 +8,15 @@ import { listShotVideos } from '../utils/shotVideoStore'
 import { processRecordedVideo } from '../utils/processRecordedVideo'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { shareOrDownload } from '../utils/shareOrDownload'
+import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
+import { listShotAnalyses } from '../utils/shotAnalysisStore'
 
 vi.mock('../utils/ffmpegClient', () => ({ getFFmpeg: vi.fn(), releaseFFmpeg: vi.fn() }))
 vi.mock('../utils/shareOrDownload', () => ({ shareOrDownload: vi.fn(async () => true) }))
+vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/detectSpeechBounds')>()),
+  detectSpeech: vi.fn(async () => null),
+}))
 
 vi.mock('../utils/processRecordedVideo', async () => {
   const actual = await vi.importActual<typeof import('../utils/processRecordedVideo')>(
@@ -225,5 +231,71 @@ describe('RecordPage teleprompter text', () => {
     fireEvent.click(screen.getByRole('button', { name: /≡/ }))
     expect(screen.getAllByText('I carry a torch for him')).toHaveLength(2)
     expect(screen.queryByText(/\*/)).not.toBeInTheDocument()
+  })
+})
+
+describe('RecordPage import: finds the speech ahead of the finalize step', () => {
+  const SPEECH: SpeechRegion = { speechStart: 1, speechEnd: 3, floor: 0, ceiling: 5, duration: 5 }
+
+  async function importShot1() {
+    const input = screen.getByLabelText('録画した動画をインポート') as HTMLInputElement
+    selectFiles(input, [videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`)])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+  }
+
+  async function storedAnalyses() {
+    const takes = new Map((await listShotVideos('script-1')).map(v => [v.shotId, v.updatedAt]))
+    return listShotAnalyses('script-1', takes)
+  }
+
+  beforeEach(() => {
+    vi.mocked(processRecordedVideo).mockImplementation(async (raw: Blob) => ({ blob: raw, ok: true, error: null }))
+    vi.mocked(detectSpeech).mockReset().mockResolvedValue(SPEECH)
+  })
+
+  it('keeps where the speech is with the imported take', async () => {
+    renderRecordPage(seedScript().id)
+    await importShot1()
+
+    expect((await storedAnalyses()).get(SHOT_1)).toEqual({ duration: undefined, speech: SPEECH })
+  })
+
+  it('remembers a take with no speech too', async () => {
+    vi.mocked(detectSpeech).mockResolvedValue(null)
+    renderRecordPage(seedScript().id)
+    await importShot1()
+
+    expect((await storedAnalyses()).get(SHOT_1)?.speech).toBeNull()
+  })
+
+  it('leaves a shot with auto-trim off alone, as the finalize step does', async () => {
+    const script = seedScript()
+    script.shots[0].trimEnabled = false
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    await importShot1()
+
+    expect(detectSpeech).not.toHaveBeenCalled()
+  })
+
+  it('still looks for the speech of a 一発撮り take with auto-trim off', async () => {
+    const script = { ...seedScript(), oneTake: true }
+    script.shots[0].trimEnabled = false
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    await importShot1()
+
+    expect((await storedAnalyses()).get(SHOT_1)?.speech).toEqual(SPEECH)
+  })
+
+  it('still imports the take when its speech cannot be found', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(detectSpeech).mockRejectedValue(new Error('cannot decode'))
+    renderRecordPage(seedScript().id)
+    await importShot1()
+
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+    // Not remembered: the finalize step tries again.
+    expect((await storedAnalyses()).has(SHOT_1)).toBe(false)
   })
 })
