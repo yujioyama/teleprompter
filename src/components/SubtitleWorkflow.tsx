@@ -775,17 +775,21 @@ export default function SubtitleWorkflow({
                 </div>
               )}
 
-              <button
-                className={styles.genBtn}
-                onClick={handleBurnIn}
-                disabled={!allTranslated || stage === 'burning'}
-              >
-                {stage === 'burning' ? `焼き込み中... ${Math.round(burnProgress * 100)}%` : '次へ'}
-              </button>
+              {/* Stays at the bottom of the screen while the preview and the
+                  settings above scroll: they are a long way to scroll past. */}
+              <div className={styles.nextBar}>
+                <button
+                  className={styles.genBtn}
+                  onClick={handleBurnIn}
+                  disabled={!allTranslated || stage === 'burning'}
+                >
+                  {stage === 'burning' ? `焼き込み中... ${Math.round(burnProgress * 100)}%` : '次へ'}
+                </button>
 
-              {stage === 'burning' && (
-                <CancelProcessing progress={burnProgress} onCancel={() => burnAbortRef.current?.abort()} />
-              )}
+                {stage === 'burning' && (
+                  <CancelProcessing progress={burnProgress} onCancel={() => burnAbortRef.current?.abort()} />
+                )}
+              </div>
             </div>
           )}
         </>
