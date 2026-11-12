@@ -966,6 +966,53 @@ describe('FinalizePage wizard', () => {
     expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
   })
 
+  it('burns ahead while the 結合 result is watched, when the Japanese came with the script', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    const burnedShot = new Blob(['burned-shot'], { type: 'video/mp4' })
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(burnedShot)
+    const script = { ...seedScript(), japanese: [{ en: 'ショット1', ja: 'こんにちは' }] }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('結合結果')
+
+    // Started on the trim step, before the subtitle step is ever opened.
+    await waitFor(() => expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    expect(screen.getByText('結合結果')).toBeInTheDocument()
+    const [, start, end, cues] = vi.mocked(burnModule.burnShotSubtitles).mock.calls[0]
+    expect([start, end]).toEqual([0, 5])
+    expect(cues).toEqual([expect.objectContaining({ start: 0, end: 5, en: 'ショット1', ja: 'こんにちは' })])
+
+    // The subtitle step opens on those very subtitles, and 次へ just joins the clip.
+    fireEvent.click(screen.getByText('次へ'))
+    expect(await screen.findByLabelText('日本語字幕 1')).toHaveValue('こんにちは')
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('BGMなしで進む')
+    expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(concatClipsWebCodecs).mock.calls[0][0]).toEqual([burnedShot])
+  })
+
+  it('burns nothing ahead on the trim step when the subtitles are still to be translated', async () => {
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
+    renderFinalizePage('script-1')
+
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    await screen.findByText('結合結果')
+
+    await new Promise(r => setTimeout(r, 1200))
+    expect(burnModule.burnShotSubtitles).not.toHaveBeenCalled()
+  })
+
   it('walks trim → combine → subtitle → BGM skip → export, with a single save button at the end', async () => {
     renderFinalizePage('script-1')
 
