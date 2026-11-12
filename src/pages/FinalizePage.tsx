@@ -888,6 +888,23 @@ export default function FinalizePage() {
   const saveReady = savable && (!youtubeEnabled || youtubeBlob !== null || youtubeState === 'failed')
   const previewUrl = youtubeEnabled && previewYoutube ? youtubeUrl : finalUrl
 
+  // Once the subtitles are burned in, the plain clip of each shot they went
+  // onto is only wanted again if the video is combined anew; the 結合 and
+  // the burn are both saved by then. Let go of those clips for the BGM and
+  // export steps, where an iPhone is shortest of memory. A shot with nothing
+  // burned onto it is its plain clip, and stays for burning again (the
+  // cover changed, the YouTube version).
+  function releaseNormalizedClips(inputs: BurnInputs | null) {
+    if (!inputs) return
+    const cache = getEncodeCache()
+    const { cues, position, hook: burnHook } = inputs
+    const burns = shotBurnRequests(combinedClips, cues, position, burnHook, oneTake && cues.length > 0 ? cues[0].end : undefined)
+    combinedClips.forEach((clip, i) => {
+      const plain = normalizeRequest(clip)
+      if (burns[i].key !== plain.key) cache.release(plain.slot)
+    })
+  }
+
   // A 一発撮り take skips the 結合 result: 次へ cuts it (unless already
   // cut so) and goes straight on to the subtitles.
   async function handleOneTakeNext() {
@@ -1208,6 +1225,7 @@ export default function FinalizePage() {
                   // The export's made cover is the one already in, until it's changed there.
                   if (cover) setMadeCover({ png: cover.image, drawing: false })
                   setBurnInputs(burnInputsRef.current)
+                  releaseNormalizedClips(burnInputsRef.current)
                   // Kept, so a reload from here on doesn't mean burning again.
                   if (burnInputsRef.current) {
                     const saved = {

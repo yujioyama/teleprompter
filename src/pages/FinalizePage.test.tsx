@@ -1084,6 +1084,38 @@ describe('FinalizePage wizard', () => {
     expect(screen.getByText('BGM').closest('button')).toBeDisabled()
   })
 
+  it('keeps each shot\'s plain clip while the subtitles are worked on, and lets go of it once they are burned', async () => {
+    renderFinalizePage('script-1')
+    await screen.findByText('ショット1')
+    const shotVideo = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(shotVideo, 'duration', { value: 5, configurable: true })
+    fireEvent(shotVideo, new Event('loadedmetadata'))
+    fireEvent.click(screen.getByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    expect(trimAndNormalizeShot).toHaveBeenCalledTimes(1)
+
+    // Back from the subtitle step: combining again reuses the clip.
+    fireEvent.click(screen.getByText('トリミング'))
+    fireEvent.click(await screen.findByText('結合する'))
+    fireEvent.click(await screen.findByText('次へ'))
+    await screen.findByDisplayValue('ショット1')
+    expect(trimAndNormalizeShot).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByPlaceholderText('Claudeからの返信をここに貼り付け'), {
+      target: { value: '1. こんにちは' },
+    })
+    fireEvent.click(screen.getByText('日本語を反映'))
+    fireEvent.click(screen.getByText('次へ'))
+    await screen.findByText('BGMなしで進む')
+
+    // Back from the BGM step, after the burn: the clip is made anew.
+    fireEvent.click(screen.getByText('トリミング'))
+    fireEvent.click(await screen.findByText('結合する'))
+    await screen.findByText('結合結果')
+    await waitFor(() => expect(trimAndNormalizeShot).toHaveBeenCalledTimes(2))
+  })
+
   it('never feeds MusicMixer its own previously-mixed output (no BGM stacking)', async () => {
     renderFinalizePage('script-1')
 
