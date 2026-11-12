@@ -1980,10 +1980,10 @@ describe('FinalizePage export step: YouTube version', () => {
     expect(JSON.parse(localStorage.getItem('teleprompter_settings')!)).toMatchObject({ youtubeExportEnabled: true })
   })
 
-  it('hands the YouTube version alone to the share sheet, with the caption copied', async () => {
+  it('hands the YouTube version alone to the share sheet, with its title copied', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: 'toast hurt again #esl' }]))
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), caption: 'toast hurt again\ncrunchy or soft?\n#esl' }]))
     useSettingsOf({ youtubeExportEnabled: true })
     await walkToExport()
 
