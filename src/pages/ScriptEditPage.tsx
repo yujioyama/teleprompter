@@ -5,7 +5,7 @@ import { useSettings } from '../hooks/useSettings'
 import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
-import { lineJapaneseOf, takeLinesOf } from '../utils/subtitleCues'
+import { lineJapaneseOf, lineKey, takeLinesOf } from '../utils/subtitleCues'
 import { assignToLines, lineImagesOf, reconcileLineImages } from '../utils/lineImages'
 import { useLineImages } from '../hooks/useLineImages'
 import LineImageEditor from '../components/LineImageEditor'
@@ -19,6 +19,27 @@ const NEW_SCRIPT_SPLIT_OPTIONS: SplitOptions = {
   exclamation: false,
   englishPeriod: false,
   newline: true,
+}
+
+/**
+ * Which of `lines` are 相手のセリフ, for a script Claude sent with some: by
+ * line number while the lines are still as sent, else by their words (twin
+ * lines take the marks in turn).
+ */
+function heardLinesOf(item: InboxItem | undefined, lines: string[]): boolean[] {
+  if (!item?.heard?.length) return lines.map(() => false)
+  const sent = takeLinesOf(item.body)
+  const marked = new Set(item.heard)
+  if (sent.length === lines.length && sent.every((line, i) => lineKey(line) === lineKey(lines[i]))) {
+    return lines.map((_, i) => marked.has(i + 1))
+  }
+  const left = sent.filter((_, i) => marked.has(i + 1)).map(lineKey)
+  return lines.map(line => {
+    const at = left.indexOf(lineKey(line))
+    if (at < 0) return false
+    left.splice(at, 1)
+    return true
+  })
 }
 
 function generateId() {
@@ -69,7 +90,8 @@ export default function ScriptEditPage() {
     () => existingScript ? DEFAULT_SPLIT_OPTIONS : NEW_SCRIPT_SPLIT_OPTIONS
   )
   // 一発撮り is the usual way to film now (2026-10-21), so new scripts start with it.
-  const [oneTake, setOneTake] = useState<boolean>(() => existingScript ? Boolean(existingScript.oneTake) : true)
+  // A script with 相手のセリフ is filmed line by line: the voice of such a line goes over its own listening take.
+  const [oneTake, setOneTake] = useState<boolean>(() => existingScript ? Boolean(existingScript.oneTake) : !inboxItem?.heard?.length)
   // Type A/B only labels the video for the weekly comparison now (2026-11-05); Claude sends it with the script.
   const [videoType, setVideoType] = useState<VideoType | null>(
     () => (existingScript ? existingScript.videoType : inboxItem?.videoType) ?? null,
@@ -143,7 +165,8 @@ export default function ScriptEditPage() {
       updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
-      const shots: Shot[] = preview.map(text => ({ id: generateId(), text }))
+      const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
+      const shots: Shot[] = preview.map((text, i) => ({ id: generateId(), text, ...(heard[i] ? { heard: true } : {}) }))
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined

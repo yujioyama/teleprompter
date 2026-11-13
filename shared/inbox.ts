@@ -39,6 +39,12 @@ export interface InboxItem {
   videoType?: VideoType
   /** Images for some of the lines; absent when none were sent. */
   images?: InboxImage[]
+  /**
+   * 相手のセリフ: which lines of `body` (non-empty lines, from 1) the other
+   * person says. Each line is then its own take (no 一発撮り). Absent when
+   * the script is all one voice.
+   */
+  heard?: number[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }
