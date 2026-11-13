@@ -8,6 +8,15 @@ import type { RecordStore } from './recordStore.js'
 import { JAPANESE_SUBTITLE_RULES } from '../shared/japaneseSubtitles.js'
 import { captionWithCredits } from '../shared/inbox.js'
 
+/** `value` as line numbers when it came as text ("[1,3]" or "1, 3"); anything else as it is. */
+function lineNumbersFromText(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const text = value.trim().replace(/^\[|\]$/g, '')
+  if (text === '') return []
+  const parts = text.split(/[\s,]+/).filter(Boolean)
+  return parts.every(part => /^\d+$/.test(part)) ? parts.map(Number) : value
+}
+
 export const TOOL_NAME = 'send_to_teleprompter'
 export const SUBTITLES_TOOL_NAME = 'send_subtitles'
 export const RECORDS_TOOL_NAME = 'list_video_records'
@@ -92,8 +101,8 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           .optional()
           .describe('行ごとに見せる画像。1枚でもあるとステッカーと妖精は出ない'),
         heard: z
-          .array(z.number().int().min(1))
-          .max(300)
+          // A client still holding the tool's older schema sends the numbers as text ("[1,3]" or "1, 3").
+          .preprocess(lineNumbersFromText, z.array(z.number().int().min(1)).max(300))
           .optional()
           .describe('相手のセリフの行番号（script の何行目か、1から数える）。会話を再現する台本だけ'),
         heardIcon: z

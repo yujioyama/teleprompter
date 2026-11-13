@@ -122,6 +122,15 @@ describe('handleMcpRequest', () => {
       expect((await store.list())[0]).not.toHaveProperty('heardVoice')
     })
 
+    it('takes the line numbers as text too, from a client with the older schema', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: '一\n二\n三', heard: '[1,3]' }), deps)
+      expect((await store.list())[0].heard).toEqual([1, 3])
+      await handleMcpRequest(callTool({ title: 'b', script: '一\n二\n三', heard: '2, 3' }), deps)
+      expect((await store.list())[0].heard).toEqual([2, 3])
+      const res = await handleMcpRequest(callTool({ title: 'c', script: '一', heard: 'first' }), deps)
+      expect((await res.json()).result.isError).toBe(true)
+    })
+
     it('refuses a line the script does not have, saving nothing', async () => {
       const res = await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', heard: [3] }), deps)
       const { result } = await res.json()
