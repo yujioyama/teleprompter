@@ -166,7 +166,8 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
-      const shots: Shot[] = preview.map((text, i) => ({ id: generateId(), text, ...(heard[i] ? { heard: true } : {}) }))
+      const speaker = inboxItem?.heardIcon ? { speaker: inboxItem.heardIcon } : {}
+      const shots: Shot[] = preview.map((text, i) => ({ id: generateId(), text, ...(heard[i] ? { heard: true, ...speaker } : {}) }))
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined

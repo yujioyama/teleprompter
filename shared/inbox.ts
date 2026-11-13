@@ -45,6 +45,8 @@ export interface InboxItem {
    * the script is all one voice.
    */
   heard?: number[]
+  /** The emoji shown beside the other person's subtitles; absent for the usual one. */
+  heardIcon?: string
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }

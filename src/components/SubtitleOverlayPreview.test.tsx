@@ -172,6 +172,24 @@ describe('SubtitleOverlayPreview', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it("tints the other person's line and puts their icon beside its first line only", () => {
+    const hook = { style: false, position: 22.5, punchIn: null, speakers: [{ cueId: 'c1', icon: '🧑‍🍳' }] }
+    const cues: SubtitleCue[] = [
+      { id: 'c1', start: 0, end: 2, en: 'What can I *get* you?', ja: 'ご注文は' },
+      { id: 'c2', start: 2, end: 4, en: 'A latte', ja: 'ラテを' },
+    ]
+    const { rerender } = render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} hook={hook} />)
+    expect(screen.getAllByTestId('subtitle-speaker')).toHaveLength(1)
+    expect(screen.getByTestId('subtitle-speaker')).toHaveTextContent('🧑‍🍳')
+    expect(screen.getByText('ご注文は').closest('p')).toHaveStyle({ color: '#A8E0FF' })
+    // The theme phrase keeps its own color.
+    expect(screen.getByText('get')).toHaveStyle({ color: '#FFD60A' })
+
+    rerender(<SubtitleOverlayPreview cues={cues} position={50} currentTime={3} hook={hook} />)
+    expect(screen.queryByTestId('subtitle-speaker')).not.toBeInTheDocument()
+    expect(screen.getByText('ラテを').closest('p')).not.toHaveStyle({ color: '#A8E0FF' })
+  })
+
   it('paints an *emphasized* word yellow, without the asterisks', () => {
     const cues: SubtitleCue[] = [{ id: 'c1', start: 0, end: 2, en: 'I *love* it', ja: 'すき' }]
     render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} />)

@@ -87,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
@@ -105,8 +105,14 @@ describe('handleMcpRequest', () => {
     })
 
     it('leaves it off a script that is all one voice', async () => {
-      await handleMcpRequest(callTool({ title: 'a', script: '一行目', heard: [] }), deps)
+      await handleMcpRequest(callTool({ title: 'a', script: '一行目', heard: [], heardIcon: '👩' }), deps)
       expect((await store.list())[0]).not.toHaveProperty('heard')
+      expect((await store.list())[0]).not.toHaveProperty('heardIcon')
+    })
+
+    it("keeps the other person's icon with their lines", async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', heard: [1], heardIcon: '🧑‍🍳' }), deps)
+      expect((await store.list())[0]).toMatchObject({ heard: [1], heardIcon: '🧑‍🍳' })
     })
 
     it('refuses a line the script does not have, saving nothing', async () => {

@@ -23,7 +23,8 @@ import {
   subtitlePositionOf,
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
-import { STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
+import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
+import { SPEAKER_EMOJI_RATIO, SPEAKER_GAP, SPEAKER_RADIUS_RATIO, SPEAKER_TEXT_COLOR, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
@@ -143,7 +144,7 @@ export function cuePosition(cue: StyledCue, look: SubtitleLook): SubtitlePositio
  * outline under a soft shadow, then the fills (white, theme yellow, word mint)
  * without one, so the outline sits under the letters and never thins them.
  */
-function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, fontPx: number) {
+function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: number, y: number, fontPx: number, plain = '#ffffff'): number {
   const widths = runs.map(run => ctx.measureText(run.text).width)
   const left = centerX - widths.reduce((sum, w) => sum + w, 0) / 2
 
@@ -163,10 +164,38 @@ function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: n
 
   x = left
   runs.forEach((run, i) => {
-    ctx.fillStyle = runColor(run)
+    ctx.fillStyle = run.emphasized ? runColor(run) : plain
     ctx.fillText(run.text, x, y)
     x += widths[i]
   })
+  return left
+}
+
+/**
+ * The other person's icon: an emoji on a white disc, just left of where
+ * their first line starts (`lineLeft`), in the margin the text never uses.
+ */
+function drawSpeaker(ctx: CanvasRenderingContext2D, icon: string, lineLeft: number, y: number, fontPx: number) {
+  const radius = fontPx * SPEAKER_RADIUS_RATIO
+  const edge = outlineWidth(fontPx) / 2
+  const x = Math.max(radius + edge, lineLeft - SPEAKER_GAP - radius)
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.shadowColor = SUBTITLE_SHADOW.color
+  ctx.shadowBlur = fontPx * SUBTITLE_SHADOW.blurRatio
+  ctx.shadowOffsetY = fontPx * SUBTITLE_SHADOW.offsetYRatio
+  ctx.fillStyle = '#fff'
+  ctx.fill()
+  ctx.shadowColor = 'transparent'
+  ctx.strokeStyle = '#000'
+  ctx.lineWidth = edge
+  ctx.stroke()
+  ctx.font = `${Math.round(fontPx * SPEAKER_EMOJI_RATIO)}px ${EMOJI_FONT_FAMILY}`
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#000'
+  ctx.fillText(icon, x, y)
+  ctx.restore()
 }
 
 /** Text measurement on a scratch canvas, matching what gets drawn. */
@@ -206,22 +235,27 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * transparent PNG as wide as the video and
  * exactly as tall as its layout: white outlined text, no box. Text is
  * wrapped onto balanced lines (see subtitleLayout); `*theme*` words are
- * yellow and the `{word}` the episode introduces is mint.
+ * yellow and the `{word}` the episode introduces is mint. With `speaker`
+ * (相手のセリフ) the plain text is tinted and that icon sits beside the
+ * first line.
  */
-export async function renderCueImage(cue: SubtitleCue): Promise<{ image: Blob; height: number }> {
+export async function renderCueImage(cue: SubtitleCue, speaker?: string): Promise<{ image: Blob; height: number }> {
   const layout = layoutCue(cue, canvasMeasure())
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
 
   let top = SUBTITLE_PADDING_Y
-  const drawBlock = (block: TextBlockLayout, font: string) => {
-    ctx.font = font
-    for (const runs of block.runs) {
-      drawOutlinedRuns(ctx, runs, width / 2, top + block.lineHeightPx / 2, block.fontPx)
+  const plain = speaker ? SPEAKER_TEXT_COLOR : undefined
+  const drawBlock = (block: TextBlockLayout, font: string, icon?: string) => {
+    block.runs.forEach((runs, i) => {
+      ctx.font = font
+      const y = top + block.lineHeightPx / 2
+      const left = drawOutlinedRuns(ctx, runs, width / 2, y, block.fontPx, plain)
+      if (icon && i === 0) drawSpeaker(ctx, icon, left, y, block.fontPx)
       top += block.lineHeightPx
-    }
+    })
   }
-  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx))
+  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx), speaker)
   if (layout.ja) {
     top += SUBTITLE_BLOCK_GAP
     drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx))
@@ -350,7 +384,7 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.
-    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) })
+    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id))
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration, look.firstClipDuration)

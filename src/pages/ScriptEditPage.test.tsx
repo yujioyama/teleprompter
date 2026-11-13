@@ -168,7 +168,7 @@ describe('ScriptEditPage from the Claude inbox', () => {
   })
 
   it('films a script with 相手のセリフ line by line, with those lines marked', async () => {
-    const item: InboxItem = { ...ITEM, body: 'Hi. What can I get you?\nA latte.\nSorry?', heard: [1, 3] }
+    const item: InboxItem = { ...ITEM, body: 'Hi. What can I get you?\nA latte.\nSorry?', heard: [1, 3], heardIcon: '🧑‍🍳' }
     renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })
     expect(screen.getByLabelText(/一発撮り/)).not.toBeChecked()
     fireEvent.click(screen.getByText('自動分割する'))
@@ -176,10 +176,10 @@ describe('ScriptEditPage from the Claude inbox', () => {
 
     expect(await screen.findByText('ショット編集')).toBeInTheDocument()
     expect(stored()[0].oneTake).toBeFalsy()
-    expect(stored()[0].shots.map(shot => [shot.text, shot.heard])).toEqual([
-      ['Hi. What can I get you?', true],
-      ['A latte.', undefined],
-      ['Sorry?', true],
+    expect(stored()[0].shots.map(shot => [shot.text, shot.heard, shot.speaker])).toEqual([
+      ['Hi. What can I get you?', true, '🧑‍🍳'],
+      ['A latte.', undefined, undefined],
+      ['Sorry?', true, '🧑‍🍳'],
     ])
   })
 

@@ -17,6 +17,8 @@ export interface Shot {
    * listening (see planHeardShot).
    */
   heard?: boolean
+  /** The emoji shown beside a 相手のセリフ line's subtitle; absent for the usual one. */
+  speaker?: string
 }
 
 /** One script line's Japanese subtitle, as Claude sent it with the script. */
