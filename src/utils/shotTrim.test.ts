@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { autoTrimOf, clampTrimRange, LAST_SHOT_MIN_LENGTH, PAUSE_PADDING_END, resolveShotTrimSettings } from './shotTrim'
+import { autoTrimOf, clampTrimRange, CONVERSATION_PADDING, isConversation, LAST_SHOT_MIN_LENGTH, PAUSE_PADDING_END, resolveShotTrimSettings } from './shotTrim'
 import type { AppSettings } from '../hooks/useSettings'
 
 describe('clampTrimRange', () => {
@@ -132,5 +132,40 @@ describe('autoTrimOf', () => {
 
   it('leaves a shot with nothing worth trimming whole', () => {
     expect(autoTrimOf({ speechStart: 0.05, speechEnd: 5.95, floor: 0, ceiling: 6, duration: 6 }, trim)).toBeNull()
+  })
+})
+
+describe('a conversation', () => {
+  const SETTINGS = {
+    trimEnabled: true,
+    trimPaddingStart: 0.2,
+    trimPaddingEnd: 0.2,
+    firstShotPaddingStart: 0.05,
+    lastShotPaddingEnd: 0.1,
+  } as AppSettings
+  const shot = { id: 'a', text: 'Hi' }
+
+  it('keeps a breath on each side of the lines in between', () => {
+    const trim = resolveShotTrimSettings(shot, SETTINGS, false, false, true)
+    expect(trim.trimPaddingStart).toBe(CONVERSATION_PADDING)
+    expect(trim.trimPaddingEnd).toBe(CONVERSATION_PADDING)
+  })
+
+  it('leaves the opening and ending tight, and a shot of its own as set', () => {
+    expect(resolveShotTrimSettings(shot, SETTINGS, true, false, true).trimPaddingStart).toBe(0.05)
+    expect(resolveShotTrimSettings(shot, SETTINGS, false, true, true).trimPaddingEnd).toBe(0.1)
+    expect(resolveShotTrimSettings({ ...shot, trimPaddingEnd: 0.1 }, SETTINGS, false, false, true).trimPaddingEnd).toBe(0.1)
+    expect(resolveShotTrimSettings({ ...shot, keepPause: true }, SETTINGS, false, false, true).trimPaddingEnd).toBe(PAUSE_PADDING_END)
+  })
+
+  it('changes nothing in a script that is all one voice', () => {
+    expect(resolveShotTrimSettings(shot, SETTINGS, false, false, false).trimPaddingStart).toBe(0.2)
+  })
+
+  it('is a line-by-line script with a 相手のセリフ line', () => {
+    expect(isConversation({ shots: [shot, { ...shot, id: 'b', heard: true }] })).toBe(true)
+    expect(isConversation({ oneTake: true, shots: [{ ...shot, heard: true }] })).toBe(false)
+    expect(isConversation({ shots: [shot] })).toBe(false)
+    expect(isConversation(null)).toBe(false)
   })
 })

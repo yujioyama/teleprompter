@@ -21,7 +21,7 @@ import { releaseCinemaLookCaches } from '../utils/drawCinemaLook'
 import { filmLookOf } from '../../shared/cinemaLook'
 import { probeVideoDuration } from '../utils/probeVideoDuration'
 import { detectSpeech, type SpeechBounds, type SpeechRegion } from '../utils/detectSpeechBounds'
-import { autoTrimOf, clampTrimRange, resolveShotTrimSettings } from '../utils/shotTrim'
+import { autoTrimOf, clampTrimRange, isConversation, resolveShotTrimSettings } from '../utils/shotTrim'
 import { shareAllOrDownload, shareOrDownload, type ShareItem } from '../utils/shareOrDownload'
 import { PreparedAudio, mixForExport, type FinalAudioKey } from '../utils/preparedAudio'
 import { bgmEnding, punchlineStart } from '../utils/bgmStop'
@@ -333,7 +333,7 @@ export default function FinalizePage() {
       const trimSettings = new Map(
         script.shots.map(shot => [
           shot.id,
-          resolveShotTrimSettings(shot, settings, shot.id === firstShotId, shot.id === lastShotId),
+          resolveShotTrimSettings(shot, settings, shot.id === firstShotId, shot.id === lastShotId, isConversation(script)),
         ]),
       )
       const next = script.shots.map(shot => {
@@ -427,7 +427,13 @@ export default function FinalizePage() {
           if (cancelled) return
           // 間を残す may have been switched while this shot was being checked.
           const shot = scriptRef.current?.shots.find(s => s.id === entry.shotId)
-          const trim = resolveShotTrimSettings(shot, settings, entry.shotId === firstShotId, entry.shotId === lastShotId)
+          const trim = resolveShotTrimSettings(
+            shot,
+            settings,
+            entry.shotId === firstShotId,
+            entry.shotId === lastShotId,
+            isConversation(scriptRef.current),
+          )
           setAutoTrim(entry.shotId, speech, speech && trim.trimEnabled ? autoTrimOf(speech, trim) : null)
         }
       })()
@@ -486,6 +492,7 @@ export default function FinalizePage() {
       settings,
       withVideo[0]?.shotId === entry.shotId,
       withVideo.at(-1)?.shotId === entry.shotId,
+      isConversation({ ...script, shots }),
     )
     if (trim.trimEnabled) setAutoTrim(entry.shotId, entry.speech, autoTrimOf(entry.speech, trim))
   }

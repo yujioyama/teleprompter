@@ -1,3 +1,4 @@
+import { applyGainWithLimiter, planLoudnessGain } from './loudness'
 /**
  * 相手のセリフ: the voices the other person's line can be given. The line
  * is said in our own voice; these make it someone else's.
@@ -169,4 +170,15 @@ export function rms(samples: Float32Array): number {
   let sum = 0
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
   return samples.length > 0 ? Math.sqrt(sum / samples.length) : 0
+}
+
+/**
+ * `samples` (mono, changed in place) brought to the loudness every take is
+ * brought to at import (TARGET_LUFS), so the other person's line is as loud
+ * as ours whether it was said softly or the voice effect changed its level.
+ */
+export function levelVoice(samples: Float32Array, sampleRate: number): Float32Array {
+  const gainDb = planLoudnessGain([samples], sampleRate)
+  if (gainDb !== null) applyGainWithLimiter([samples], sampleRate, gainDb)
+  return samples
 }

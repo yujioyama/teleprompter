@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { HEARD_VOICES, isHeardVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
+import { HEARD_VOICES, isHeardVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
+import { measureIntegratedLoudness, TARGET_LUFS } from './loudness'
 
 const RATE = 16000
 
@@ -123,5 +124,16 @@ describe('isHeardVoice', () => {
     expect(HEARD_VOICES.every(isHeardVoice)).toBe(true)
     expect(isHeardVoice('robot')).toBe(false)
     expect(isHeardVoice(undefined)).toBe(false)
+  })
+})
+
+describe('levelVoice', () => {
+  it('brings a soft line and a loud line to the same loudness', () => {
+    const soft = tone(200, 2).map(v => v * 0.05)
+    const loud = tone(200, 2).map(v => v * 0.8)
+    const softLevel = measureIntegratedLoudness([levelVoice(soft, RATE)], RATE)
+    const loudLevel = measureIntegratedLoudness([levelVoice(loud, RATE)], RATE)
+    expect(Math.abs(softLevel - loudLevel)).toBeLessThan(1.5)
+    expect(Math.abs(loudLevel - TARGET_LUFS)).toBeLessThan(1.5)
   })
 })
