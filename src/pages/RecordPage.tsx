@@ -8,6 +8,7 @@ import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
+import { heardShotFailureText, makeHeardShot } from '../utils/heardShot'
 import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
@@ -102,6 +103,7 @@ export default function RecordPage() {
     setBulkImportProgress({ done: 0, total: targets.length })
     const failedShotTexts: string[] = []
     const degradedShotTexts: string[] = []
+    const unheardShotTexts: string[] = []
 
     for (let i = 0; i < targets.length; i++) {
       const { shot, file } = targets[i]
@@ -110,10 +112,21 @@ export default function RecordPage() {
         const processed = await processRecordedVideo(file, mimeType, { normalizeAudio: globalSettings.normalizeAudio })
         // remuxMp4 always falls back to the original blob on failure, so this
         // is still worth saving — just flagged as degraded rather than dropped.
-        const savedAt = await saveShotVideo(safeScript.id, shot.id, processed.blob)
+        let take = processed.blob
+        if (shot.heard && !safeScript.oneTake) {
+          // 相手のセリフ: the voice goes over the listening. A take that can't
+          // be turned into that is kept as it is, to be seen and retaken.
+          try {
+            take = await makeHeardShot(processed.blob)
+          } catch (err) {
+            console.warn('Could not make the 相手のセリフ clip', err)
+            unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
+          }
+        }
+        const savedAt = await saveShotVideo(safeScript.id, shot.id, take)
         // Only where the finalize step would look for the speech itself.
         if (safeScript.oneTake || resolveShotTrimSettings(shot, globalSettings).trimEnabled) {
-          await analyzeTake(safeScript.id, shot.id, savedAt, processed.blob)
+          await analyzeTake(safeScript.id, shot.id, savedAt, take)
         }
         if (!processed.ok) {
           degradedShotTexts.push(stripEmphasis(shot.text))
@@ -135,6 +148,9 @@ export default function RecordPage() {
     }
     if (degradedShotTexts.length > 0) {
       messages.push(`動画の変換に失敗したため、元のファイルのまま保存しました: ${degradedShotTexts.join(', ')}`)
+    }
+    if (unheardShotTexts.length > 0) {
+      messages.push(`相手のセリフにできず、撮ったまま保存しました: ${unheardShotTexts.join(', ')}`)
     }
     if (messages.length > 0) {
       setBulkImportError(messages.join(' / '))
@@ -163,6 +179,14 @@ export default function RecordPage() {
             trimPaddingEnd: enabled ? globalSettings.trimPaddingEnd : undefined,
           }
         : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotHeard(value: boolean) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, heard: value || undefined } : s
     )
     updateScript(id, { shots: updatedShots })
   }
@@ -242,11 +266,31 @@ export default function RecordPage() {
               className={styles.shotSettingsToggle}
               onClick={() => setShotSettingsOpen(o => !o)}
             >
-              ⚙ このショットの設定{hasOverride ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
+              ⚙ このショットの設定{hasOverride || currentShot?.heard ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
             </button>
 
             {shotSettingsOpen && (
               <div className={styles.shotSettingsPanel}>
+                {/* 相手のセリフ: only where each line is its own take */}
+                {!safeScript.oneTake && (
+                  <div className={styles.shotSettingsRow}>
+                    <div>
+                      <div className={styles.shotSettingsLabel}>相手のセリフ</div>
+                      <div className={styles.shotSettingsSub}>
+                        セリフを声に出したあと、同じ長さだけ黙って聞く顔を撮ります。インポートすると、聞いている映像に声だけがのります
+                      </div>
+                    </div>
+                    <label className={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        aria-label="相手のセリフ"
+                        checked={Boolean(currentShot?.heard)}
+                        onChange={e => handleShotHeard(e.target.checked)}
+                      />
+                      <span className={styles.toggleTrack} />
+                    </label>
+                  </div>
+                )}
                 {/* Use global / override toggle */}
                 <div className={styles.shotSettingsRow}>
                   <div>

@@ -33,7 +33,8 @@ function isShot(value: unknown): value is Shot {
     isOptional(shot.trimEnabled, 'boolean') &&
     isOptional(shot.trimPaddingStart, 'number') &&
     isOptional(shot.trimPaddingEnd, 'number') &&
-    isOptional(shot.keepPause, 'boolean')
+    isOptional(shot.keepPause, 'boolean') &&
+    isOptional(shot.heard, 'boolean')
   )
 }
 

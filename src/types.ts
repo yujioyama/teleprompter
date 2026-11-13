@@ -11,6 +11,12 @@ export interface Shot {
   trimPaddingEnd?: number    // undefined = use global setting
   /** 間を残す: keep a longer silence after this shot's speech. */
   keepPause?: boolean
+  /**
+   * 相手のセリフ: the other person's line. Its take is the line said aloud and
+   * then listened to in silence; the import puts the voice over the
+   * listening (see planHeardShot).
+   */
+  heard?: boolean
 }
 
 /** One script line's Japanese subtitle, as Claude sent it with the script. */
