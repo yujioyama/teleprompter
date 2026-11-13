@@ -1,6 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import type { HeardPlan } from '../heardShot'
-import { shapeVoice, type HeardVoice } from '../voiceEffects'
+import { levelVoice, shapeVoice, type HeardVoice } from '../voiceEffects'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 import { normalizeShotWebCodecs } from './normalizeShot'
 import { OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE } from './support'
@@ -28,7 +28,8 @@ export async function buildHeardShotWebCodecs(take: Blob, plan: HeardPlan, voice
     // Built to the picture's length, as prepareFinalAudio does, so the two end together.
     const seconds = await videoTrack.computeDuration()
     const spoken = lineOf(await decodeAudioTrack(audioTrack), plan.voice.start, plan.voice.end)
-    const shaped = shapeVoice(spoken.samples, spoken.sampleRate, voice)
+    // Whatever the effect did to its level, and however softly it was said, as loud as our own lines.
+    const shaped = levelVoice(Float32Array.from(shapeVoice(spoken.samples, spoken.sampleRate, voice)), spoken.sampleRate)
     return await muxWithAudio(videoTrack, await renderVoice(shaped, spoken.sampleRate, seconds))
   } finally {
     source.dispose()

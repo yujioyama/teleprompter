@@ -1,10 +1,15 @@
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
+import { CONVERSATION_PADDING } from './shotTrim'
 import { voiceSpeed, type HeardVoice } from './voiceEffects'
 import { canUseWebCodecs } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
 
-/** Breath kept around the voice, like a shot's own trim padding. */
-export const VOICE_PADDING_S = 0.15
+/**
+ * Silence kept around the voice, as much as a conversation keeps around
+ * every line (CONVERSATION_PADDING): the clip's own edges are as far as
+ * trimming can reach, so this is the breath before and after their line.
+ */
+export const VOICE_PADDING_S = CONVERSATION_PADDING
 /** After the last word, until the face has settled into listening. */
 export const SETTLE_S = 0.4
 /** Left off the end of the take: the reach for the stop button. */

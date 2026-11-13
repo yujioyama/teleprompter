@@ -12,6 +12,12 @@ export interface ShotTrimSettings {
 
 /** The silence kept after a shot marked 間を残す, e.g. before a punchline. */
 export const PAUSE_PADDING_END = 0.4
+/**
+ * In a conversation (a script with 相手のセリフ), the least silence kept on
+ * each side of a line, so a reply comes after a breath rather than cutting
+ * in: about 0.6s between two lines.
+ */
+export const CONVERSATION_PADDING = 0.3
 /** The finale fairy needs the last shot to last this long (see finaleTiming). */
 export const LAST_SHOT_MIN_LENGTH = 1.2
 
@@ -20,21 +26,30 @@ export const LAST_SHOT_MIN_LENGTH = 1.2
  * The first shot opens the video, where viewers decide within a second
  * whether to stay, so it has a lead-in of its own (almost none). The last
  * shot ends right after the speech so the video loops straight back.
+ * In a `conversation` (see isConversation) the lines in between keep at
+ * least CONVERSATION_PADDING on each side; a shot's own override still wins.
  */
 export function resolveShotTrimSettings(
   shot: Shot | undefined,
   global: AppSettings,
   isFirstShot = false,
   isLastShot = false,
+  conversation = false,
 ): ShotTrimSettings {
+  const between = (padding: number) => (conversation ? Math.max(padding, CONVERSATION_PADDING) : padding)
   return {
     trimEnabled: shot?.trimEnabled ?? global.trimEnabled,
-    trimPaddingStart: shot?.trimPaddingStart ?? (isFirstShot ? global.firstShotPaddingStart : global.trimPaddingStart),
+    trimPaddingStart: shot?.trimPaddingStart ?? (isFirstShot ? global.firstShotPaddingStart : between(global.trimPaddingStart)),
     trimPaddingEnd: shot?.keepPause
-      ? PAUSE_PADDING_END
-      : (shot?.trimPaddingEnd ?? (isLastShot ? global.lastShotPaddingEnd : global.trimPaddingEnd)),
+      ? Math.max(PAUSE_PADDING_END, between(0))
+      : (shot?.trimPaddingEnd ?? (isLastShot ? global.lastShotPaddingEnd : between(global.trimPaddingEnd))),
     minLength: isLastShot ? LAST_SHOT_MIN_LENGTH : 0,
   }
+}
+
+/** A script re-enacting a conversation: filmed line by line, with some lines the other person's. */
+export function isConversation(script: { oneTake?: boolean; shots: Shot[] } | null | undefined): boolean {
+  return Boolean(script && !script.oneTake && script.shots.some(shot => shot.heard))
 }
 
 /**
