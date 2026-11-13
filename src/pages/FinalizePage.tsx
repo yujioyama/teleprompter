@@ -48,7 +48,7 @@ import CoverMaker from '../components/CoverMaker'
 import CoverFrameSettings from '../components/CoverFrameSettings'
 import YoutubeExportSettings from '../components/YoutubeExportSettings'
 import PostToSns from '../components/PostToSns'
-import { coverOffsetMs, youtubeScheduleHint } from '../utils/postToSns'
+import { coverOffsetMs, youtubeScheduleHint, youtubeTitle } from '../utils/postToSns'
 import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
 import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
@@ -979,11 +979,12 @@ export default function FinalizePage() {
 
   // YouTubeに投稿: YouTube can't be posted to by API without Google's audit,
   // so the YouTube version goes alone into the share sheet (pick YouTube
-  // there), with the caption copied for the description.
+  // there), with its title copied: the share sheet can't carry one, and a
+  // title left empty becomes the date.
   async function handleShareYoutube() {
     if (!youtubeBlob || !script) return
     // Copy before anything is awaited: Safari only writes the clipboard from inside the tap.
-    if (script.caption) void copyCaption(script.caption)
+    if (script.caption) void copyCaption(youtubeTitle(script.caption))
     await shareOrDownload(youtubeBlob, `${script.title}-youtube`)
   }
 
@@ -1401,6 +1402,9 @@ export default function FinalizePage() {
                 <button className={styles.copyCaptionBtn} onClick={handleShareYoutube} disabled={!youtubeBlob}>
                   {youtubeBlob ? 'YouTubeに投稿（共有シートで YouTube を選ぶ）' : 'YouTube用を作っています...'}
                 </button>
+              )}
+              {youtubeEnabled && youtubeState !== 'failed' && script.caption && (
+                <p className={styles.youtubeScheduleHint}>タイトル用の1行がコピーされます。YouTubeの「タイトル」に貼り付けてください</p>
               )}
               {youtubeEnabled && youtubeState !== 'failed' && reservation?.video === exportBlob && (
                 <p className={styles.youtubeScheduleHint}>{youtubeScheduleHint(reservation.at)}</p>

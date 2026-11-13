@@ -74,6 +74,29 @@ export function youtubeScheduleHint(postAt: string, now = new Date()): string {
   return `他のSNSは ${whenLabel(new Date(postAt), now)} に予約済みです。YouTubeでも「スケジュール」で同じ日時を選んでください`
 }
 
+/** YouTube cuts a title off at 100 characters. */
+export const YOUTUBE_TITLE_LIMIT = 100
+
+/**
+ * The line to paste as the YouTube title: the caption's first line, then as
+ * many of the caption's hashtags as still fit. Left empty, YouTube titles
+ * the video with the date.
+ */
+export function youtubeTitle(caption: string): string {
+  const lines = caption.split('\n').map(line => line.trim()).filter(Boolean)
+  if (lines.length === 0) return ''
+  const first = [...lines[0]]
+  let title = first.length > YOUTUBE_TITLE_LIMIT ? `${first.slice(0, YOUTUBE_TITLE_LIMIT - 1).join('')}…` : lines[0]
+  const used = new Set(title.match(/#[^\s#]+/g) ?? [])
+  for (const tag of lines.slice(1).join(' ').match(/#[^\s#]+/g) ?? []) {
+    if (used.has(tag)) continue
+    if ([...title].length + 1 + [...tag].length > YOUTUBE_TITLE_LIMIT) break
+    title += ` ${tag}`
+    used.add(tag)
+  }
+  return title
+}
+
 /** The networks by name, as they read in the results. */
 export function serviceLabel(service: string): string {
   return { instagram: 'Instagram', tiktok: 'TikTok', twitter: 'X', threads: 'Threads' }[service] ?? service

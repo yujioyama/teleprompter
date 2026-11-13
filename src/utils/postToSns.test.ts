@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverOffsetMs, diagnose, fullNetworks, nextSlot, OTHER_HOURS, postTimeLabel, roomLabel, upcomingSlots, whenLabel, youtubeScheduleHint } from './postToSns'
+import { coverOffsetMs, diagnose, fullNetworks, nextSlot, OTHER_HOURS, postTimeLabel, roomLabel, upcomingSlots, whenLabel, youtubeScheduleHint, youtubeTitle } from './postToSns'
 
 describe('nextSlot', () => {
   it('is today when the hour is still ahead, tomorrow when it has passed', () => {
@@ -58,6 +58,29 @@ describe('youtubeScheduleHint', () => {
   it('names the time to pick in YouTube', () => {
     const at = new Date(2026, 10, 12, 20, 0).toISOString()
     expect(youtubeScheduleHint(at, new Date(2026, 10, 7, 13, 0))).toContain('11/12(木) 20:00')
+  })
+})
+
+describe('youtubeTitle', () => {
+  it('is the first line of the caption with its hashtags', () => {
+    const caption = 'pocky day was yesterday. the handle is still my favourite.\nchocolate part or the end?\n#pocky #japanesesnacks #japaneselife\n\n画像: someone / CC BY-SA 3.0'
+    expect(youtubeTitle(caption)).toBe('pocky day was yesterday. the handle is still my favourite. #pocky #japanesesnacks #japaneselife')
+  })
+
+  it('stops adding hashtags at 100 characters', () => {
+    const line = 'a'.repeat(90)
+    expect(youtubeTitle(`${line}\n#esl #australia`)).toBe(`${line} #esl`)
+  })
+
+  it('cuts a first line that is itself too long', () => {
+    const title = youtubeTitle('b'.repeat(120))
+    expect([...title]).toHaveLength(100)
+    expect(title.endsWith('…')).toBe(true)
+  })
+
+  it('keeps a one-line caption as it is, and has nothing for an empty one', () => {
+    expect(youtubeTitle('toast hurt again #esl')).toBe('toast hurt again #esl')
+    expect(youtubeTitle(' \n')).toBe('')
   })
 })
 
