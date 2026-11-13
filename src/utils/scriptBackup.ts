@@ -35,7 +35,8 @@ function isShot(value: unknown): value is Shot {
     isOptional(shot.trimPaddingEnd, 'number') &&
     isOptional(shot.keepPause, 'boolean') &&
     isOptional(shot.heard, 'boolean') &&
-    isOptional(shot.speaker, 'string')
+    isOptional(shot.speaker, 'string') &&
+    isOptional(shot.voice, 'string')
   )
 }
 

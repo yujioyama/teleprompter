@@ -357,6 +357,23 @@ describe('RecordPage 相手のセリフ', () => {
     expect(makeHeardShot).toHaveBeenCalledTimes(1)
   })
 
+  it("offers the other person's voice on such a shot, and uses it at import", async () => {
+    renderRecordPage(seedHeard().id)
+    fireEvent.click(screen.getByText(/このショットの設定/))
+    fireEvent.change(screen.getByLabelText('相手の声'), { target: { value: 'phone' } })
+    const stored = () => (JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[])[0].shots[0]
+    expect(stored().voice).toBe('phone')
+
+    await importShot1()
+    expect(vi.mocked(makeHeardShot).mock.calls[0][1]).toBe('phone')
+  })
+
+  it('has no voice to choose on our own lines', () => {
+    renderRecordPage(seedScript().id)
+    fireEvent.click(screen.getByText(/このショットの設定/))
+    expect(screen.queryByLabelText('相手の声')).not.toBeInTheDocument()
+  })
+
   it('keeps the take and says why when the listening is too short', async () => {
     vi.mocked(makeHeardShot).mockRejectedValue(new NotEnoughListeningError(1.2))
     renderRecordPage(seedHeard().id)

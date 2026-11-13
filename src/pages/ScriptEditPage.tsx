@@ -6,6 +6,7 @@ import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
 import { lineJapaneseOf, lineKey, takeLinesOf } from '../utils/subtitleCues'
+import { isHeardVoice } from '../utils/voiceEffects'
 import { assignToLines, lineImagesOf, reconcileLineImages } from '../utils/lineImages'
 import { useLineImages } from '../hooks/useLineImages'
 import LineImageEditor from '../components/LineImageEditor'
@@ -166,7 +167,10 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
-      const speaker = inboxItem?.heardIcon ? { speaker: inboxItem.heardIcon } : {}
+      const speaker = {
+        ...(inboxItem?.heardIcon ? { speaker: inboxItem.heardIcon } : {}),
+        ...(isHeardVoice(inboxItem?.heardVoice) && inboxItem.heardVoice !== 'natural' ? { voice: inboxItem.heardVoice } : {}),
+      }
       const shots: Shot[] = preview.map((text, i) => ({ id: generateId(), text, ...(heard[i] ? { heard: true, ...speaker } : {}) }))
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
