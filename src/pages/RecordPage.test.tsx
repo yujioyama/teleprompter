@@ -368,8 +368,17 @@ describe('RecordPage 相手のセリフ', () => {
     expect(vi.mocked(makeHeardShot).mock.calls[0][1]).toBe('phone')
   })
 
+  it("says what to do on the other person's line, and marks it in the shot list", () => {
+    renderRecordPage(seedHeard().id)
+    expect(screen.getByRole('note')).toHaveTextContent('相手のセリフ')
+    expect(screen.getByRole('note')).toHaveTextContent('黙って聞く顔')
+    fireEvent.click(screen.getByText('1 / 3 ≡'))
+    expect(screen.getAllByLabelText('相手のセリフ')).toHaveLength(1)
+  })
+
   it('has no voice to choose on our own lines', () => {
     renderRecordPage(seedScript().id)
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText(/このショットの設定/))
     expect(screen.queryByLabelText('相手の声')).not.toBeInTheDocument()
   })
