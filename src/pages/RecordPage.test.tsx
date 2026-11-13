@@ -10,12 +10,18 @@ import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { listShotAnalyses } from '../utils/shotAnalysisStore'
+import { makeHeardShot, NotEnoughListeningError } from '../utils/heardShot'
 
 vi.mock('../utils/ffmpegClient', () => ({ getFFmpeg: vi.fn(), releaseFFmpeg: vi.fn() }))
 vi.mock('../utils/shareOrDownload', () => ({ shareOrDownload: vi.fn(async () => true) }))
 vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/detectSpeechBounds')>()),
   detectSpeech: vi.fn(async () => null),
+}))
+
+vi.mock('../utils/heardShot', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/heardShot')>()),
+  makeHeardShot: vi.fn(async () => new Blob(['heard'], { type: 'video/mp4' })),
 }))
 
 vi.mock('../utils/processRecordedVideo', async () => {
@@ -297,5 +303,72 @@ describe('RecordPage import: finds the speech ahead of the finalize step', () =>
     expect(await listShotVideos('script-1')).toHaveLength(1)
     // Not remembered: the finalize step tries again.
     expect((await storedAnalyses()).has(SHOT_1)).toBe(false)
+  })
+})
+
+describe('RecordPage 相手のセリフ', () => {
+  function seedHeard(over: Partial<Script> = {}) {
+    const script = { ...seedScript(), ...over }
+    script.shots = script.shots.map(shot => (shot.id === SHOT_1 ? { ...shot, heard: true } : shot))
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    return script
+  }
+
+  async function importShot1() {
+    const input = screen.getByLabelText('録画した動画をインポート') as HTMLInputElement
+    selectFiles(input, [videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`)])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+  }
+
+  const HEARD = new Blob(['heard'], { type: 'video/mp4' })
+
+  /** The take that was saved: the one the import then looks for the speech in. */
+  function savedTake() {
+    return vi.mocked(detectSpeech).mock.calls[0][0]
+  }
+
+  beforeEach(() => {
+    vi.mocked(processRecordedVideo).mockImplementation(async (raw: Blob) => ({ blob: raw, ok: true, error: null }))
+    vi.mocked(detectSpeech).mockReset().mockResolvedValue(null)
+    vi.mocked(makeHeardShot).mockReset().mockResolvedValue(HEARD)
+  })
+
+  it('turns the shot on and off in its settings', () => {
+    renderRecordPage(seedScript().id)
+    fireEvent.click(screen.getByText(/このショットの設定/))
+    fireEvent.click(screen.getByLabelText('相手のセリフ'))
+    const stored = () => (JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[])[0].shots[0]
+    expect(stored().heard).toBe(true)
+    fireEvent.click(screen.getByLabelText('相手のセリフ'))
+    expect(stored().heard).toBeUndefined()
+  })
+
+  it('saves the voice over the listening for such a shot, and the take as it is for the others', async () => {
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect(makeHeardShot).toHaveBeenCalledTimes(1)
+    expect(savedTake()).toBe(HEARD)
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot2of3-${SHOT_2}.mov`),
+    ])
+    await waitFor(() => expect(screen.getByText('3 / 3 ≡')).toBeInTheDocument())
+    expect(makeHeardShot).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the take and says why when the listening is too short', async () => {
+    vi.mocked(makeHeardShot).mockRejectedValue(new NotEnoughListeningError(1.2))
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect((savedTake() as File).name).toContain(SHOT_1)
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+    expect(screen.getAllByText(/相手のセリフにできず、撮ったまま保存しました: ショット1\(セリフのあと、あと約1.2秒長く黙って撮ってください\)/).length).toBeGreaterThan(0)
+  })
+
+  it('has no such setting for a 一発撮り script', () => {
+    renderRecordPage(seedHeard({ oneTake: true, shots: [{ id: SHOT_1, text: 'ショット1' }] }).id)
+    fireEvent.click(screen.getByText(/このショットの設定/))
+    expect(screen.queryByLabelText('相手のセリフ')).not.toBeInTheDocument()
   })
 })
