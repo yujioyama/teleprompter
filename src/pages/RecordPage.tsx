@@ -9,6 +9,7 @@ import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVid
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { heardShotFailureText, makeHeardShot } from '../utils/heardShot'
+import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
 import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -184,6 +185,9 @@ export default function RecordPage() {
     updateScript(id, { shots: updatedShots })
   }
 
+  // 相手のセリフ: read aloud, then listened to in silence (see planHeardShot).
+  const heardHere = Boolean(currentShot?.heard) && !safeScript.oneTake
+
   function handleShotHeard(value: boolean) {
     if (!currentShot || !id) return
     const updatedShots = safeScript.shots.map(s =>
@@ -265,7 +269,15 @@ export default function RecordPage() {
 
         {/* Teleprompter text — top of screen, near front camera */}
         <div className={styles.promptArea}>
-          <p className={styles.promptText}>{currentShot && stripStickers(stripEmphasis(currentShot.text))}</p>
+          {heardHere && currentShot && (
+            <div className={styles.heardGuide} role="note">
+              <span className={styles.heardBadge}>{currentShot.speaker ?? DEFAULT_SPEAKER_ICON} 相手のセリフ</span>
+              <span>声に出して読んだら、同じ長さだけ黙って聞く顔をしてから止める</span>
+            </div>
+          )}
+          <p className={`${styles.promptText} ${heardHere ? styles.promptTextHeard : ''}`}>
+            {currentShot && stripStickers(stripEmphasis(currentShot.text))}
+          </p>
         </div>
 
         {/* Per-shot trim settings */}
@@ -457,6 +469,9 @@ export default function RecordPage() {
                   onClick={() => handleJumpToShot(i)}
                 >
                   <span className={styles.shotListNum}>{i + 1}</span>
+                  {shot.heard && !safeScript.oneTake && (
+                    <span className={styles.shotListHeard} aria-label="相手のセリフ">{shot.speaker ?? DEFAULT_SPEAKER_ICON}</span>
+                  )}
                   <span className={styles.shotListText}>{stripStickers(stripEmphasis(shot.text))}</span>
                 </button>
               ))}
