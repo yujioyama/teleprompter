@@ -36,6 +36,8 @@ import type { YoutubeBgmSwap } from '../utils/youtubeVersion'
 import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
 import { withLineImages } from '../utils/lineImages'
+import { DEFAULT_SPEAKER_ICON, withSpeakers } from '../utils/speakers'
+import type { Shot } from '../types'
 import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import ShotTrimmer from '../components/ShotTrimmer'
@@ -102,10 +104,14 @@ function trimSignatureOf(clips: Pick<ShotClip, 'shotId' | 'start' | 'end'>[]): s
 
 // The text each shot of a combined video is subtitled with, and for how long.
 // A 一発撮り take is subtitled line by line, split at the pauses in its speech.
-function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false): ShotCueInput[] {
+function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false, shots: Shot[] = []): ShotCueInput[] {
   return entries.map((entry, i) => {
     const input: ShotCueInput = { text: entry.text, duration: clips[i].end - clips[i].start }
-    if (!oneTake) return input
+    if (!oneTake) {
+      // 相手のセリフ: its subtitles are drawn as the other person's.
+      const shot = shots.find(s => s.id === entry.shotId)
+      return shot?.heard ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON } : input
+    }
     const lines = takeLinesOf(entry.text)
     return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech) }
   })
@@ -360,7 +366,7 @@ export default function FinalizePage() {
       const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
       if (combined) {
         const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
-        showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips, Boolean(script.oneTake)), trim: combined.trim ?? null })
+        showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips, Boolean(script.oneTake), script.shots), trim: combined.trim ?? null })
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
         if (subtitles && subtitles.combinedClips === combinedClipsSignature(combined.clips)) {
@@ -581,12 +587,17 @@ export default function FinalizePage() {
     }),
     [script, storedLineImages, lineImagesLoading],
   )
+  const speakerInputs = combined?.cueInputs
   const hookFor = useCallback(
-    (cues: SubtitleCue[], position: SubtitlePosition) => withLineImages(
-      withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook),
-      { ...lineImages, cues },
+    (cues: SubtitleCue[], position: SubtitlePosition) => withSpeakers(
+      withLineImages(
+        withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook),
+        { ...lineImages, cues },
+      ),
+      cues,
+      speakerInputs ?? [],
     ),
-    [hookSettings, oneTake, cinemaLook, lineImages],
+    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs],
   )
   const hook = useMemo(() => hookFor(subtitleCues, subtitlePosition), [hookFor, subtitleCues, subtitlePosition])
   // The subtitles the subtitle step will open with, known as soon as the
@@ -936,7 +947,7 @@ export default function FinalizePage() {
       lastEnd: settings.lastShotPaddingEnd,
       pauseShots: script?.shots.filter(shot => shot.keepPause && clips.some(c => c.shotId === shot.id)).length ?? 0,
     }
-    showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips, Boolean(script?.oneTake)), trim })
+    showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips, Boolean(script?.oneTake), script?.shots), trim })
     if (script) {
       const saved = savedClipsOf(clips, takesRef.current)
       // Subtitles made on the previous 結合 no longer line up with this one, nor does its burn.

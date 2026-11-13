@@ -3,6 +3,7 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
+import { SPEAKER_EMOJI_RATIO, SPEAKER_GAP, SPEAKER_RADIUS_RATIO, SPEAKER_TEXT_COLOR, speakerOf } from '../utils/speakers'
 import {
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
@@ -53,19 +54,44 @@ function blockStyle(block: TextBlockLayout): CSSProperties {
   }
 }
 
-/** A block's lines, with `*theme*` runs in yellow and `{word}` runs in mint, as burned in. */
-function BlockLines({ block }: { block: TextBlockLayout }) {
+/**
+ * A block's lines, with `*theme*` runs in yellow and `{word}` runs in mint, as
+ * burned in. `icon` (相手のセリフ) sits on its white disc just left of the first line.
+ */
+function BlockLines({ block, icon }: { block: TextBlockLayout; icon?: string }) {
+  const radius = block.fontPx * SPEAKER_RADIUS_RATIO
   return (
     <>
-      {block.runs.map((runs, i) => (
-        <span key={i} className={styles.line}>
-          {runs.map((run, j) =>
-            run.emphasized
-              ? <span key={j} style={{ color: runColor(run) }}>{run.text}</span>
-              : <Fragment key={j}>{run.text}</Fragment>,
-          )}
-        </span>
-      ))}
+      {block.runs.map((runs, i) => {
+        const text = runs.map((run, j) =>
+          run.emphasized
+            ? <span key={j} style={{ color: runColor(run) }}>{run.text}</span>
+            : <Fragment key={j}>{run.text}</Fragment>,
+        )
+        return (
+          <span key={i} className={styles.line}>
+            {icon && i === 0 ? (
+              <span className={styles.spoken}>
+                <span
+                  className={styles.speaker}
+                  data-testid="subtitle-speaker"
+                  style={{
+                    marginRight: cqw(SPEAKER_GAP),
+                    width: cqw(radius * 2),
+                    height: cqw(radius * 2),
+                    border: `${cqw(outlineWidth(block.fontPx) / 2)} solid #000`,
+                    fontFamily: EMOJI_FONT_FAMILY,
+                    fontSize: cqw(block.fontPx * SPEAKER_EMOJI_RATIO),
+                  }}
+                >
+                  {icon}
+                </span>
+                {text}
+              </span>
+            ) : text}
+          </span>
+        )
+      })}
     </>
   )
 }
@@ -187,6 +213,10 @@ export default function SubtitleOverlayPreview({
   // As burned: only a translated cue shows its image.
   const lineImage = cue && cue.ja !== null ? hook?.lineImages?.find(i => i.cueId === cue.id) : undefined
 
+  // 相手のセリフ: tinted, with the other person's icon beside the first line.
+  const speaker = cue ? speakerOf(hook, cue.id) : undefined
+  const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
+
   const cueBox = cue && layout && (
     <div
       className={styles.wrapper}
@@ -198,11 +228,11 @@ export default function SubtitleOverlayPreview({
       data-testid="subtitle-overlay-box"
       data-variant={cue.variant}
     >
-      <p className={styles.en} style={blockStyle(layout.en)}>
-        <BlockLines block={layout.en} />
+      <p className={styles.en} style={{ ...blockStyle(layout.en), ...spokenColor }}>
+        <BlockLines block={layout.en} icon={speaker} />
       </p>
       {layout.ja && (
-        <p className={styles.ja} style={{ ...blockStyle(layout.ja), marginTop: cqw(SUBTITLE_BLOCK_GAP) }}>
+        <p className={styles.ja} style={{ ...blockStyle(layout.ja), ...spokenColor, marginTop: cqw(SUBTITLE_BLOCK_GAP) }}>
           <BlockLines block={layout.ja} />
         </p>
       )}

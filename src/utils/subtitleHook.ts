@@ -7,6 +7,7 @@ import { DEFAULT_STICKER_MOTION, type StickerMotion } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
 import type { CueImage } from './lineImages'
+import type { CueSpeaker } from './speakers'
 import { LETTERBOX, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
@@ -77,6 +78,8 @@ export interface HookOptions {
   lookStrength?: number
   /** Each line's image, on the cue that times it (see withLineImages); default none. */
   lineImages?: CueImage[]
+  /** The 相手のセリフ cues and the icon beside each (see withSpeakers); default none. */
+  speakers?: CueSpeaker[]
 }
 
 export type HookSettings = Pick<
