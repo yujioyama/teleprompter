@@ -69,3 +69,41 @@ export function withCoverSilence(process: (sample: AudioSample) => AudioSample, 
     return [silence, made]
   }
 }
+
+/**
+ * A Mediabunny `video.process` playing the picture `stretch` times slower:
+ * each frame (as `process` made it) is held over the stretched span it now
+ * covers, as frames at the output rate. For the 相手のセリフ clip, a still
+ * listening face, where a held frame isn't seen as one.
+ */
+export function withSlowMotion(process: VideoProcess | undefined, stretch: number) {
+  const step = 1 / OUTPUT_FRAME_RATE
+  return (sample: VideoSample): VideoSample[] => {
+    const from = sample.timestamp * stretch
+    const to = (sample.timestamp + sample.duration) * stretch
+    const made = process ? process(sample) : sample
+    const frame =
+      made instanceof VideoSample ? made : new VideoSample(made, { timestamp: from, duration: step })
+    const times = slowMotionTimes(from, to, step)
+    return times.map((at, i) => {
+      const copy = i === 0 ? frame : frame.clone()
+      copy.setTimestamp(at)
+      copy.setDuration(step)
+      return copy
+    })
+  }
+}
+
+/**
+ * The output frame times in [from, to), on the output rate's grid, so the
+ * frames of neighbouring source frames neither overlap nor leave gaps; at
+ * least one, at `from`.
+ */
+export function slowMotionTimes(from: number, to: number, step: number): number[] {
+  // "+ 0" turns a -0 (from 0) into 0.
+  const first = Math.ceil(from / step - 1e-6) + 0
+  const last = Math.ceil(to / step - 1e-6)
+  const times: number[] = []
+  for (let i = first; i < last; i++) times.push(i * step)
+  return times.length > 0 ? times : [from]
+}

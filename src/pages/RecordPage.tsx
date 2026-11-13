@@ -272,7 +272,7 @@ export default function RecordPage() {
           {heardHere && currentShot && (
             <div className={styles.heardGuide} role="note">
               <span className={styles.heardBadge}>{currentShot.speaker ?? DEFAULT_SPEAKER_ICON} 相手のセリフ</span>
-              <span>声に出して読んだら、同じ長さだけ黙って聞く顔をしてから止める</span>
+              <span>声に出して読んだら、1秒ほど黙って聞く顔をしてから止める</span>
             </div>
           )}
           <p className={`${styles.promptText} ${heardHere ? styles.promptTextHeard : ''}`}>
@@ -298,7 +298,7 @@ export default function RecordPage() {
                     <div>
                       <div className={styles.shotSettingsLabel}>相手のセリフ</div>
                       <div className={styles.shotSettingsSub}>
-                        セリフを声に出したあと、同じ長さだけ黙って聞く顔を撮ります。インポートすると、聞いている映像に声だけがのります
+                        セリフを声に出したあと、1秒ほど黙って聞く顔を撮ります。インポートすると、聞いている映像（短ければゆっくり再生）に声だけがのります
                       </div>
                     </div>
                     <label className={styles.toggle}>

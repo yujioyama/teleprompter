@@ -21,7 +21,7 @@ import {
 import { encodesHeld, whenNotHeld } from './encodeHold'
 import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
-import { coverLeadSeconds, withCoverFrames, withCoverSilence, type CoverLead } from './coverLead'
+import { coverLeadSeconds, withCoverFrames, withCoverSilence, withSlowMotion, type CoverLead } from './coverLead'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
 /**
@@ -53,6 +53,9 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  * cover image in as frames before the shot's first, over silence, with the
  * shot (overlays in its own timeline as before) following it.
  *
+ * `options.stretch` plays the picture that many times slower (see
+ * withSlowMotion); only the 相手のセリフ clip uses it, and replaces the audio.
+ *
  * Every frame waits while the preview holds the encodes (see encodeHold).
  */
 export async function normalizeShotWebCodecs(
@@ -62,7 +65,7 @@ export async function normalizeShotWebCodecs(
   onProgress?: (ratio: number) => void,
   overlays: SubtitleOverlay[] = [],
   signal?: AbortSignal,
-  options: OverlayOptions & { cover?: CoverLead } = {},
+  options: OverlayOptions & { cover?: CoverLead; stretch?: number } = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
@@ -70,6 +73,7 @@ export async function normalizeShotWebCodecs(
   const midZoom = options.midZoom ?? []
   const opening = options.opening ?? null
   const cover = options.cover ?? null
+  const stretch = options.stretch ?? 1
   // Feed the encoder early by its priming delay so the audio isn't
   // pushed later than the video (see aacEncoderDelay).
   const primeAudio = (sample: AudioSample) => {
@@ -100,7 +104,9 @@ export async function normalizeShotWebCodecs(
         allowTransformationMetadata: false,
         forceTranscode: true,
         process: whenNotHeld<VideoSample, VideoSample | VideoSample[] | OffscreenCanvas>(
-          cover ? withCoverFrames(overlay?.process, cover) : (overlay?.process ?? (sample => sample)),
+          stretch > 1
+            ? withSlowMotion(overlay?.process, stretch)
+            : cover ? withCoverFrames(overlay?.process, cover) : (overlay?.process ?? (sample => sample)),
           signal,
         ),
       },

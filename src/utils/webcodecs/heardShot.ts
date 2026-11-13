@@ -18,7 +18,7 @@ const EDGE_FADE_S = 0.01
  * result is an ordinary take as far as trimming, joining and subtitles go.
  */
 export async function buildHeardShotWebCodecs(take: Blob, plan: HeardPlan, voice?: HeardVoice): Promise<Blob> {
-  const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end)
+  const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end, undefined, [], undefined, { stretch: plan.stretch })
   const source = new Input({ source: new BlobSource(take), formats: ALL_FORMATS })
   const listening = new Input({ source: new BlobSource(picture), formats: ALL_FORMATS })
   try {
