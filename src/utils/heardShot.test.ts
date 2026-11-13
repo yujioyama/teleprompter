@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { heardShotFailureText, makeHeardShot, NotEnoughListeningError, planHeardShot } from './heardShot'
+import { heardShotFailureText, lineEndOf, makeHeardShot, NotEnoughListeningError, planHeardShot } from './heardShot'
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { canUseWebCodecs } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
@@ -35,7 +35,7 @@ describe('planHeardShot', () => {
 
   it('slows a short listening down to last as long as the line', () => {
     // Stopped a second after the line: 4.7 - 0.3 - 3.4 = 1s of listening for 2.6s of voice.
-    const plan = planHeardShot(region({ ceiling: 4.7, duration: 4.8 }))
+    const plan = planHeardShot(region({ ceiling: 4.7, duration: 4.7 }))
     expect(plan.listen.end - plan.listen.start).toBeCloseTo(1)
     expect(plan.stretch).toBeCloseTo(2.6)
   })
@@ -55,7 +55,7 @@ describe('planHeardShot', () => {
   it('says how much longer to listen when there is almost none', () => {
     try {
       // 4 - 0.3 - 3.4 = 0.3s of listening; a 2.6s voice needs at least 0.65s.
-      planHeardShot(region({ ceiling: 4, duration: 4.2 }))
+      planHeardShot(region({ ceiling: 4, duration: 4 }))
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(NotEnoughListeningError)
@@ -68,6 +68,24 @@ describe('planHeardShot', () => {
     // A 10.3s voice needs about 2.6s of listening.
     expect(() => planHeardShot(region({ speechEnd: 9.7, ceiling: 11.4, duration: 12 }))).toThrow(NotEnoughListeningError)
     expect(planHeardShot(region({ speechEnd: 9.7, ceiling: 13, duration: 13 })).stretch).toBeLessThanOrEqual(4)
+  })
+})
+
+describe('lineEndOf', () => {
+  it('ends the line at the first long silence, not at a breath heard later', () => {
+    // The line is 1–3s; a rustle at 5.8–6.1s was joined onto the speech.
+    const noisy = region({ speechEnd: 6.1, pauses: [{ start: 1.8, end: 2.0 }, { start: 3, end: 5.8 }] })
+    expect(lineEndOf(noisy)).toBe(3)
+    const plan = planHeardShot({ ...noisy, ceiling: 5.8 })
+    expect(plan.voice.end).toBeCloseTo(3.3)
+    expect(plan.listen.start).toBeCloseTo(3.4)
+    // The rustle and the "stop" sound don't cut the listening short: the take runs to 8s.
+    expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6)
+  })
+
+  it('keeps a short pause inside the line', () => {
+    expect(lineEndOf(region({ pauses: [{ start: 1.5, end: 2 }] }))).toBe(3)
+    expect(lineEndOf(region())).toBe(3)
   })
 })
 
