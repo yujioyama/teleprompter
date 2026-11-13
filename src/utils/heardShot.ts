@@ -15,6 +15,13 @@ export const SETTLE_S = 0.4
 /** Left off the end of the take: the reach for the stop button. */
 export const TAIL_MARGIN_S = 0.3
 
+/**
+ * A silence at least this long ends the line: one short line has no pause
+ * this long inside it, and whatever is heard after it (a breath, a rustle,
+ * the chair) is part of the listening, not of the line.
+ */
+export const LINE_END_GAP_S = 0.7
+
 /** The least listening kept after the line, however short the line. */
 export const MIN_LISTEN_S = 0.6
 /** The listening is slowed down at most this much to last as long as the line. */
@@ -50,12 +57,14 @@ export class NotEnoughListeningError extends Error {
  * times quicker the line's voice will play.
  */
 export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
+  const lineEnd = lineEndOf(region)
   const voiceStart = Math.max(0, region.floor, region.speechStart - VOICE_PADDING_S)
-  const voiceEnd = Math.min(region.duration, region.ceiling, region.speechEnd + VOICE_PADDING_S)
+  const voiceEnd = Math.min(region.duration, lineEnd + VOICE_PADDING_S)
   // A voice played quicker or slower (see voiceSpeed) is listened to for as long as it then lasts.
   const voiceLength = (voiceEnd - voiceStart) / speed
-  const listenStart = region.speechEnd + SETTLE_S
-  const available = Math.min(region.duration, region.ceiling) - TAIL_MARGIN_S - listenStart
+  const listenStart = lineEnd + SETTLE_S
+  // Small sounds while listening don't matter to the picture: only the end of the take does.
+  const available = region.duration - TAIL_MARGIN_S - listenStart
   const needed = Math.max(MIN_LISTEN_S, voiceLength / MAX_STRETCH)
   if (available < needed) throw new NotEnoughListeningError(needed - Math.max(0, available))
   const listenLength = Math.min(available, voiceLength)
@@ -64,6 +73,17 @@ export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
     listen: { start: listenStart, end: listenStart + listenLength },
     stretch: Math.max(1, voiceLength / listenLength),
   }
+}
+
+/**
+ * Where the line ends: at the first long silence after it starts (see
+ * LINE_END_GAP_S), else where the speech ends. Speech detection runs on to
+ * the last sound it can join, which in a quiet listening take can be a
+ * breath or a rustle seconds after the line.
+ */
+export function lineEndOf(region: SpeechRegion): number {
+  const gap = region.pauses?.find(p => p.start > region.speechStart && p.end - p.start >= LINE_END_GAP_S)
+  return gap ? gap.start : region.speechEnd
 }
 
 /**
