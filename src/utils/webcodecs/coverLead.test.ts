@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { coverLeadSeconds, withCoverFrames, withCoverSilence } from './coverLead'
+import { coverLeadSeconds, slowMotionTimes, withCoverFrames, withCoverSilence, withSlowMotion } from './coverLead'
 
 // Stand-ins holding what the real samples are made from and their timestamps.
 vi.mock('mediabunny', () => {
@@ -12,6 +12,12 @@ vi.mock('mediabunny', () => {
     duration: number
     setTimestamp(t: number) {
       this.timestamp = t
+    }
+    setDuration(d: number) {
+      this.duration = d
+    }
+    clone() {
+      return new VideoSample(this.data, { timestamp: this.timestamp, duration: this.duration })
     }
   }
   class AudioSample {
@@ -82,5 +88,27 @@ describe('withCoverSilence', () => {
     expect(sample.timestamp).toBeCloseTo(-0.02 + lead)
     const next = process(new AudioSample({ data: new Float32Array(), format: 'f32-planar', numberOfChannels: 2, sampleRate: 48000, timestamp: 1 })) as InstanceType<typeof AudioSample>
     expect(next.timestamp).toBeCloseTo(1 - 0.02 + lead)
+  })
+})
+
+describe('withSlowMotion', () => {
+  const step = 1 / 30
+  const at = (i: number) => i * step
+
+  it('holds each frame over the span it now covers, on the 30fps grid', async () => {
+    const { VideoSample } = await import('mediabunny')
+    const slow = withSlowMotion(undefined, 2.5)
+    const frames = [0, 1, 2, 3].flatMap(i => slow(new VideoSample('f' + i as never, { timestamp: at(i), duration: step })))
+    const times = frames.map(f => Math.round(f.timestamp * 30))
+    // 4 frames at 2.5x make 10 frames, one after another with no gap or repeat.
+    expect(times).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(frames.map(f => (f as unknown as { data: string }).data)).toEqual(['f0', 'f0', 'f0', 'f1', 'f1', 'f2', 'f2', 'f2', 'f3', 'f3'])
+    expect(frames.every(f => Math.abs(f.duration - step) < 1e-9)).toBe(true)
+  })
+})
+
+describe('slowMotionTimes', () => {
+  it('keeps at least one frame for a source frame narrower than a step', () => {
+    expect(slowMotionTimes(0.5, 0.51, 1 / 30)).toHaveLength(1)
   })
 })

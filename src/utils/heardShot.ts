@@ -10,14 +10,24 @@ export const SETTLE_S = 0.4
 /** Left off the end of the take: the reach for the stop button. */
 export const TAIL_MARGIN_S = 0.3
 
+/** The least listening kept after the line, however short the line. */
+export const MIN_LISTEN_S = 0.6
+/** The listening is slowed down at most this much to last as long as the line. */
+export const MAX_STRETCH = 4
+
 export interface HeardPlan {
   /** Where the line is spoken in the take. */
   voice: { start: number; end: number }
   /** The stretch of quiet listening that is shown while it plays. */
   listen: { start: number; end: number }
+  /**
+   * How many times slower the listening plays (1 or more), so a short
+   * silence after the line still lasts as long as the voice.
+   */
+  stretch: number
 }
 
-/** The take stops too soon after the line to show a whole listening face. */
+/** The take stops too soon after the line to show a listening face at all. */
 export class NotEnoughListeningError extends Error {
   constructor(readonly missingSeconds: number) {
     super(`not enough listening after the line (${missingSeconds.toFixed(1)}s short)`)
@@ -26,22 +36,29 @@ export class NotEnoughListeningError extends Error {
 }
 
 /**
- * 相手のセリフ: the take is the other person's line said aloud, then the
- * same length again spent quietly listening. The line's sound goes over the
- * listening picture, so the video shows a face hearing a voice from off
- * screen. Pure: which parts of the take those are. `speed` is how many
+ * 相手のセリフ: the take is the other person's line said aloud, then a moment
+ * of quiet listening. The line's sound goes over the listening picture, so
+ * the video shows a face hearing a voice from off screen. The listening
+ * after the line is used as it is when it's at least as long as the voice,
+ * and played slower (up to MAX_STRETCH times) to last as long when it's
+ * shorter. Pure: which parts of the take those are. `speed` is how many
  * times quicker the line's voice will play.
  */
 export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
   const voiceStart = Math.max(0, region.floor, region.speechStart - VOICE_PADDING_S)
   const voiceEnd = Math.min(region.duration, region.ceiling, region.speechEnd + VOICE_PADDING_S)
   // A voice played quicker or slower (see voiceSpeed) is listened to for as long as it then lasts.
-  const length = (voiceEnd - voiceStart) / speed
+  const voiceLength = (voiceEnd - voiceStart) / speed
   const listenStart = region.speechEnd + SETTLE_S
-  const listenEnd = listenStart + length
-  const available = Math.min(region.duration, region.ceiling) - TAIL_MARGIN_S
-  if (listenEnd > available) throw new NotEnoughListeningError(listenEnd - available)
-  return { voice: { start: voiceStart, end: voiceEnd }, listen: { start: listenStart, end: listenEnd } }
+  const available = Math.min(region.duration, region.ceiling) - TAIL_MARGIN_S - listenStart
+  const needed = Math.max(MIN_LISTEN_S, voiceLength / MAX_STRETCH)
+  if (available < needed) throw new NotEnoughListeningError(needed - Math.max(0, available))
+  const listenLength = Math.min(available, voiceLength)
+  return {
+    voice: { start: voiceStart, end: voiceEnd },
+    listen: { start: listenStart, end: listenStart + listenLength },
+    stretch: Math.max(1, voiceLength / listenLength),
+  }
 }
 
 /**
@@ -60,7 +77,7 @@ export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blo
 /** What to tell the person when a 相手のセリフ take couldn't be made. */
 export function heardShotFailureText(err: unknown): string {
   if (err instanceof NotEnoughListeningError) {
-    return `セリフのあと、あと約${Math.ceil(err.missingSeconds * 10) / 10}秒長く黙って撮ってください`
+    return `セリフのあと、あと約${Math.ceil(err.missingSeconds * 10) / 10}秒長く黙って聞く顔をしてから止めてください`
   }
   return 'セリフの声を見つけられないか、この端末では作れませんでした'
 }

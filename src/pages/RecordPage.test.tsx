@@ -389,7 +389,7 @@ describe('RecordPage 相手のセリフ', () => {
     await importShot1()
     expect((savedTake() as File).name).toContain(SHOT_1)
     expect(await listShotVideos('script-1')).toHaveLength(1)
-    expect(screen.getAllByText(/相手のセリフにできず、撮ったまま保存しました: ショット1\(セリフのあと、あと約1.2秒長く黙って撮ってください\)/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/相手のセリフにできず、撮ったまま保存しました: ショット1\(セリフのあと、あと約1.2秒長く黙って聞く顔をしてから止めてください\)/).length).toBeGreaterThan(0)
   })
 
   it('has no such setting for a 一発撮り script', () => {

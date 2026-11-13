@@ -24,12 +24,20 @@ const region = (over: Partial<SpeechRegion> = {}): SpeechRegion => ({
 })
 
 describe('planHeardShot', () => {
-  it('shows the listening after the line for as long as the line takes', () => {
+  it('shows the listening after the line for as long as the line, when there is that much', () => {
     const plan = planHeardShot(region())
     expect(plan.voice.start).toBeCloseTo(0.85)
     expect(plan.voice.end).toBeCloseTo(3.15)
     expect(plan.listen.start).toBeCloseTo(3.4)
-    expect(plan.listen.end - plan.listen.start).toBeCloseTo(plan.voice.end - plan.voice.start)
+    expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.3)
+    expect(plan.stretch).toBe(1)
+  })
+
+  it('slows a short listening down to last as long as the line', () => {
+    // Stopped a second after the line: 4.7 - 0.3 - 3.4 = 1s of listening for 2.3s of voice.
+    const plan = planHeardShot(region({ ceiling: 4.7, duration: 4.8 }))
+    expect(plan.listen.end - plan.listen.start).toBeCloseTo(1)
+    expect(plan.stretch).toBeCloseTo(2.3)
   })
 
   it('keeps the voice clear of the taps before and after it', () => {
@@ -44,16 +52,22 @@ describe('planHeardShot', () => {
     expect(slow.listen.end - slow.listen.start).toBeCloseTo(2.3 / 0.85)
   })
 
-  it('says how much longer to listen when the take stops too soon', () => {
+  it('says how much longer to listen when there is almost none', () => {
     try {
-      planHeardShot(region({ ceiling: 5, duration: 5.2 }))
+      // 4 - 0.3 - 3.4 = 0.3s of listening; at least 0.6s is needed.
+      planHeardShot(region({ ceiling: 4, duration: 4.2 }))
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(NotEnoughListeningError)
-      // Needs 3.4 + 2.3 = 5.7; the take is usable up to 5 - 0.3 = 4.7.
-      expect((err as NotEnoughListeningError).missingSeconds).toBeCloseTo(1)
-      expect(heardShotFailureText(err)).toBe('セリフのあと、あと約1秒長く黙って撮ってください')
+      expect((err as NotEnoughListeningError).missingSeconds).toBeCloseTo(0.3)
+      expect(heardShotFailureText(err)).toBe('セリフのあと、あと約0.3秒長く黙って聞く顔をしてから止めてください')
     }
+  })
+
+  it('needs more listening for a long line, so it is slowed at most four times', () => {
+    // A 10s line needs 2.5s of listening.
+    expect(() => planHeardShot(region({ speechEnd: 9.7, ceiling: 11.4, duration: 12 }))).toThrow(NotEnoughListeningError)
+    expect(planHeardShot(region({ speechEnd: 9.7, ceiling: 13, duration: 13 })).stretch).toBeLessThanOrEqual(4)
   })
 })
 
