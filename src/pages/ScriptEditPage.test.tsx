@@ -167,6 +167,33 @@ describe('ScriptEditPage from the Claude inbox', () => {
     ])
   })
 
+  it('films a script with 相手のセリフ line by line, with those lines marked', async () => {
+    const item: InboxItem = { ...ITEM, body: 'Hi. What can I get you?\nA latte.\nSorry?', heard: [1, 3], heardIcon: '🧑‍🍳', heardVoice: 'kid' }
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })
+    expect(screen.getByLabelText(/一発撮り/)).not.toBeChecked()
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].oneTake).toBeFalsy()
+    expect(stored()[0].shots.map(shot => [shot.text, shot.heard, shot.speaker, shot.voice])).toEqual([
+      ['Hi. What can I get you?', true, '🧑‍🍳', 'kid'],
+      ['A latte.', undefined, undefined, undefined],
+      ['Sorry?', true, '🧑‍🍳', 'kid'],
+    ])
+  })
+
+  it('keeps the marks on their lines when the script was edited before splitting', async () => {
+    const item: InboxItem = { ...ITEM, body: 'Hi there\nA latte\nSorry?', heard: [1, 3] }
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })
+    fireEvent.change(screen.getByDisplayValue(/Hi there/), { target: { value: 'Well\nHi there\nA latte\nSorry?' } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].shots.map(shot => Boolean(shot.heard))).toEqual([false, true, false, true])
+  })
+
   it('keeps the type Claude sent, and lets it be changed or cleared', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, videoType: 'B' } } })
     expect(screen.getByLabelText('B: 表現ノート型')).toBeChecked()

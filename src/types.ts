@@ -1,3 +1,4 @@
+import type { HeardVoice } from './utils/voiceEffects'
 import type { VideoType } from '../shared/inbox'
 import type { StoredCinemaLook } from '../shared/cinemaLook'
 
@@ -17,6 +18,10 @@ export interface Shot {
    * listening (see planHeardShot).
    */
   heard?: boolean
+  /** The emoji shown beside a 相手のセリフ line's subtitle; absent for the usual one. */
+  speaker?: string
+  /** The voice a 相手のセリフ line is given at import; absent for our own. */
+  voice?: HeardVoice
 }
 
 /** One script line's Japanese subtitle, as Claude sent it with the script. */

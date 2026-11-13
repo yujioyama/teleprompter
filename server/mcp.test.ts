@@ -87,12 +87,48 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
+  })
+
+  describe('heard', () => {
+    it('keeps which lines the other person says, in order and once each', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目\n三行目', heard: [3, 1, 3] }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toContain('相手のセリフ2行')
+      expect((await store.list())[0].heard).toEqual([1, 3])
+    })
+
+    it('leaves it off a script that is all one voice', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: '一行目', heard: [], heardIcon: '👩' }), deps)
+      expect((await store.list())[0]).not.toHaveProperty('heard')
+      expect((await store.list())[0]).not.toHaveProperty('heardIcon')
+    })
+
+    it("keeps the other person's icon with their lines", async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', heard: [1], heardIcon: '🧑‍🍳', heardVoice: 'phone' }), deps)
+      expect((await store.list())[0]).toMatchObject({ heard: [1], heardIcon: '🧑‍🍳', heardVoice: 'phone' })
+    })
+
+    it('takes only the voices there are', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'a', script: '一行目', heard: [1], heardVoice: 'robot' }), deps)
+      expect((await res.json()).result.isError).toBe(true)
+      await handleMcpRequest(callTool({ title: 'b', script: '一行目', heard: [1], heardVoice: 'natural' }), deps)
+      expect((await store.list())[0]).not.toHaveProperty('heardVoice')
+    })
+
+    it('refuses a line the script does not have, saving nothing', async () => {
+      const res = await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', heard: [3] }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toContain('3行目')
+      expect(await store.list()).toEqual([])
+    })
   })
 
   describe('images', () => {

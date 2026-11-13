@@ -9,6 +9,7 @@ import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVid
 import { resolveImportTargets } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { heardShotFailureText, makeHeardShot } from '../utils/heardShot'
+import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
 import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
@@ -117,7 +118,7 @@ export default function RecordPage() {
           // 相手のセリフ: the voice goes over the listening. A take that can't
           // be turned into that is kept as it is, to be seen and retaken.
           try {
-            take = await makeHeardShot(processed.blob)
+            take = await makeHeardShot(processed.blob, shot.voice)
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
             unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
@@ -187,6 +188,14 @@ export default function RecordPage() {
     if (!currentShot || !id) return
     const updatedShots = safeScript.shots.map(s =>
       s.id === currentShot.id ? { ...s, heard: value || undefined } : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotVoice(value: HeardVoice) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, voice: value === 'natural' ? undefined : value } : s
     )
     updateScript(id, { shots: updatedShots })
   }
@@ -289,6 +298,23 @@ export default function RecordPage() {
                       />
                       <span className={styles.toggleTrack} />
                     </label>
+                  </div>
+                )}
+                {!safeScript.oneTake && currentShot?.heard && (
+                  <div className={styles.shotSettingsRow}>
+                    <div>
+                      <div className={styles.shotSettingsLabel}>相手の声</div>
+                      <div className={styles.shotSettingsSub}>インポートするときにかかります。変えたら、動画をもう一度インポートしてください</div>
+                    </div>
+                    <select
+                      aria-label="相手の声"
+                      value={currentShot.voice ?? 'natural'}
+                      onChange={e => isHeardVoice(e.target.value) && handleShotVoice(e.target.value)}
+                    >
+                      {HEARD_VOICES.map(voice => (
+                        <option key={voice} value={voice}>{HEARD_VOICE_LABELS[voice]}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
                 {/* Use global / override toggle */}

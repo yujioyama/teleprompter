@@ -74,6 +74,18 @@ describe('burnRequest', () => {
     expect(keyWith([{ ...image, imageId: 'j', blob: new Blob(['j']) }])).not.toBe(shown)
   })
 
+  it("re-encodes a shot only when it becomes the other person's line, or their icon changes", () => {
+    const shot = { shotId: 's', blob: new Blob(['s']), start: 0, end: 2 }
+    const cue: StyledCue = { id: 'c1', start: 0, end: 2, en: 'Hi', ja: 'やあ', variant: 'normal' }
+    const keyWith = (speakers: HookOptions['speakers']) =>
+      burnRequest(shot, [cue], { position: 72, hook: { ...NO_HOOK, speakers }, firstShotDuration: null }).key
+    const plain = keyWith(undefined)
+    expect(keyWith([{ cueId: 'another shot', icon: '🗣️' }])).toBe(plain)
+    const spoken = keyWith([{ cueId: 'c1', icon: '🗣️' }])
+    expect(spoken).toContain('speaker-v1')
+    expect(keyWith([{ cueId: 'c1', icon: '🧑‍🍳' }])).not.toBe(spoken)
+  })
+
   const shot = clip('s1', 0.5, 2.5)
   const cue: StyledCue = { id: 'shot-0', start: 0, end: 2, en: 'Hi', ja: 'やあ', variant: 'normal' }
 

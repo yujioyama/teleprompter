@@ -37,6 +37,13 @@ describe('planHeardShot', () => {
     expect(plan.voice.start).toBeCloseTo(0.45)
   })
 
+  it('listens for as long as a quicker or slower voice lasts', () => {
+    const quick = planHeardShot(region(), 1.25)
+    expect(quick.listen.end - quick.listen.start).toBeCloseTo(2.3 / 1.25)
+    const slow = planHeardShot(region(), 0.85)
+    expect(slow.listen.end - slow.listen.start).toBeCloseTo(2.3 / 0.85)
+  })
+
   it('says how much longer to listen when the take stops too soon', () => {
     try {
       planHeardShot(region({ ceiling: 5, duration: 5.2 }))
@@ -61,7 +68,10 @@ describe('makeHeardShot', () => {
     const take = new Blob(['take'])
     const out = await makeHeardShot(take)
     expect(await out.text()).toBe('heard')
-    expect(buildHeardShotWebCodecs).toHaveBeenCalledWith(take, planHeardShot(region()))
+    expect(buildHeardShotWebCodecs).toHaveBeenCalledWith(take, planHeardShot(region()), undefined)
+
+    await makeHeardShot(take, 'fast')
+    expect(buildHeardShotWebCodecs).toHaveBeenLastCalledWith(take, planHeardShot(region(), 1.25), 'fast')
   })
 
   it('rejects without speech or without WebCodecs', async () => {

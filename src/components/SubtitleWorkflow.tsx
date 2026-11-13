@@ -34,6 +34,7 @@ import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineImage, LineJapanese } from '../types'
 import { withLineImages, type StoredLineImage } from '../utils/lineImages'
+import { withSpeakers } from '../utils/speakers'
 import { letterboxHeight, openingActive } from '../utils/openingLook'
 import { CINEMA_LOOKS, CINEMA_LOOK_LABELS, type CinemaLook } from '../../shared/cinemaLook'
 import OpeningLookCanvas from './OpeningLookCanvas'
@@ -192,8 +193,8 @@ export default function SubtitleWorkflow({
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(() => {
     const opened = withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook)
-    return lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened
-  }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages])
+    return withSpeakers(lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened, cues, shotCueInputs)
+  }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages, shotCueInputs])
   const hasLineImages = Boolean(lineImages?.images.length)
   // Picked but not going to show: not on this device, or no subtitle matches its line.
   const lineImagesLeftOut = !lineImages || lineImages.loading || cues.length === 0 ? 0 : lineImages.images.length - (hook.lineImages?.length ?? 0)
