@@ -47,6 +47,8 @@ export interface InboxItem {
   heard?: number[]
   /** The emoji shown beside the other person's subtitles; absent for the usual one. */
   heardIcon?: string
+  /** The voice the other person's lines are given (see HEARD_VOICES); absent for the voice as spoken. */
+  heardVoice?: string
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }

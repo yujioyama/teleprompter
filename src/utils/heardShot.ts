@@ -1,4 +1,5 @@
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
+import { voiceSpeed, type HeardVoice } from './voiceEffects'
 import { canUseWebCodecs } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
 
@@ -28,12 +29,14 @@ export class NotEnoughListeningError extends Error {
  * 相手のセリフ: the take is the other person's line said aloud, then the
  * same length again spent quietly listening. The line's sound goes over the
  * listening picture, so the video shows a face hearing a voice from off
- * screen. Pure: which parts of the take those are.
+ * screen. Pure: which parts of the take those are. `speed` is how many
+ * times quicker the line's voice will play.
  */
-export function planHeardShot(region: SpeechRegion): HeardPlan {
+export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
   const voiceStart = Math.max(0, region.floor, region.speechStart - VOICE_PADDING_S)
   const voiceEnd = Math.min(region.duration, region.ceiling, region.speechEnd + VOICE_PADDING_S)
-  const length = voiceEnd - voiceStart
+  // A voice played quicker or slower (see voiceSpeed) is listened to for as long as it then lasts.
+  const length = (voiceEnd - voiceStart) / speed
   const listenStart = region.speechEnd + SETTLE_S
   const listenEnd = listenStart + length
   const available = Math.min(region.duration, region.ceiling) - TAIL_MARGIN_S
@@ -47,11 +50,11 @@ export function planHeardShot(region: SpeechRegion): HeardPlan {
  * speech, not enough listening after it, or no WebCodecs to build it with;
  * the caller keeps the take as it was.
  */
-export async function makeHeardShot(take: Blob): Promise<Blob> {
+export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blob> {
   if (!(await canUseWebCodecs())) throw new Error('WebCodecs is not available')
   const region = await detectSpeech(take)
   if (!region) throw new Error('no speech in the take')
-  return buildHeardShotWebCodecs(take, planHeardShot(region))
+  return buildHeardShotWebCodecs(take, planHeardShot(region, voiceSpeed(voice)), voice)
 }
 
 /** What to tell the person when a 相手のセリフ take couldn't be made. */
