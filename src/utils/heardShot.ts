@@ -57,8 +57,9 @@ export class NotEnoughListeningError extends Error {
  * times quicker the line's voice will play.
  */
 export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
-  const lineEnd = lineEndOf(region)
-  const voiceStart = Math.max(0, region.floor, region.speechStart - VOICE_PADDING_S)
+  const line = linePartOf(region)
+  const lineEnd = line.end
+  const voiceStart = Math.max(0, region.floor, line.start - VOICE_PADDING_S)
   const voiceEnd = Math.min(region.duration, lineEnd + VOICE_PADDING_S)
   // A voice played quicker or slower (see voiceSpeed) is listened to for as long as it then lasts.
   const voiceLength = (voiceEnd - voiceStart) / speed
@@ -76,14 +77,34 @@ export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
 }
 
 /**
- * Where the line ends: at the first long silence after it starts (see
- * LINE_END_GAP_S), else where the speech ends. Speech detection runs on to
- * the last sound it can join, which in a quiet listening take can be a
- * breath or a rustle seconds after the line.
+ * The line in the take: of the parts of the speech that long silences
+ * (LINE_END_GAP_S) separate, the one with the most sound. Speech detection
+ * joins small sounds before and after the line to it, a breath before
+ * "...Sorry, what?" or a rustle seconds after: the first long silence can
+ * come right after such a breath, and the last sound can be one. The line
+ * is the longest part, so a breath on either side is left out.
  */
+export function linePartOf(region: SpeechRegion): { start: number; end: number } {
+  const long = (region.pauses ?? [])
+    .filter(p => p.start > region.speechStart && p.end < region.speechEnd && p.end - p.start >= LINE_END_GAP_S)
+    .sort((a, b) => a.start - b.start)
+  const parts: { start: number; end: number; sound: number }[] = []
+  let start = region.speechStart
+  for (const gap of [...long, { start: region.speechEnd, end: region.speechEnd }]) {
+    // The short pauses inside the part don't count as its sound.
+    const quiet = (region.pauses ?? [])
+      .filter(p => p.start >= start && p.end <= gap.start && p.end - p.start < LINE_END_GAP_S)
+      .reduce((sum, p) => sum + (p.end - p.start), 0)
+    parts.push({ start, end: gap.start, sound: gap.start - start - quiet })
+    start = gap.end
+  }
+  const line = parts.reduce((best, part) => (part.sound > best.sound ? part : best))
+  return { start: line.start, end: line.end }
+}
+
+/** Where the line ends (see linePartOf). */
 export function lineEndOf(region: SpeechRegion): number {
-  const gap = region.pauses?.find(p => p.start > region.speechStart && p.end - p.start >= LINE_END_GAP_S)
-  return gap ? gap.start : region.speechEnd
+  return linePartOf(region).end
 }
 
 /**

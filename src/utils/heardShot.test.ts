@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { heardShotFailureText, lineEndOf, makeHeardShot, NotEnoughListeningError, planHeardShot } from './heardShot'
+import { heardShotFailureText, lineEndOf, linePartOf, makeHeardShot, NotEnoughListeningError, planHeardShot } from './heardShot'
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { canUseWebCodecs } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
@@ -81,6 +81,15 @@ describe('lineEndOf', () => {
     expect(plan.listen.start).toBeCloseTo(3.25)
     // The rustle and the "stop" sound don't cut the listening short: the take runs to 8s.
     expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6)
+  })
+
+  it('leaves out a breath before the line, however long the silence after it', () => {
+    // A breath at 0.5–0.8s, then the line at 1.6–3s, then listening.
+    const breathFirst = region({ speechStart: 0.5, pauses: [{ start: 0.8, end: 1.6 }, { start: 2.1, end: 2.3 }] })
+    expect(linePartOf(breathFirst)).toEqual({ start: 1.6, end: 3 })
+    const plan = planHeardShot(breathFirst)
+    expect(plan.voice.start).toBeCloseTo(1.3)
+    expect(plan.voice.end).toBeCloseTo(3.3)
   })
 
   it('keeps a short pause inside the line', () => {
