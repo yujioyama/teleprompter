@@ -38,8 +38,8 @@ import {
   JA_STYLE,
   SPEAKER_ICON_EMOJI_PX,
   PHONE_BADGE_EMOJI_PX,
-  PHONE_BADGE_OFFSET,
   PHONE_BADGE_RADIUS,
+  phoneBadgeCenter,
   SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_PADDING_Y,
@@ -219,12 +219,16 @@ function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: Sp
   ctx.fillStyle = '#000'
   ctx.fillText(icon, bubble.iconX, bubble.iconY + SPEAKER_ICON_EMOJI_PX * 0.04)
   if (phone) {
-    const x = bubble.iconX + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
-    const y = bubble.iconY + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
+    const { x, y } = phoneBadgeCenter(bubble)
     ctx.beginPath()
     ctx.arc(x, y, PHONE_BADGE_RADIUS, 0, Math.PI * 2)
+    // Drawn as the icon's disc is: a white disc with its shadow and the light-blue ring.
+    ctx.shadowColor = SUBTITLE_SHADOW.color
+    ctx.shadowBlur = 12
+    ctx.shadowOffsetY = 3
     ctx.fillStyle = '#fff'
     ctx.fill()
+    ctx.shadowColor = 'transparent'
     ctx.strokeStyle = SPEAKER_TEXT_COLOR
     ctx.lineWidth = BUBBLE_BORDER
     ctx.stroke()

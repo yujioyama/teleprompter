@@ -3,6 +3,7 @@ import {
   EN_STYLE,
   JA_STYLE,
   MeasureText,
+  PHONE_BADGE_RADIUS,
   SPEAKER_ICON_RADIUS,
   SPEAKER_TEXT_WIDTH,
   SUBTITLE_FONT_FAMILY,
@@ -14,6 +15,7 @@ import {
   fontFor,
   layoutCue,
   outlineWidth,
+  phoneBadgeCenter,
   tokenize,
   wrapText,
 } from './subtitleLayout'
@@ -168,6 +170,16 @@ describe('layoutCue for 相手のセリフ', () => {
     // The icon sits above the bubble, and everything is inside the image.
     expect(bubble.iconY + SPEAKER_ICON_RADIUS).toBeLessThan(bubble.top)
     expect(bubble.top + bubble.height).toBeLessThanOrEqual(layout.height)
+  })
+
+  it("puts the 📞 to the right of the icon, level with it, clear of both the icon and the bubble", () => {
+    const bubble = layoutCue({ en: 'Huh?', ja: 'え?' }, measure, { speaker: true }).bubble!
+    const badge = phoneBadgeCenter(bubble)
+    expect(badge.y).toBe(bubble.iconY)
+    expect(badge.x - PHONE_BADGE_RADIUS).toBeGreaterThan(bubble.iconX + SPEAKER_ICON_RADIUS)
+    expect(badge.y + PHONE_BADGE_RADIUS).toBeLessThan(bubble.top)
+    expect(badge.y - PHONE_BADGE_RADIUS).toBeGreaterThanOrEqual(0)
+    expect(badge.x + PHONE_BADGE_RADIUS).toBeLessThanOrEqual(SUBTITLE_REFERENCE_WIDTH)
   })
 
   it('makes a short line a small bubble, and leaves plain cues as they were', () => {
