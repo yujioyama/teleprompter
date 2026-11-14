@@ -30,7 +30,9 @@ const PAUSE_MERGE_GAP_S = 0.12
 
 // The loudest stretch (see SpeechRegion.loudest).
 const LINE_BELOW_PEAK_DB = 25
-const LINE_GAP_S = 0.6
+// A line can hold a pause for effect ("Like... the bugs?"): only a longer
+// silence than that parts two stretches.
+const LINE_GAP_S = 1.5
 
 // Below this on both ends there's nothing worth trimming.
 const MIN_SAVED_S = 0.1

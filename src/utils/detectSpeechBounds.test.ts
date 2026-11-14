@@ -147,6 +147,17 @@ describe('findSpeechRegion loudest', () => {
     expect(region.loudest!.end).toBeCloseTo(4.2, 1)
   })
 
+  it('keeps a line together across a pause for effect', () => {
+    // "Like... the bugs?": half a second between the words.
+    const clip = makeClip(9, [
+      { from: 1.3, to: 1.7, kind: 'voice' },
+      { from: 2.25, to: 3.1, kind: 'voice' },
+    ])
+    const region = findSpeechRegion(clip, SR)!
+    expect(region.loudest!.start).toBeCloseTo(1.3, 1)
+    expect(region.loudest!.end).toBeCloseTo(3.1, 1)
+  })
+
   it('keeps the words of one line together across short pauses', () => {
     const clip = makeClip(6, [
       { from: 1, to: 1.6, kind: 'voice' },
