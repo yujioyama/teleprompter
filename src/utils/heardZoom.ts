@@ -7,10 +7,17 @@
  */
 export const HEARD_ZOOM_PER_S = 0.025
 export const HEARD_ZOOM_MAX = 1.1
+/**
+ * Only a line at least this long gets the push-in: a short one is over
+ * before a still face looks odd, and a push-in on every line in a row
+ * reads as a gag.
+ */
+export const HEARD_ZOOM_MIN_S = 2.5
 
 /** How far in the listening ends up, for a clip of `seconds`. */
 export function heardZoomTo(seconds: number): number {
-  return Math.min(HEARD_ZOOM_MAX, 1 + HEARD_ZOOM_PER_S * Math.max(0, seconds))
+  if (seconds < HEARD_ZOOM_MIN_S) return 1
+  return Math.min(HEARD_ZOOM_MAX, 1 + HEARD_ZOOM_PER_S * seconds)
 }
 
 /** The zoom at `progress` (0-1) through the clip: eased, so it starts and settles gently. */
