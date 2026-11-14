@@ -87,7 +87,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardCast'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
@@ -113,6 +113,25 @@ describe('handleMcpRequest', () => {
     it("keeps the other person's icon with their lines", async () => {
       await handleMcpRequest(callTool({ title: 'a', script: '一行目\n二行目', heard: [1], heardIcon: '🧑‍🍳', heardVoice: 'phone' }), deps)
       expect((await store.list())[0]).toMatchObject({ heard: [1], heardIcon: '🧑‍🍳', heardVoice: 'phone' })
+    })
+
+    it('keeps each of the other people with their own lines, icon and voice', async () => {
+      await handleMcpRequest(callTool({
+        title: 'a',
+        script: 'A\nB\nC\nD',
+        heardCast: [{ lines: [3, 1], icon: '👦', voice: 'kid' }, { lines: [4], icon: '👩', voice: 'high' }],
+      }), deps)
+      expect((await store.list())[0]).toMatchObject({
+        heard: [1, 3, 4],
+        heardCast: [{ lines: [1, 3], icon: '👦', voice: 'kid' }, { lines: [4], icon: '👩', voice: 'high' }],
+      })
+    })
+
+    it('takes a line as one person’s only', async () => {
+      const res = await handleMcpRequest(callTool({
+        title: 'a', script: 'A\nB', heardCast: [{ lines: [1] }, { lines: [1, 2] }],
+      }), deps)
+      expect((await res.json()).result.isError).toBe(true)
     })
 
     it('takes only the voices there are', async () => {

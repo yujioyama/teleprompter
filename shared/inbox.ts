@@ -49,6 +49,20 @@ export interface InboxItem {
   heardIcon?: string
   /** The voice the other person's lines are given (see HEARD_VOICES); absent for the voice as spoken. */
   heardVoice?: string
+  /**
+   * A conversation with more than one other person: each one's lines, with
+   * their own icon and voice (in place of heardIcon / heardVoice there).
+   * Every line here is also in `heard`. Absent when there is one other person.
+   */
+  heardCast?: HeardCastMember[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
+}
+
+/** One of the other people in a conversation (see InboxItem.heardCast). */
+export interface HeardCastMember {
+  /** Their lines in `body` (non-empty lines, from 1). */
+  lines: number[]
+  icon?: string
+  voice?: string
 }

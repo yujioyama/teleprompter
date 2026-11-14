@@ -183,6 +183,26 @@ describe('ScriptEditPage from the Claude inbox', () => {
     ])
   })
 
+  it("gives each of the other people's lines their own icon and voice", async () => {
+    const item: InboxItem = {
+      ...ITEM,
+      body: 'What do you eat?\nRice.\nHe means bugs.\nMum!',
+      heard: [1, 3, 4],
+      heardCast: [{ lines: [1, 4], icon: '👦', voice: 'kid' }, { lines: [3], icon: '👩', voice: 'high' }],
+    }
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].shots.map(shot => [shot.heard, shot.speaker, shot.voice])).toEqual([
+      [true, '👦', 'kid'],
+      [undefined, undefined, undefined],
+      [true, '👩', 'high'],
+      [true, '👦', 'kid'],
+    ])
+  })
+
   it('keeps the marks on their lines when the script was edited before splitting', async () => {
     const item: InboxItem = { ...ITEM, body: 'Hi there\nA latte\nSorry?', heard: [1, 3] }
     renderAt({ pathname: '/scripts/new', state: { inboxItem: item } })

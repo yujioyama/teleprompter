@@ -1,5 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import type { HeardPlan } from '../heardShot'
+import { heardZoomTo } from '../heardZoom'
 import { levelVoice, shapeVoice, type HeardVoice } from '../voiceEffects'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 import { normalizeShotWebCodecs } from './normalizeShot'
@@ -18,7 +19,10 @@ const EDGE_FADE_S = 0.01
  * result is an ordinary take as far as trimming, joining and subtitles go.
  */
 export async function buildHeardShotWebCodecs(take: Blob, plan: HeardPlan, voice?: HeardVoice): Promise<Blob> {
-  const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end, undefined, [], undefined, { stretch: plan.stretch })
+  const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end, undefined, [], undefined, {
+    stretch: plan.stretch,
+    slowZoom: heardZoomTo((plan.listen.end - plan.listen.start) * plan.stretch),
+  })
   const source = new Input({ source: new BlobSource(take), formats: ALL_FORMATS })
   const listening = new Input({ source: new BlobSource(picture), formats: ALL_FORMATS })
   try {

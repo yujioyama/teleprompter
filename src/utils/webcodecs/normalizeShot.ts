@@ -21,6 +21,8 @@ import {
 import { encodesHeld, whenNotHeld } from './encodeHold'
 import { guardAgainstStall } from './stallGuard'
 import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
+import { drawZoomed } from './pictureEffects'
+import { slowZoomScale } from '../heardZoom'
 import { coverLeadSeconds, withCoverFrames, withCoverSilence, withSlowMotion, type CoverLead } from './coverLead'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
@@ -55,6 +57,8 @@ import { onAbort, throwIfCancelled } from '../cancellation'
  *
  * `options.stretch` plays the picture that many times slower (see
  * withSlowMotion); only the 相手のセリフ clip uses it, and replaces the audio.
+ * `options.slowZoom` zooms the picture in from 1 to that scale over the
+ * clip (see slowZoomScale), the 相手のセリフ clip's push-in.
  *
  * Every frame waits while the preview holds the encodes (see encodeHold).
  */
@@ -65,7 +69,7 @@ export async function normalizeShotWebCodecs(
   onProgress?: (ratio: number) => void,
   overlays: SubtitleOverlay[] = [],
   signal?: AbortSignal,
-  options: OverlayOptions & { cover?: CoverLead; stretch?: number } = {},
+  options: OverlayOptions & { cover?: CoverLead; stretch?: number; slowZoom?: number } = {},
 ): Promise<Blob> {
   throwIfCancelled(signal)
   const audioDelay = await aacEncoderDelay()
@@ -82,7 +86,9 @@ export async function normalizeShotWebCodecs(
   }
   const overlay = overlays.length > 0 || punchIn !== null || midZoom.length > 0 || opening !== null
     ? await createOverlayProcess(overlays, { punchIn, midZoom, opening })
-    : null
+    : options.slowZoom && options.slowZoom > 1
+      ? slowZoomProcess(end - start, options.slowZoom)
+      : null
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
   try {
     const output = new Output({
@@ -162,5 +168,31 @@ export function assertUsable(conversion: Conversion): void {
   if (!conversion.isValid || !kept.has('video') || !kept.has('audio')) {
     const reasons = conversion.discardedTracks.map(d => `${d.track.type}: ${d.reason}`).join(', ')
     throw new Error(`WebCodecs conversion unusable (${reasons || 'missing track'})`)
+  }
+}
+
+/**
+ * Zoom each frame in from 1 to `to` over `length` seconds of source (the
+ * frames' own timestamps, so it lasts the whole clip at any stretch).
+ */
+function slowZoomProcess(length: number, to: number) {
+  let canvas: OffscreenCanvas | null = null
+  let ctx: OffscreenCanvasRenderingContext2D | null = null
+  return {
+    process: (sample: VideoSample): VideoSample | OffscreenCanvas => {
+      const scale = slowZoomScale((sample.timestamp + sample.duration / 2) / length, to)
+      if (scale <= 1) return sample
+      const width = sample.displayWidth
+      const height = sample.displayHeight
+      if (!canvas || canvas.width !== width || canvas.height !== height) {
+        canvas = new OffscreenCanvas(width, height)
+        ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable')
+        ctx.imageSmoothingQuality = 'high'
+      }
+      drawZoomed(ctx!, sample, scale, width, height)
+      return canvas
+    },
+    dispose: () => {},
   }
 }

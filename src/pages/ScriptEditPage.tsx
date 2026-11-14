@@ -27,20 +27,30 @@ const NEW_SCRIPT_SPLIT_OPTIONS: SplitOptions = {
  * line number while the lines are still as sent, else by their words (twin
  * lines take the marks in turn).
  */
-function heardLinesOf(item: InboxItem | undefined, lines: string[]): boolean[] {
-  if (!item?.heard?.length) return lines.map(() => false)
+function heardLinesOf(item: InboxItem | undefined, lines: string[]): (number | null)[] {
+  if (!item?.heard?.length) return lines.map(() => null)
   const sent = takeLinesOf(item.body)
   const marked = new Set(item.heard)
   if (sent.length === lines.length && sent.every((line, i) => lineKey(line) === lineKey(lines[i]))) {
-    return lines.map((_, i) => marked.has(i + 1))
+    return lines.map((_, i) => (marked.has(i + 1) ? i + 1 : null))
   }
-  const left = sent.filter((_, i) => marked.has(i + 1)).map(lineKey)
+  const left = sent.flatMap((line, i) => (marked.has(i + 1) ? [{ key: lineKey(line), at: i + 1 }] : []))
   return lines.map(line => {
-    const at = left.indexOf(lineKey(line))
-    if (at < 0) return false
-    left.splice(at, 1)
-    return true
+    const found = left.findIndex(l => l.key === lineKey(line))
+    if (found < 0) return null
+    return left.splice(found, 1)[0].at
   })
+}
+
+/** Who says sent line `at` of a 相手のセリフ script: their icon and voice. */
+function speakerOfLine(item: InboxItem | undefined, at: number): Pick<Shot, 'speaker' | 'voice'> {
+  const member = item?.heardCast?.find(m => m.lines.includes(at))
+  const icon = member ? member.icon : item?.heardIcon
+  const voice = member ? member.voice : item?.heardVoice
+  return {
+    ...(icon ? { speaker: icon } : {}),
+    ...(isHeardVoice(voice) && voice !== 'natural' ? { voice } : {}),
+  }
 }
 
 function generateId() {
@@ -167,11 +177,10 @@ export default function ScriptEditPage() {
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
-      const speaker = {
-        ...(inboxItem?.heardIcon ? { speaker: inboxItem.heardIcon } : {}),
-        ...(isHeardVoice(inboxItem?.heardVoice) && inboxItem.heardVoice !== 'natural' ? { voice: inboxItem.heardVoice } : {}),
-      }
-      const shots: Shot[] = preview.map((text, i) => ({ id: generateId(), text, ...(heard[i] ? { heard: true, ...speaker } : {}) }))
+      const shots: Shot[] = preview.map((text, i) => {
+        const at = heard[i]
+        return { id: generateId(), text, ...(at ? { heard: true, ...speakerOfLine(inboxItem, at) } : {}) }
+      })
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
