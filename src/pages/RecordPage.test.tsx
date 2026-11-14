@@ -322,11 +322,6 @@ describe('RecordPage 相手のセリフ', () => {
 
   const HEARD = new Blob(['heard'], { type: 'video/mp4' })
 
-  /** The take that was saved: the one the import then looks for the speech in. */
-  function savedTake() {
-    return vi.mocked(detectSpeech).mock.calls[0][0]
-  }
-
   beforeEach(() => {
     vi.mocked(processRecordedVideo).mockImplementation(async (raw: Blob) => ({ blob: raw, ok: true, error: null }))
     vi.mocked(detectSpeech).mockReset().mockResolvedValue(null)
@@ -347,7 +342,8 @@ describe('RecordPage 相手のセリフ', () => {
     renderRecordPage(seedHeard().id)
     await importShot1()
     expect(makeHeardShot).toHaveBeenCalledTimes(1)
-    expect(savedTake()).toBe(HEARD)
+    // Already cut to the line: no speech to look for in it (see resolveShotTrimSettings).
+    expect(detectSpeech).not.toHaveBeenCalled()
     expect(await listShotVideos('script-1')).toHaveLength(1)
 
     selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
@@ -387,7 +383,6 @@ describe('RecordPage 相手のセリフ', () => {
     vi.mocked(makeHeardShot).mockRejectedValue(new NotEnoughListeningError(1.2))
     renderRecordPage(seedHeard().id)
     await importShot1()
-    expect((savedTake() as File).name).toContain(SHOT_1)
     expect(await listShotVideos('script-1')).toHaveLength(1)
     expect(screen.getAllByText(/相手のセリフにできず、撮ったまま保存しました: ショット1\(セリフのあと、あと約1.2秒長く黙って聞く顔をしてから止めてください\)/).length).toBeGreaterThan(0)
   })

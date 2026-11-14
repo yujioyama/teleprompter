@@ -30,6 +30,16 @@ describe('clampTrimRange', () => {
 })
 
 describe('resolveShotTrimSettings', () => {
+  it('leaves a 相手のセリフ shot untrimmed: its clip is cut when it is made', () => {
+    expect(resolveShotTrimSettings({ id: 'a', text: '', heard: true }, GLOBAL, true, false, true).trimEnabled).toBe(false)
+    expect(resolveShotTrimSettings({ id: 'b', text: '', heard: true }, GLOBAL, false, false, true).trimEnabled).toBe(false)
+    expect(resolveShotTrimSettings({ id: 'c', text: '' }, GLOBAL, false, false, true).trimEnabled).toBe(GLOBAL.trimEnabled)
+  })
+
+  it("still trims a 相手のセリフ shot whose own setting says so", () => {
+    expect(resolveShotTrimSettings({ id: 'a', text: '', heard: true, trimEnabled: true }, GLOBAL).trimEnabled).toBe(true)
+  })
+
   const GLOBAL: AppSettings = {
     trimEnabled: true,
     trimPaddingStart: 0.3,

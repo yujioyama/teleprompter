@@ -28,6 +28,9 @@ export const LAST_SHOT_MIN_LENGTH = 1.2
  * shot ends right after the speech so the video loops straight back.
  * In a `conversation` (see isConversation) the lines in between keep at
  * least CONVERSATION_PADDING on each side; a shot's own override still wins.
+ * A 相手のセリフ shot isn't trimmed: its clip is already cut to the line
+ * when it's made (see planHeardShot), and looking for speech in it again
+ * finds only a burst of the voice over the listening and cuts the rest.
  */
 export function resolveShotTrimSettings(
   shot: Shot | undefined,
@@ -38,7 +41,7 @@ export function resolveShotTrimSettings(
 ): ShotTrimSettings {
   const between = (padding: number) => (conversation ? Math.max(padding, CONVERSATION_PADDING) : padding)
   return {
-    trimEnabled: shot?.trimEnabled ?? global.trimEnabled,
+    trimEnabled: shot?.trimEnabled ?? (shot?.heard ? false : global.trimEnabled),
     trimPaddingStart: shot?.trimPaddingStart ?? (isFirstShot ? global.firstShotPaddingStart : between(global.trimPaddingStart)),
     trimPaddingEnd: shot?.keepPause
       ? Math.max(PAUSE_PADDING_END, between(0))
