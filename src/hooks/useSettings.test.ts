@@ -10,6 +10,7 @@ const DEFAULTS = {
   normalizeAudio: true,
   voicePreset: 'natural',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
+  conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
@@ -261,5 +262,14 @@ describe('defaultBgmTrack', () => {
           punchInEnabled: true,
       firstShotPaddingStart: 0.05,
     })
+  })
+})
+
+describe('defaultBgmTrack', () => {
+  const settings = { defaultBgmId: 'warmpiano-my-nightly-prayer', conversationBgmId: 'musicbox-cat-box' }
+  it('is the usual BGM, and the conversation one for a conversation', () => {
+    expect(defaultBgmTrack(settings)?.title).toBe('My nightly prayer')
+    expect(defaultBgmTrack(settings, true)?.title).toBe('Cat Box')
+    expect(defaultBgmTrack({ ...settings, conversationBgmId: null }, true)).toBeNull()
   })
 })

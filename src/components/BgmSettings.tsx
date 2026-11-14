@@ -5,12 +5,14 @@ import styles from './BgmSettings.module.css'
 
 interface BgmSettingsProps {
   trackId: string | null
+  /** The usual BGM of a conversation (a script with 相手のセリフ). */
+  conversationTrackId: string | null
   volume: number
   stopBeforePunchline: boolean
   /** The YouTube version's BGM (see youtubeBgmTrack). */
   youtubeTrackId: string
   onChange: (
-    patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'bgmVolume' | 'bgmStopBeforePunchline' | 'youtubeBgmId'>>,
+    patch: Partial<Pick<AppSettings, 'defaultBgmId' | 'conversationBgmId' | 'bgmVolume' | 'bgmStopBeforePunchline' | 'youtubeBgmId'>>,
   ) => void
 }
 
@@ -26,12 +28,14 @@ function TrackOptions() {
   ))
 }
 
-export default function BgmSettings({ trackId, volume, stopBeforePunchline, youtubeTrackId, onChange }: BgmSettingsProps) {
+export default function BgmSettings({ trackId, conversationTrackId, volume, stopBeforePunchline, youtubeTrackId, onChange }: BgmSettingsProps) {
   const track = MUSIC_TRACKS.find(t => t.id === trackId) ?? null
   const youtubeTrack = youtubeBgmTrack({ youtubeBgmId: youtubeTrackId })
   const { previewingId, toggle, stop } = useTrackPreview()
   const previewing = previewingId !== null && previewingId === track?.id
   const previewingYoutube = previewingId === youtubeTrack.id
+  const conversationTrack = MUSIC_TRACKS.find(t => t.id === conversationTrackId) ?? null
+  const previewingConversation = previewingId !== null && previewingId === conversationTrack?.id
 
   return (
     <div className={styles.wrapper}>
@@ -53,6 +57,34 @@ export default function BgmSettings({ trackId, volume, stopBeforePunchline, yout
           </select>
           <button type="button" className={styles.previewBtn} onClick={() => track && toggle(track)} disabled={!track}>
             {previewing ? '■ 停止' : '▶ 試聴'}
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.field}>
+        <div className={styles.label}>会話形式のBGM</div>
+        <div className={styles.sub}>相手のセリフがある台本では、いつものBGMの代わりにこの曲を付けます</div>
+        <div className={styles.trackRow}>
+          <select
+            aria-label="会話形式のBGM"
+            className={styles.select}
+            value={conversationTrack?.id ?? ''}
+            onChange={e => {
+              stop()
+              onChange({ conversationBgmId: e.target.value || null })
+            }}
+          >
+            <option value="">なし</option>
+            <TrackOptions />
+          </select>
+          <button
+            type="button"
+            aria-label={previewingConversation ? '会話形式のBGMの試聴を止める' : '会話形式のBGMを試聴'}
+            className={styles.previewBtn}
+            onClick={() => conversationTrack && toggle(conversationTrack)}
+            disabled={!conversationTrack}
+          >
+            {previewingConversation ? '■ 停止' : '▶ 試聴'}
           </button>
         </div>
       </div>

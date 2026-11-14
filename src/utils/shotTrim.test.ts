@@ -37,6 +37,7 @@ describe('resolveShotTrimSettings', () => {
     normalizeAudio: true,
     voicePreset: 'natural',
     defaultBgmId: null,
+    conversationBgmId: null,
     bgmVolume: 0.3,
     bgmStopBeforePunchline: true,
     subtitlePosition: 72,

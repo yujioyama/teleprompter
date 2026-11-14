@@ -22,6 +22,11 @@ export interface AppSettings {
   voicePreset: VoicePreset
   /** BGM added to every video without stopping on the BGM step; null = none. */
   defaultBgmId: string | null
+  /**
+   * The usual BGM for a conversation (a script with 相手のセリフ, see
+   * isConversation) in place of defaultBgmId; null = none.
+   */
+  conversationBgmId: string | null
   /** 0-1, the BGM step's volume slider. */
   bgmVolume: number
   /** Drop the BGM out just before the punchline (the last shot). */
@@ -89,6 +94,7 @@ const DEFAULTS: AppSettings = {
   normalizeAudio: true,
   voicePreset: 'natural',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
+  conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
@@ -192,7 +198,14 @@ export function youtubeBgmTrack(settings: Pick<AppSettings, 'youtubeBgmId'>): Mu
   )
 }
 
-/** The usual BGM's track, or null when there is none or it has since been removed. */
-export function defaultBgmTrack(settings: Pick<AppSettings, 'defaultBgmId'>): MusicTrack | null {
-  return MUSIC_TRACKS.find(t => t.id === settings.defaultBgmId) ?? null
+/**
+ * The usual BGM's track, or null when there is none or it has since been
+ * removed. A `conversation` (see isConversation) has its own.
+ */
+export function defaultBgmTrack(
+  settings: Pick<AppSettings, 'defaultBgmId'> & Partial<Pick<AppSettings, 'conversationBgmId'>>,
+  conversation = false,
+): MusicTrack | null {
+  const id = conversation ? (settings.conversationBgmId ?? null) : settings.defaultBgmId
+  return MUSIC_TRACKS.find(t => t.id === id) ?? null
 }
