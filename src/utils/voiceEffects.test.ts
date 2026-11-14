@@ -69,7 +69,7 @@ describe('shapeVoice', () => {
   it.each([
     ['kid', 2 ** (11 / 12)],
     ['high', 2 ** (7 / 12)],
-    ['low', 2 ** (-2 / 12)],
+    ['low', 2 ** (-3 / 12)],
   ] as const)('makes the %s voice higher or lower without changing how long the line takes', (name, ratio) => {
     const out = shapeVoice(voice, RATE, name)
     expect(out.length).toBe(voice.length)
@@ -96,7 +96,7 @@ describe('shapeVoice', () => {
   it.each([
     ['phoneKid', 2 ** (11 / 12)],
     ['phoneHigh', 2 ** (7 / 12)],
-    ['phoneLow', 2 ** (-2 / 12)],
+    ['phoneLow', 2 ** (-3 / 12)],
   ] as const)('gives the %s voice its pitch and a phone line, keeping how long the line takes', (name, ratio) => {
     const out = shapeVoice(tone(400), RATE, name)
     expect(out.length).toBe(RATE)

@@ -44,8 +44,10 @@ interface VoiceShape {
 
 const KID: VoiceShape = { pitch: semitones(11), formant: 1.45 }
 const HIGH: VoiceShape = { pitch: semitones(7), formant: 1.12 }
-// Our own voice is a man's already: a little lower is another man, more is a monster.
-const LOW: VoiceShape = { pitch: semitones(-2), formant: 0.97 }
+// Our own voice is a man's already. Pitch alone a little lower still sounds
+// like us, and much lower is a monster: another man is mostly in the body
+// (the formants), so those go down further than the pitch does.
+const LOW: VoiceShape = { pitch: semitones(-3), formant: 0.9 }
 
 const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
