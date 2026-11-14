@@ -24,7 +24,7 @@ import {
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
-import { SPEAKER_TEXT_COLOR, speakerOf } from './speakers'
+import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
@@ -37,6 +37,9 @@ import {
   EN_STYLE,
   JA_STYLE,
   SPEAKER_ICON_EMOJI_PX,
+  PHONE_BADGE_EMOJI_PX,
+  PHONE_BADGE_OFFSET,
+  PHONE_BADGE_RADIUS,
   SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_PADDING_Y,
@@ -197,7 +200,7 @@ function drawBubble(ctx: CanvasRenderingContext2D, bubble: SpeakerBubble) {
   ctx.restore()
 }
 
-function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: SpeakerBubble) {
+function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: SpeakerBubble, phone = false) {
   ctx.save()
   ctx.beginPath()
   ctx.arc(bubble.iconX, bubble.iconY, SPEAKER_ICON_RADIUS, 0, Math.PI * 2)
@@ -215,6 +218,20 @@ function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: Sp
   ctx.textBaseline = 'middle'
   ctx.fillStyle = '#000'
   ctx.fillText(icon, bubble.iconX, bubble.iconY + SPEAKER_ICON_EMOJI_PX * 0.04)
+  if (phone) {
+    const x = bubble.iconX + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
+    const y = bubble.iconY + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
+    ctx.beginPath()
+    ctx.arc(x, y, PHONE_BADGE_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = '#fff'
+    ctx.fill()
+    ctx.strokeStyle = SPEAKER_TEXT_COLOR
+    ctx.lineWidth = BUBBLE_BORDER
+    ctx.stroke()
+    ctx.font = `${PHONE_BADGE_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
+    ctx.fillStyle = '#000'
+    ctx.fillText(PHONE_BADGE, x, y + PHONE_BADGE_EMOJI_PX * 0.04)
+  }
   ctx.restore()
 }
 
@@ -259,7 +276,7 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * (相手のセリフ) the plain text is tinted and that icon sits beside the
  * first line.
  */
-export async function renderCueImage(cue: SubtitleCue, speaker?: string): Promise<{ image: Blob; height: number }> {
+export async function renderCueImage(cue: SubtitleCue, speaker?: string, phone = false): Promise<{ image: Blob; height: number }> {
   const layout = layoutCue(cue, canvasMeasure(), { speaker: Boolean(speaker) })
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
@@ -281,7 +298,7 @@ export async function renderCueImage(cue: SubtitleCue, speaker?: string): Promis
     top += SUBTITLE_BLOCK_GAP
     drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx))
   }
-  if (bubble && speaker) drawSpeakerIcon(ctx, speaker, bubble)
+  if (bubble && speaker) drawSpeakerIcon(ctx, speaker, bubble, phone)
   return { image: await toPng(canvas), height: layout.height }
 }
 
@@ -406,7 +423,7 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.
-    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id))
+    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id))
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y: clampedSubtitleY(cuePosition(cue, look), height) })
   }
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration, look.firstClipDuration)

@@ -37,6 +37,7 @@ import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
 import { withLineImages } from '../utils/lineImages'
 import { DEFAULT_SPEAKER_ICON, withSpeakers } from '../utils/speakers'
+import { isPhoneVoice } from '../utils/voiceEffects'
 import type { Shot } from '../types'
 import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -110,7 +111,9 @@ function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false, s
     if (!oneTake) {
       // 相手のセリフ: its subtitles are drawn as the other person's.
       const shot = shots.find(s => s.id === entry.shotId)
-      return shot?.heard ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON } : input
+      return shot?.heard
+        ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON, ...(isPhoneVoice(shot.voice) ? { phone: true } : {}) }
+        : input
     }
     const lines = takeLinesOf(entry.text)
     return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech) }

@@ -172,6 +172,18 @@ describe('SubtitleOverlayPreview', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('puts a small phone on the icon of someone on the phone', () => {
+    const cues: SubtitleCue[] = [
+      { id: 'c1', start: 0, end: 2, en: 'Mate, is your Outlook down?', ja: 'なあ' },
+      { id: 'c2', start: 2, end: 4, en: 'Hi', ja: 'やあ' },
+    ]
+    const hook = (phone: boolean) => ({ style: false, position: 22.5, punchIn: null, speakers: [{ cueId: 'c1', icon: '🧑', phone }] })
+    const { rerender } = render(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} hook={hook(true)} />)
+    expect(screen.getByTestId('subtitle-phone')).toHaveTextContent('📞')
+    rerender(<SubtitleOverlayPreview cues={cues} position={50} currentTime={1} hook={hook(false)} />)
+    expect(screen.queryByTestId('subtitle-phone')).not.toBeInTheDocument()
+  })
+
   it("tints the other person's line and puts their icon beside its first line only", () => {
     const hook = { style: false, position: 22.5, punchIn: null, speakers: [{ cueId: 'c1', icon: '🧑‍🍳' }] }
     const cues: SubtitleCue[] = [

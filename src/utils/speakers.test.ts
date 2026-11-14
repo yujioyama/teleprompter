@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SPEAKER_ICON, speakerOf, withSpeakers } from './speakers'
+import { DEFAULT_SPEAKER_ICON, onPhone, speakerOf, withSpeakers } from './speakers'
 import type { HookOptions } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
 
@@ -23,6 +23,18 @@ describe('withSpeakers', () => {
     ])
     expect(speakerOf(hook, 'a')).toBe('👩‍🍳')
     expect(speakerOf(hook, 'b')).toBeUndefined()
+  })
+
+  it('marks the cues of someone on the phone', () => {
+    const hook = withSpeakers(HOOK, cues, [
+      { text: 'a', duration: 2, speaker: '🧑', phone: true },
+      { text: 'b', duration: 1 },
+      { text: 'c d', duration: 3, speaker: '👩' },
+    ])
+    expect(onPhone(hook, 'a')).toBe(true)
+    expect(onPhone(hook, 'b')).toBe(false)
+    expect(onPhone(hook, 'c')).toBe(false)
+    expect(onPhone(undefined, 'a')).toBe(false)
   })
 
   it('leaves a script that is all one voice as it was', () => {
