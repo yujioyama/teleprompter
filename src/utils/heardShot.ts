@@ -57,8 +57,9 @@ export class NotEnoughListeningError extends Error {
  * times quicker the line's voice will play.
  */
 export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
-  const lineEnd = lineEndOf(region)
-  const voiceStart = Math.max(0, region.floor, region.speechStart - VOICE_PADDING_S)
+  const line = lineOf(region)
+  const lineEnd = line.end
+  const voiceStart = Math.max(0, Math.min(region.floor, line.start), line.start - VOICE_PADDING_S)
   const voiceEnd = Math.min(region.duration, lineEnd + VOICE_PADDING_S)
   // A voice played quicker or slower (see voiceSpeed) is listened to for as long as it then lasts.
   const voiceLength = (voiceEnd - voiceStart) / speed
@@ -73,6 +74,17 @@ export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
     listen: { start: listenStart, end: listenStart + listenLength },
     stretch: Math.max(1, voiceLength / listenLength),
   }
+}
+
+/**
+ * The line in the take: the loudest stretch of sound (see
+ * SpeechRegion.loudest). Speech detection also takes in faint sounds: the
+ * tap that starts the recording, a rustle while listening. A region found
+ * before `loudest` existed falls back to lineEndOf.
+ */
+export function lineOf(region: SpeechRegion): { start: number; end: number } {
+  if (region.loudest) return region.loudest
+  return { start: Math.max(region.floor, region.speechStart), end: lineEndOf(region) }
 }
 
 /**
