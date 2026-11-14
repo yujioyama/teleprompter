@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { heardShotFailureText, lineEndOf, makeHeardShot, NotEnoughListeningError, planHeardShot } from './heardShot'
+import { CAMERA_VOICE_DELAY_S, heardShotFailureText, lineEndOf, makeHeardShot, NotEnoughListeningError, planHeardShot, planVoiceFileShot } from './heardShot'
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { canUseWebCodecs } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
@@ -125,5 +125,35 @@ describe('makeHeardShot', () => {
     vi.mocked(canUseWebCodecs).mockResolvedValueOnce(false)
     await expect(makeHeardShot(new Blob(['take']))).rejects.toThrow('WebCodecs')
     expect(heardShotFailureText(new Error('x'))).toContain('見つけられない')
+  })
+})
+
+describe('planVoiceFileShot', () => {
+  // A voice recorded ahead: tapped on at 0, said from 0.5s to 2.5s, tapped off at 3.2s.
+  const voice = region({ speechStart: 0.5, speechEnd: 2.5, ceiling: 3.2, duration: 3.2, loudest: { start: 0.5, end: 2.5 } })
+
+  it('takes the line from the recording, and the take while it played', () => {
+    // The camera played it from 0.6s and stopped a second after: 0.6 + 3.2 + 1.
+    const plan = planVoiceFileShot(voice, 4.8)
+    expect(plan.voice.start).toBeCloseTo(0.2)
+    expect(plan.voice.end).toBeCloseTo(2.8)
+    expect(plan.listen.start).toBeCloseTo(CAMERA_VOICE_DELAY_S + 0.2)
+    expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6)
+    expect(plan.stretch).toBe(1)
+  })
+
+  it('follows a quicker voice, which the camera plays quicker too', () => {
+    const plan = planVoiceFileShot(voice, 4.8, 1.25)
+    expect(plan.listen.start).toBeCloseTo(CAMERA_VOICE_DELAY_S + 0.2 / 1.25)
+    expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6 / 1.25)
+  })
+
+  it('slows the picture down when the take was stopped before the voice ended', () => {
+    const plan = planVoiceFileShot(voice, 2.2)
+    expect(plan.stretch).toBeGreaterThan(1)
+  })
+
+  it('says when the take is far too short', () => {
+    expect(() => planVoiceFileShot(voice, 0.8)).toThrow(NotEnoughListeningError)
   })
 })

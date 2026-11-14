@@ -14,6 +14,25 @@ export function extractShotId(filename: string): string | null {
   return match ? match[1] : null
 }
 
+/**
+ * A 相手のセリフ voice recorded ahead in teleprompter-cam, saved next to the takes as
+ *   TeleprompterCam-<sessionTag>-voice-shot<index>of<count>-<shot.id>.m4a
+ * (or any audio file named after a shot), to go with that shot's take.
+ */
+export function isVoiceFile(file: Pick<File, 'name' | 'type'>): boolean {
+  return /-voice-/.test(file.name) || file.type.startsWith('audio/') || /\.(m4a|aac|wav|caf|mp3)$/i.test(file.name)
+}
+
+/** The picked voice files by the shot they're for; ones naming no shot are left out. */
+export function voicesByShotId(files: File[]): Map<string, File> {
+  const voices = new Map<string, File>()
+  for (const file of files) {
+    const id = extractShotId(file.name)
+    if (id) voices.set(id, file)
+  }
+  return voices
+}
+
 export type ImportResolution =
   | { kind: 'legacy'; file: File }
   | { kind: 'bulk'; targets: { shot: Shot; file: File }[] }

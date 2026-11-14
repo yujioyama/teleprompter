@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractShotId, resolveImportTargets } from './matchShotRecordings'
+import { extractShotId, isVoiceFile, resolveImportTargets, voicesByShotId } from './matchShotRecordings'
 import { Shot } from '../types'
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
@@ -88,5 +88,21 @@ describe('resolveImportTargets', () => {
     if (result.kind !== 'bulk') throw new Error('expected bulk')
     expect(result.targets).toHaveLength(2)
     expect(result.targets.find(t => t.shot.id === SHOT_1)?.file).toBe(retake)
+  })
+})
+
+describe('voice files', () => {
+  const ID = '0f8fad5b-d9cb-469f-a165-70867728950e'
+  const file = (name: string, type = '') => new File(['x'], name, { type })
+
+  it('tells a recorded voice apart from a take', () => {
+    expect(isVoiceFile(file(`TeleprompterCam-abc-voice-shot2of9-${ID}.m4a`, 'audio/x-m4a'))).toBe(true)
+    expect(isVoiceFile(file(`voice-${ID}.m4a`))).toBe(true)
+    expect(isVoiceFile(file(`TeleprompterCam-abc-shot2of9-${ID}.mov`, 'video/quicktime'))).toBe(false)
+  })
+
+  it('finds the shot each voice is for', () => {
+    const voices = voicesByShotId([file(`TeleprompterCam-abc-voice-shot2of9-${ID}.m4a`), file('memo.m4a')])
+    expect([...voices.keys()]).toEqual([ID])
   })
 })

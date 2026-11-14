@@ -6,9 +6,9 @@ import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
-import { resolveImportTargets } from '../utils/matchShotRecordings'
+import { isVoiceFile, resolveImportTargets, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
-import { heardShotFailureText, makeHeardShot } from '../utils/heardShot'
+import { heardShotFailureText, makeHeardShot, makeHeardShotFromVoice } from '../utils/heardShot'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
 import { resolveShotTrimSettings } from '../utils/shotTrim'
@@ -75,10 +75,18 @@ export default function RecordPage() {
   }
 
   function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
+    const picked = Array.from(e.target.files ?? [])
     e.target.value = '' // allow re-selecting the same file(s)
-    if (files.length === 0) return
+    if (picked.length === 0) return
     if (bulkImportProgress) return // a bulk import is already running
+
+    // 相手のセリフ voices recorded ahead in the camera app come picked with the takes.
+    const voices = voicesByShotId(picked.filter(isVoiceFile))
+    const files = picked.filter(file => !isVoiceFile(file))
+    if (files.length === 0) {
+      setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
+      return
+    }
 
     const resolution = resolveImportTargets(files, safeScript.shots)
 
@@ -90,8 +98,8 @@ export default function RecordPage() {
     // A take whose name doesn't say its shot (one renamed by the camera
     // roll, say) is the one on screen, and the next shot comes up after it.
     const run = resolution.kind === 'legacy'
-      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1)
-      : runBulkImport(resolution.targets)
+      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1, voices)
+      : runBulkImport(resolution.targets, undefined, voices)
     run?.catch(err => {
       console.error('Bulk import failed unexpectedly', err)
       setBulkImportProgress(null)
@@ -100,7 +108,11 @@ export default function RecordPage() {
   }
 
   // Lands on `nextIndex` when given, else on the first shot still missing a video.
-  async function runBulkImport(targets: { shot: Shot; file: File }[], nextIndex?: number) {
+  async function runBulkImport(
+    targets: { shot: Shot; file: File }[],
+    nextIndex?: number,
+    voices: Map<string, File> = new Map(),
+  ) {
     setBulkImportError(null)
     setBulkImportProgress({ done: 0, total: targets.length })
     const failedShotTexts: string[] = []
@@ -119,7 +131,10 @@ export default function RecordPage() {
           // 相手のセリフ: the voice goes over the listening. A take that can't
           // be turned into that is kept as it is, to be seen and retaken.
           try {
-            take = await makeHeardShot(processed.blob, shot.voice)
+            const recordedVoice = voices.get(shot.id)
+            take = recordedVoice
+              ? await makeHeardShotFromVoice(processed.blob, recordedVoice, shot.voice)
+              : await makeHeardShot(processed.blob, shot.voice)
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
             unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
@@ -272,7 +287,7 @@ export default function RecordPage() {
           {heardHere && currentShot && (
             <div className={styles.heardGuide} role="note">
               <span className={styles.heardBadge}>{currentShot.speaker ?? DEFAULT_SPEAKER_ICON} 相手のセリフ</span>
-              <span>声に出して読んだら、1秒ほど黙って聞く顔をしてから止める</span>
+              <span>カメラアプリで先に相手の声を録っておけば、撮影では流れる声を聞くだけ（自動で止まります）。録っていなければ、声に出して読んだら1秒ほど黙って聞く顔をしてから止める</span>
             </div>
           )}
           <p className={`${styles.promptText} ${heardHere ? styles.promptTextHeard : ''}`}>
@@ -298,7 +313,7 @@ export default function RecordPage() {
                     <div>
                       <div className={styles.shotSettingsLabel}>相手のセリフ</div>
                       <div className={styles.shotSettingsSub}>
-                        セリフを声に出したあと、1秒ほど黙って聞く顔を撮ります。インポートすると、聞いている映像（短ければゆっくり再生）に声だけがのります
+                        カメラアプリで先に録った相手の声（.m4a）を動画と一緒にインポートすると、聞いている映像にその声がのります。録っていなければ、セリフを声に出したあと1秒ほど黙って聞く顔を撮ると、聞いている映像（短ければゆっくり再生）に声だけがのります
                       </div>
                     </div>
                     <label className={styles.toggle}>
@@ -424,7 +439,7 @@ export default function RecordPage() {
               <input
                 ref={importInputRef}
                 type="file"
-                accept="video/*"
+                accept="video/*,audio/*,.m4a"
                 multiple
                 aria-label="録画した動画をインポート"
                 onChange={handleImportVideos}
