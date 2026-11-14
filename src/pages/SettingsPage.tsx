@@ -64,6 +64,7 @@ export default function SettingsPage() {
           volume={settings.bgmVolume}
           stopBeforePunchline={settings.bgmStopBeforePunchline}
           youtubeTrackId={settings.youtubeBgmId}
+          conversationYoutubeTrackId={settings.conversationYoutubeBgmId}
           onChange={updateSettings}
         />
       </div>

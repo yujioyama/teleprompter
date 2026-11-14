@@ -79,6 +79,8 @@ export interface AppSettings {
   youtubeExportEnabled: boolean
   /** The BGM the YouTube version has in place of the video's own. */
   youtubeBgmId: string
+  /** The YouTube version's BGM for a conversation (see isConversation). */
+  conversationYoutubeBgmId: string
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -121,6 +123,7 @@ const DEFAULTS: AppSettings = {
   coverFrameSource: 'made',
   youtubeExportEnabled: false,
   youtubeBgmId: 'youtube-touching-moment',
+  conversationYoutubeBgmId: 'youtube-the-trapezist',
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
@@ -190,12 +193,18 @@ export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => vo
   return [settings, updateSettings]
 }
 
-/** The YouTube version's BGM; the default one when the chosen track has since been removed. */
-export function youtubeBgmTrack(settings: Pick<AppSettings, 'youtubeBgmId'>): MusicTrack {
-  return (
-    MUSIC_TRACKS.find(t => t.id === settings.youtubeBgmId) ??
-    MUSIC_TRACKS.find(t => t.id === DEFAULTS.youtubeBgmId)!
-  )
+/**
+ * The YouTube version's BGM, a `conversation`'s own for one (see
+ * isConversation); the default one when the chosen track has since been removed.
+ */
+export function youtubeBgmTrack(
+  settings: Pick<AppSettings, 'youtubeBgmId'> & Partial<Pick<AppSettings, 'conversationYoutubeBgmId'>>,
+  conversation = false,
+): MusicTrack {
+  const [id, fallback] = conversation
+    ? [settings.conversationYoutubeBgmId, DEFAULTS.conversationYoutubeBgmId]
+    : [settings.youtubeBgmId, DEFAULTS.youtubeBgmId]
+  return MUSIC_TRACKS.find(t => t.id === id) ?? MUSIC_TRACKS.find(t => t.id === fallback)!
 }
 
 /**

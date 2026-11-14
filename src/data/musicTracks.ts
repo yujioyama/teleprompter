@@ -221,4 +221,13 @@ export const MUSIC_TRACKS: MusicTrack[] = [
     credit: 'Wayne Jones (YouTube Audio Library)',
     file: 'music/youtube-01-touching-moment.mp3',
   },
+  // Added 2026-11-14: the YouTube version's music box-like track for a
+  // conversation, in place of Cat Box.
+  {
+    id: 'youtube-the-trapezist',
+    title: 'The Trapezist',
+    genre: 'youtube',
+    credit: 'Quincas Moreira (YouTube Audio Library)',
+    file: 'music/youtube-02-the-trapezist.mp3',
+  },
 ]

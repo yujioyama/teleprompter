@@ -630,7 +630,7 @@ export default function FinalizePage() {
 
   // YouTube用も書き出す, and the BGM it swaps in for the usual one.
   const youtubeEnabled = settings.youtubeExportEnabled
-  const youtubeTrack = youtubeBgmTrack(settings)
+  const youtubeTrack = youtubeBgmTrack(settings, isConversation(script))
 
   // With the cover frames set to 最初 and 作ったカバー, the burn puts the
   // cover in ahead of the first shot, in that shot's encode: the export then

@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSettings, defaultBgmTrack } from './useSettings'
+import { useSettings, defaultBgmTrack, youtubeBgmTrack } from './useSettings'
 import { SUBTITLE_POSITION_BOTTOM, SUBTITLE_POSITION_CENTER, SUBTITLE_POSITION_TOP } from '../utils/subtitlePosition'
 
 const DEFAULTS = {
@@ -37,6 +37,7 @@ const DEFAULTS = {
   coverFrameSource: 'made',
   youtubeExportEnabled: false,
   youtubeBgmId: 'youtube-touching-moment',
+  conversationYoutubeBgmId: 'youtube-the-trapezist',
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
@@ -271,5 +272,14 @@ describe('defaultBgmTrack', () => {
     expect(defaultBgmTrack(settings)?.title).toBe('My nightly prayer')
     expect(defaultBgmTrack(settings, true)?.title).toBe('Cat Box')
     expect(defaultBgmTrack({ ...settings, conversationBgmId: null }, true)).toBeNull()
+  })
+})
+
+describe('youtubeBgmTrack', () => {
+  it("is a conversation's own for a conversation", () => {
+    const settings = { youtubeBgmId: 'youtube-touching-moment', conversationYoutubeBgmId: 'youtube-the-trapezist' }
+    expect(youtubeBgmTrack(settings).title).toBe('Touching Moment')
+    expect(youtubeBgmTrack(settings, true).title).toBe('The Trapezist')
+    expect(youtubeBgmTrack({ youtubeBgmId: 'youtube-touching-moment' }, true).title).toBe('The Trapezist')
   })
 })

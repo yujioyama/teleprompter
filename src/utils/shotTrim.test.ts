@@ -64,6 +64,7 @@ describe('resolveShotTrimSettings', () => {
     coverFrameSource: 'made',
     youtubeExportEnabled: false,
     youtubeBgmId: 'youtube-touching-moment',
+    conversationYoutubeBgmId: 'youtube-the-trapezist',
     inboxKey: '',
     bgmDefaultRev: 1,
     subtitlePositionRev: 1,
