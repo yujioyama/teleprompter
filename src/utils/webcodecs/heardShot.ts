@@ -1,5 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import type { HeardPlan } from '../heardShot'
+import { reduceNoise } from '../denoise'
 import { heardZoomTo } from '../heardZoom'
 import { levelVoice, shapeVoice, type HeardVoice } from '../voiceEffects'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
@@ -50,16 +51,22 @@ export async function buildHeardShotWebCodecs(
   }
 }
 
-/** The line itself: `whole` between `start` and `end` seconds, its channels mixed to one. */
+/**
+ * The line itself: `whole` between `start` and `end` seconds, its channels
+ * mixed to one, with the room's hiss taken out (see reduceNoise). The hiss
+ * is learned from the whole recording, which has more quiet in it than the
+ * line's own padding.
+ */
 function lineOf(whole: AudioBuffer, start: number, end: number): { samples: Float32Array; sampleRate: number } {
-  const from = Math.max(0, Math.floor(start * whole.sampleRate))
-  const to = Math.min(whole.length, Math.ceil(end * whole.sampleRate))
-  const samples = new Float32Array(Math.max(0, to - from))
+  const mono = new Float32Array(whole.length)
   for (let channel = 0; channel < whole.numberOfChannels; channel++) {
     const data = whole.getChannelData(channel)
-    for (let i = 0; i < samples.length; i++) samples[i] += data[from + i] / whole.numberOfChannels
+    for (let i = 0; i < mono.length; i++) mono[i] += data[i] / whole.numberOfChannels
   }
-  return { samples, sampleRate: whole.sampleRate }
+  const clean = reduceNoise(mono)
+  const from = Math.max(0, Math.floor(start * whole.sampleRate))
+  const to = Math.min(whole.length, Math.ceil(end * whole.sampleRate))
+  return { samples: clean.slice(from, Math.max(from, to)), sampleRate: whole.sampleRate }
 }
 
 /** The voice as `seconds` of audio at the output's rate and channel count. */
