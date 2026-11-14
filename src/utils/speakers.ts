@@ -10,7 +10,12 @@ export const SPEAKER_TEXT_COLOR = '#A8E0FF'
 export interface CueSpeaker {
   cueId: string
   icon: string
+  /** Heard down a phone line: a small 📞 on the icon. */
+  phone?: boolean
 }
+
+/** The badge on the icon of someone on the phone. */
+export const PHONE_BADGE = '📞'
 
 /**
  * `hook` with the other person's icon on every cue of a 相手のセリフ shot
@@ -21,8 +26,8 @@ export interface CueSpeaker {
 export function withSpeakers(hook: HookOptions, cues: SubtitleCue[], inputs: ShotCueInput[]): HookOptions {
   if (!inputs.some(input => input.speaker)) return hook
   const speakers: CueSpeaker[] = cuesByShot(cues, inputs.map(input => input.duration)).flatMap((group, i) => {
-    const icon = inputs[i].speaker
-    return icon ? group.map(cue => ({ cueId: cue.id, icon })) : []
+    const { speaker: icon, phone } = inputs[i]
+    return icon ? group.map(cue => ({ cueId: cue.id, icon, ...(phone ? { phone: true } : {}) })) : []
   })
   return speakers.length > 0 ? { ...hook, speakers } : hook
 }
@@ -30,4 +35,9 @@ export function withSpeakers(hook: HookOptions, cues: SubtitleCue[], inputs: Sho
 /** The icon beside `cueId`'s subtitle, or undefined for our own line. */
 export function speakerOf(hook: Pick<HookOptions, 'speakers'> | undefined, cueId: string): string | undefined {
   return hook?.speakers?.find(speaker => speaker.cueId === cueId)?.icon
+}
+
+/** Whether `cueId`'s speaker is on the phone (see CueSpeaker.phone). */
+export function onPhone(hook: Pick<HookOptions, 'speakers'> | undefined, cueId: string): boolean {
+  return Boolean(hook?.speakers?.find(speaker => speaker.cueId === cueId)?.phone)
 }

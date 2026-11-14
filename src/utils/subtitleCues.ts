@@ -103,6 +103,8 @@ export interface ShotCueInput {
   lineStarts?: number[]
   /** 相手のセリフ: the icon beside this shot's subtitles. Absent on our own lines. */
   speaker?: string
+  /** 相手のセリフ heard down a phone line: a small 📞 goes on the icon. */
+  phone?: boolean
 }
 
 /** Each line of a script Claude sent, with the Japanese it sent for that line. */

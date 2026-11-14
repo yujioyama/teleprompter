@@ -3,12 +3,15 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SPEAKER_TEXT_COLOR, speakerOf } from '../utils/speakers'
+import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
   BUBBLE_FILL,
   BUBBLE_PAD_Y,
   SPEAKER_ICON_EMOJI_PX,
+  PHONE_BADGE_EMOJI_PX,
+  PHONE_BADGE_OFFSET,
+  PHONE_BADGE_RADIUS,
   SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
@@ -82,7 +85,9 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
  * 相手のセリフ: the speech bubble (tail rising to the icon) and the icon on
  * its white disc, drawn as the burn draws them, over the whole cue box.
  */
-function SpeakerBubbleArt({ bubble, icon, height }: { bubble: SpeakerBubble; icon: string; height: number }) {
+function SpeakerBubbleArt({ bubble, icon, height, phone = false }: { bubble: SpeakerBubble; icon: string; height: number; phone?: boolean }) {
+  const badgeX = bubble.iconX + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
+  const badgeY = bubble.iconY + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
   return (
     <svg
       className={styles.bubble}
@@ -109,6 +114,22 @@ function SpeakerBubbleArt({ bubble, icon, height }: { bubble: SpeakerBubble; ico
       >
         {icon}
       </text>
+      {phone && (
+        <>
+          <circle cx={badgeX} cy={badgeY} r={PHONE_BADGE_RADIUS - BUBBLE_BORDER / 2} fill="#fff" stroke={SPEAKER_TEXT_COLOR} strokeWidth={BUBBLE_BORDER} />
+          <text
+            data-testid="subtitle-phone"
+            x={badgeX}
+            y={badgeY + PHONE_BADGE_EMOJI_PX * 0.04}
+            fontSize={PHONE_BADGE_EMOJI_PX}
+            fontFamily={EMOJI_FONT_FAMILY}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {PHONE_BADGE}
+          </text>
+        </>
+      )}
     </svg>
   )
 }
@@ -249,7 +270,7 @@ export default function SubtitleOverlayPreview({
       data-testid="subtitle-overlay-box"
       data-variant={cue.variant}
     >
-      {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} />}
+      {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} phone={cue ? onPhone(hook, cue.id) : false} />}
       <p className={styles.en} style={{ ...blockStyle(layout.en), ...spokenColor }}>
         <BlockLines block={layout.en} />
       </p>

@@ -62,6 +62,11 @@ const SHAPES: Record<HeardVoice, VoiceShape> = {
   phoneLow: { ...LOW, phone: true },
 }
 
+/** A voice heard down a phone line (電話, and the kid / woman / man on the phone). */
+export function isPhoneVoice(voice: HeardVoice | undefined): boolean {
+  return Boolean(voice && SHAPES[voice].phone)
+}
+
 /** How many times quicker the line plays in this voice (1 unless 早回し / スロー). */
 export function voiceSpeed(voice: HeardVoice | undefined): number {
   return SHAPES[voice ?? 'natural'].speed ?? 1

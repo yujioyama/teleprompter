@@ -83,6 +83,11 @@ export const BUBBLE_BORDER = 5
 export const BUBBLE_FILL = 'rgba(6, 22, 38, 0.6)'
 export const SPEAKER_ICON_RADIUS = 52
 export const SPEAKER_ICON_EMOJI_PX = 66
+/** The 📞 on the icon of someone on the phone: a small white disc at the icon's lower right. */
+export const PHONE_BADGE_RADIUS = 24
+export const PHONE_BADGE_EMOJI_PX = 30
+/** Where the badge's centre sits from the icon's, in icon radii. */
+export const PHONE_BADGE_OFFSET = 0.72
 /** How far the icon sits in from the bubble's left edge (to its center), and the gap under it. */
 export const SPEAKER_ICON_INSET = 18
 export const SPEAKER_ICON_GAP = 24

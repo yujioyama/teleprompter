@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HEARD_VOICES, isHeardVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
+import { HEARD_VOICES, isHeardVoice, isPhoneVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
 import { measureIntegratedLoudness, TARGET_LUFS } from './loudness'
 
 const RATE = 16000
@@ -150,5 +150,12 @@ describe('levelVoice', () => {
     const loudLevel = measureIntegratedLoudness([levelVoice(loud, RATE)], RATE)
     expect(Math.abs(softLevel - loudLevel)).toBeLessThan(1.5)
     expect(Math.abs(loudLevel - TARGET_LUFS)).toBeLessThan(1.5)
+  })
+})
+
+describe('isPhoneVoice', () => {
+  it('is true for the voices heard down a phone line only', () => {
+    expect(HEARD_VOICES.filter(isPhoneVoice)).toEqual(['phone', 'phoneKid', 'phoneHigh', 'phoneLow'])
+    expect(isPhoneVoice(undefined)).toBe(false)
   })
 })
