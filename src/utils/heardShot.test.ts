@@ -28,14 +28,14 @@ describe('planHeardShot', () => {
     const plan = planHeardShot(region())
     expect(plan.voice.start).toBeCloseTo(0.7)
     expect(plan.voice.end).toBeCloseTo(3.3)
-    expect(plan.listen.start).toBeCloseTo(3.4)
+    expect(plan.listen.start).toBeCloseTo(3.25)
     expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6)
     expect(plan.stretch).toBe(1)
   })
 
   it('slows a short listening down to last as long as the line', () => {
-    // Stopped a second after the line: 4.7 - 0.3 - 3.4 = 1s of listening for 2.6s of voice.
-    const plan = planHeardShot(region({ ceiling: 4.7, duration: 4.7 }))
+    // Stopped about a second and a half after the line: 4.45 - 0.2 - 3.25 = 1s of listening for 2.6s of voice.
+    const plan = planHeardShot(region({ ceiling: 4.45, duration: 4.45 }))
     expect(plan.listen.end - plan.listen.start).toBeCloseTo(1)
     expect(plan.stretch).toBeCloseTo(2.6)
   })
@@ -54,20 +54,20 @@ describe('planHeardShot', () => {
 
   it('says how much longer to listen when there is almost none', () => {
     try {
-      // 4 - 0.3 - 3.4 = 0.3s of listening; a 2.6s voice needs at least 0.65s.
-      planHeardShot(region({ ceiling: 4, duration: 4 }))
+      // 3.75 - 0.2 - 3.25 = 0.3s of listening; a 2.6s voice needs at least 2.6 / 6 = 0.43s.
+      planHeardShot(region({ ceiling: 3.75, duration: 3.75 }))
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(NotEnoughListeningError)
-      expect((err as NotEnoughListeningError).missingSeconds).toBeCloseTo(0.35)
-      expect(heardShotFailureText(err)).toBe('セリフのあと、あと約0.4秒長く黙って聞く顔をしてから止めてください')
+      expect((err as NotEnoughListeningError).missingSeconds).toBeCloseTo(0.133, 2)
+      expect(heardShotFailureText(err)).toBe('セリフのあと、あと約0.2秒長く黙って聞く顔をしてから止めてください')
     }
   })
 
-  it('needs more listening for a long line, so it is slowed at most four times', () => {
-    // A 10.3s voice needs about 2.6s of listening.
-    expect(() => planHeardShot(region({ speechEnd: 9.7, ceiling: 11.4, duration: 12 }))).toThrow(NotEnoughListeningError)
-    expect(planHeardShot(region({ speechEnd: 9.7, ceiling: 13, duration: 13 })).stretch).toBeLessThanOrEqual(4)
+  it('needs more listening for a long line, so it is slowed at most six times', () => {
+    // A 9.3s voice needs about 1.55s of listening.
+    expect(() => planHeardShot(region({ speechEnd: 9.7, ceiling: 11.4, duration: 11.4 }))).toThrow(NotEnoughListeningError)
+    expect(planHeardShot(region({ speechEnd: 9.7, ceiling: 13, duration: 13 })).stretch).toBeLessThanOrEqual(6)
   })
 })
 
@@ -78,7 +78,7 @@ describe('lineEndOf', () => {
     expect(lineEndOf(noisy)).toBe(3)
     const plan = planHeardShot({ ...noisy, ceiling: 5.8 })
     expect(plan.voice.end).toBeCloseTo(3.3)
-    expect(plan.listen.start).toBeCloseTo(3.4)
+    expect(plan.listen.start).toBeCloseTo(3.25)
     // The rustle and the "stop" sound don't cut the listening short: the take runs to 8s.
     expect(plan.listen.end - plan.listen.start).toBeCloseTo(2.6)
   })

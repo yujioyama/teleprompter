@@ -11,21 +11,21 @@ import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
  */
 export const VOICE_PADDING_S = CONVERSATION_PADDING
 /** After the last word, until the face has settled into listening. */
-export const SETTLE_S = 0.4
+export const SETTLE_S = 0.25
 /** Left off the end of the take: the reach for the stop button. */
-export const TAIL_MARGIN_S = 0.3
+export const TAIL_MARGIN_S = 0.2
 
 /**
  * A silence at least this long ends the line: one short line has no pause
  * this long inside it, and whatever is heard after it (a breath, a rustle,
  * the chair) is part of the listening, not of the line.
  */
-export const LINE_END_GAP_S = 0.7
+export const LINE_END_GAP_S = 0.6
 
 /** The least listening kept after the line, however short the line. */
-export const MIN_LISTEN_S = 0.6
+export const MIN_LISTEN_S = 0.4
 /** The listening is slowed down at most this much to last as long as the line. */
-export const MAX_STRETCH = 4
+export const MAX_STRETCH = 6
 
 export interface HeardPlan {
   /** Where the line is spoken in the take. */
