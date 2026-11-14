@@ -143,7 +143,9 @@ export function withOpening(
   position: SubtitlePosition,
   look?: CinemaLook | null,
 ): HookOptions {
-  const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null)
+  // 相手のセリフ cues are taller (bubble and icon): withSpeakers goes first.
+  const spoken = new Set((hook.speakers ?? []).map(s => s.cueId))
+  const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null, undefined, spoken)
   // Bars alone have no color to keep on or soften.
   const graded = opening.grade ? { ...opening, through: hook.lookThrough ?? false, strength: hook.lookStrength ?? 1 } : opening
   return { ...hook, punchIn: null, opening: graded }

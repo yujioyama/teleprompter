@@ -3,9 +3,14 @@ import {
   EN_STYLE,
   JA_STYLE,
   MeasureText,
+  SPEAKER_ICON_RADIUS,
+  SPEAKER_TEXT_WIDTH,
   SUBTITLE_FONT_FAMILY,
+  SUBTITLE_MARGIN_X,
   SUBTITLE_PADDING_Y,
+  SUBTITLE_REFERENCE_WIDTH,
   SUBTITLE_TEXT_WIDTH,
+  bubblePath,
   fontFor,
   layoutCue,
   outlineWidth,
@@ -142,5 +147,43 @@ describe('layoutCue emphasis', () => {
     expect(layoutCue({ en: 'Hello there', ja: null }, measure).en.runs).toEqual([
       [{ text: 'Hello there', emphasized: false }],
     ])
+  })
+})
+
+describe('layoutCue for 相手のセリフ', () => {
+  // A rough monospace measure: each character as wide as 0.55 of the font size.
+  const measure: MeasureText = (text, font) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.55
+
+  it('puts the lines in a bubble no wider than plain subtitles, centered, with the icon inside it too', () => {
+    const long = 'Mate, these are thongs, the ones you wear on your feet at the beach every single day of summer'
+    const layout = layoutCue({ en: long, ja: 'おい これがthongsだって ビーチで毎日足に履くやつのことだよ' }, measure, { speaker: true })
+    const bubble = layout.bubble!
+    expect(bubble.width).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
+    expect(bubble.left).toBeGreaterThanOrEqual(SUBTITLE_MARGIN_X)
+    expect(bubble.left + bubble.width / 2).toBeCloseTo(SUBTITLE_REFERENCE_WIDTH / 2)
+    expect(bubble.iconX - SPEAKER_ICON_RADIUS).toBeGreaterThanOrEqual(SUBTITLE_MARGIN_X)
+    for (const width of [...layout.en.widths, ...layout.ja!.widths]) {
+      expect(width).toBeLessThanOrEqual(SPEAKER_TEXT_WIDTH)
+    }
+    // The icon sits above the bubble, and everything is inside the image.
+    expect(bubble.iconY + SPEAKER_ICON_RADIUS).toBeLessThan(bubble.top)
+    expect(bubble.top + bubble.height).toBeLessThanOrEqual(layout.height)
+  })
+
+  it('makes a short line a small bubble, and leaves plain cues as they were', () => {
+    const spoken = layoutCue({ en: 'Sorry?', ja: 'すみません?' }, measure, { speaker: true })
+    const plain = layoutCue({ en: 'Sorry?', ja: 'すみません?' }, measure)
+    expect(spoken.bubble!.width).toBeLessThan(SUBTITLE_TEXT_WIDTH / 2)
+    expect(plain.bubble).toBeUndefined()
+    expect(spoken.height).toBeGreaterThan(plain.height)
+    expect(spoken.en.lines).toEqual(plain.en.lines)
+  })
+
+  it('draws the tail from the top edge up into the icon', () => {
+    const layout = layoutCue({ en: 'Beach in five.', ja: '5分でビーチな' }, measure, { speaker: true })
+    const path = bubblePath(layout.bubble!)
+    expect(path.startsWith('M')).toBe(true)
+    expect(path).toContain(`L${layout.bubble!.iconX} `)
+    expect(path.endsWith('Z')).toBe(true)
   })
 })

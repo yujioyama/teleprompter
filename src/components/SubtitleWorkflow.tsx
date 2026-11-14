@@ -192,8 +192,10 @@ export default function SubtitleWorkflow({
   const [check, setCheck] = useState<{ id: string; replay: number } | null>(null)
   // Memoized so the fairy plan below isn't recomputed on every render (hookSettings is stable in the parent).
   const hook = useMemo(() => {
-    const opened = withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook)
-    return withSpeakers(lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened, cues, shotCueInputs)
+    // The speakers first: the opening keeps clear of their taller, bubbled cues.
+    const spoken = withSpeakers(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, shotCueInputs)
+    const opened = withOpening(spoken, cues, position, cinemaLook)
+    return lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened
   }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages, shotCueInputs])
   const hasLineImages = Boolean(lineImages?.images.length)
   // Picked but not going to show: not on this device, or no subtitle matches its line.
