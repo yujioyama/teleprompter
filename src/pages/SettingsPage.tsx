@@ -60,9 +60,11 @@ export default function SettingsPage() {
         <div className={styles.sectionTitle}>BGM</div>
         <BgmSettings
           trackId={settings.defaultBgmId}
+          conversationTrackId={settings.conversationBgmId}
           volume={settings.bgmVolume}
           stopBeforePunchline={settings.bgmStopBeforePunchline}
           youtubeTrackId={settings.youtubeBgmId}
+          conversationYoutubeTrackId={settings.conversationYoutubeBgmId}
           onChange={updateSettings}
         />
       </div>

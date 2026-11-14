@@ -171,11 +171,11 @@ export default function FinalizePage() {
   const [settings, updateSettings] = useSettings()
   const { hookStyleEnabled, hookPosition, punchInEnabled, punchInZoom, punchInDirection, punchInAt, punchInDuration, stickerPlacement, stickerMotion, stickerRoute, fairyEnabled, midZoomEnabled, cinemaLookThrough, cinemaLookStrength } = settings
   const { normalizeAudio, voicePreset } = settings
-  const defaultTrack = defaultBgmTrack(settings)
   const { bgmVolume, bgmStopBeforePunchline } = settings
   // A re-combine (or a fresh visit) starts the subtitles at the usual spot.
   const initialSubtitleState = (): SubtitleState => ({ ...INITIAL_SUBTITLE_STATE, position: settings.subtitlePosition })
   const script = id ? getScript(id) : undefined
+  const defaultTrack = defaultBgmTrack(settings, isConversation(script))
   // The script as of now, for work that finishes after a 間を残す switch.
   const scriptRef = useRef(script)
   scriptRef.current = script
@@ -630,7 +630,7 @@ export default function FinalizePage() {
 
   // YouTube用も書き出す, and the BGM it swaps in for the usual one.
   const youtubeEnabled = settings.youtubeExportEnabled
-  const youtubeTrack = youtubeBgmTrack(settings)
+  const youtubeTrack = youtubeBgmTrack(settings, isConversation(script))
 
   // With the cover frames set to 最初 and 作ったカバー, the burn puts the
   // cover in ahead of the first shot, in that shot's encode: the export then

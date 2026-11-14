@@ -22,6 +22,11 @@ export interface AppSettings {
   voicePreset: VoicePreset
   /** BGM added to every video without stopping on the BGM step; null = none. */
   defaultBgmId: string | null
+  /**
+   * The usual BGM for a conversation (a script with 相手のセリフ, see
+   * isConversation) in place of defaultBgmId; null = none.
+   */
+  conversationBgmId: string | null
   /** 0-1, the BGM step's volume slider. */
   bgmVolume: number
   /** Drop the BGM out just before the punchline (the last shot). */
@@ -74,6 +79,8 @@ export interface AppSettings {
   youtubeExportEnabled: boolean
   /** The BGM the YouTube version has in place of the video's own. */
   youtubeBgmId: string
+  /** The YouTube version's BGM for a conversation (see isConversation). */
+  conversationYoutubeBgmId: string
   /** Shared secret for the Claude inbox (INBOX_SECRET); '' = not set up. */
   inboxKey: string
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
@@ -89,6 +96,7 @@ const DEFAULTS: AppSettings = {
   normalizeAudio: true,
   voicePreset: 'natural',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
+  conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.3,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
@@ -115,6 +123,7 @@ const DEFAULTS: AppSettings = {
   coverFrameSource: 'made',
   youtubeExportEnabled: false,
   youtubeBgmId: 'youtube-touching-moment',
+  conversationYoutubeBgmId: 'youtube-the-trapezist',
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
@@ -184,15 +193,28 @@ export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => vo
   return [settings, updateSettings]
 }
 
-/** The YouTube version's BGM; the default one when the chosen track has since been removed. */
-export function youtubeBgmTrack(settings: Pick<AppSettings, 'youtubeBgmId'>): MusicTrack {
-  return (
-    MUSIC_TRACKS.find(t => t.id === settings.youtubeBgmId) ??
-    MUSIC_TRACKS.find(t => t.id === DEFAULTS.youtubeBgmId)!
-  )
+/**
+ * The YouTube version's BGM, a `conversation`'s own for one (see
+ * isConversation); the default one when the chosen track has since been removed.
+ */
+export function youtubeBgmTrack(
+  settings: Pick<AppSettings, 'youtubeBgmId'> & Partial<Pick<AppSettings, 'conversationYoutubeBgmId'>>,
+  conversation = false,
+): MusicTrack {
+  const [id, fallback] = conversation
+    ? [settings.conversationYoutubeBgmId, DEFAULTS.conversationYoutubeBgmId]
+    : [settings.youtubeBgmId, DEFAULTS.youtubeBgmId]
+  return MUSIC_TRACKS.find(t => t.id === id) ?? MUSIC_TRACKS.find(t => t.id === fallback)!
 }
 
-/** The usual BGM's track, or null when there is none or it has since been removed. */
-export function defaultBgmTrack(settings: Pick<AppSettings, 'defaultBgmId'>): MusicTrack | null {
-  return MUSIC_TRACKS.find(t => t.id === settings.defaultBgmId) ?? null
+/**
+ * The usual BGM's track, or null when there is none or it has since been
+ * removed. A `conversation` (see isConversation) has its own.
+ */
+export function defaultBgmTrack(
+  settings: Pick<AppSettings, 'defaultBgmId'> & Partial<Pick<AppSettings, 'conversationBgmId'>>,
+  conversation = false,
+): MusicTrack | null {
+  const id = conversation ? (settings.conversationBgmId ?? null) : settings.defaultBgmId
+  return MUSIC_TRACKS.find(t => t.id === id) ?? null
 }
