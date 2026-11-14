@@ -78,6 +78,7 @@ describe('resolveShotTrimSettings', () => {
     inboxKey: '',
     bgmDefaultRev: 1,
     subtitlePositionRev: 1,
+    bgmVolumeRev: 1,
   }
 
   it('gives the first shot its own lead-in before the speech', () => {

@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { HEARD_ZOOM_MAX, heardZoomTo, slowZoomScale } from './heardZoom'
 
 describe('heardZoomTo', () => {
+  it('leaves a short line still', () => {
+    expect(heardZoomTo(1.5)).toBe(1)
+    expect(heardZoomTo(2.4)).toBe(1)
+  })
+
   it('moves in further on a longer line, but never too far', () => {
-    expect(heardZoomTo(2)).toBeCloseTo(1.05)
+    expect(heardZoomTo(3)).toBeCloseTo(1.075)
     expect(heardZoomTo(10)).toBe(HEARD_ZOOM_MAX)
     expect(heardZoomTo(0)).toBe(1)
   })

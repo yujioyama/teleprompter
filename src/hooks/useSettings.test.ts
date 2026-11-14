@@ -11,7 +11,7 @@ const DEFAULTS = {
   voicePreset: 'natural',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
-  bgmVolume: 0.3,
+  bgmVolume: 0.2,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
@@ -41,6 +41,7 @@ const DEFAULTS = {
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
+  bgmVolumeRev: 1,
 }
 
 beforeEach(() => {
@@ -148,9 +149,18 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toMatchObject({
       defaultBgmId: 'warmpiano-my-nightly-prayer',
-      bgmVolume: 0.3,
+      bgmVolume: 0.2,
       subtitlePosition: SUBTITLE_POSITION_TOP,
     })
+  })
+
+  it('turns a BGM left at the old 30% down to 20%, once', () => {
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.3 }))
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.2)
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.3, bgmVolumeRev: 1 }))
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.3)
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.45 }))
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.45)
   })
 
   it('moves subtitles left on the old bottom default up to the top, once', () => {

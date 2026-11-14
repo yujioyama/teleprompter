@@ -37,11 +37,11 @@ describe('SettingsPage voice preset', () => {
 })
 
 describe('SettingsPage BGM', () => {
-  it('starts on My nightly prayer at 30%', () => {
+  it('starts on My nightly prayer at 20%', () => {
     renderSettings()
     expect(screen.getByRole('combobox', { name: 'いつものBGM' })).toHaveValue('warmpiano-my-nightly-prayer')
-    expect(screen.getByRole('slider', { name: 'BGMの音量' })).toHaveValue('0.3')
-    expect(screen.getByText('30%')).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'BGMの音量' })).toHaveValue('0.2')
+    expect(screen.getByText('20%')).toBeInTheDocument()
   })
 
   it('saves the usual BGM and its volume', () => {
