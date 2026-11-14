@@ -10,8 +10,8 @@ import {
   BUBBLE_PAD_Y,
   SPEAKER_ICON_EMOJI_PX,
   PHONE_BADGE_EMOJI_PX,
-  PHONE_BADGE_OFFSET,
   PHONE_BADGE_RADIUS,
+  phoneBadgeCenter,
   SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
@@ -86,8 +86,7 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
  * its white disc, drawn as the burn draws them, over the whole cue box.
  */
 function SpeakerBubbleArt({ bubble, icon, height, phone = false }: { bubble: SpeakerBubble; icon: string; height: number; phone?: boolean }) {
-  const badgeX = bubble.iconX + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
-  const badgeY = bubble.iconY + SPEAKER_ICON_RADIUS * PHONE_BADGE_OFFSET
+  const { x: badgeX, y: badgeY } = phoneBadgeCenter(bubble)
   return (
     <svg
       className={styles.bubble}
