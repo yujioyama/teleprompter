@@ -86,6 +86,8 @@ export interface AppSettings {
   /** Which usual-BGM default this object was saved under (see migrateSettings). */
   bgmDefaultRev: number
   subtitlePositionRev: number
+  /** Which BGM-volume default this object was saved under (see migrateSettings). */
+  bgmVolumeRev: number
 }
 
 const STORAGE_KEY = 'teleprompter_settings'
@@ -97,7 +99,7 @@ const DEFAULTS: AppSettings = {
   voicePreset: 'natural',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
-  bgmVolume: 0.3,
+  bgmVolume: 0.2,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
@@ -127,6 +129,7 @@ const DEFAULTS: AppSettings = {
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
+  bgmVolumeRev: 1,
 }
 
 /** Stored settings brought up to date with the current shape. */
@@ -166,6 +169,12 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // Subtitles moved up top, with only a line with an image down on the chest
   // (2026-11-06); ones left on the old default follow. Saved since, a settings
   // object has subtitlePositionRev.
+  // The BGM went quieter (2026-11-14), under the brighter music box of the
+  // conversations; one left on the old default follows. Saved since, a
+  // settings object has bgmVolumeRev.
+  if (!('bgmVolumeRev' in next) && next.bgmVolume === 0.3) {
+    next.bgmVolume = DEFAULTS.bgmVolume
+  }
   if (!('subtitlePositionRev' in next) && next.subtitlePosition === SUBTITLE_POSITION_BOTTOM) {
     next.subtitlePosition = SUBTITLE_POSITION_TOP
   }

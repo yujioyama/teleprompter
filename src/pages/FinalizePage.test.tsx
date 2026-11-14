@@ -1756,7 +1756,7 @@ describe('FinalizePage with a usual BGM', () => {
   })
 
   it('joins the burned video with audio prepared during the subtitle step', async () => {
-    useSettingsOf({ defaultBgmId: 'lofi-tokyo', bgmVolume: 0.3, normalizeAudio: true })
+    useSettingsOf({ defaultBgmId: 'lofi-tokyo', bgmVolume: 0.35, normalizeAudio: true })
     vi.mocked(canUseWebCodecs).mockResolvedValue(true)
     vi.mocked(burnModule.burnShotSubtitles).mockResolvedValue(new Blob(['burned-shot'], { type: 'video/mp4' }))
     const prepared = new Blob(['prepared'], { type: 'audio/mp4' })
@@ -1772,7 +1772,7 @@ describe('FinalizePage with a usual BGM', () => {
     const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
     expect(prepareFinalAudio).toHaveBeenCalledTimes(1)
     expect(vi.mocked(prepareFinalAudio).mock.calls[0][0]).toBe(combined)
-    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.3, true, 'natural', { stopAt: null, soft: false }, 0])
+    expect(vi.mocked(prepareFinalAudio).mock.calls[0].slice(2)).toEqual([0.35, true, 'natural', { stopAt: null, soft: false }, 0])
     expect(joinVideoAndAudio).toHaveBeenCalledWith(burned, prepared)
     expect(markLoudnessNormalized).toHaveBeenCalledWith(joined)
     expect(mixModule.mixMusic).not.toHaveBeenCalled()

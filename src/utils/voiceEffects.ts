@@ -1,8 +1,11 @@
 import { applyGainWithLimiter, planLoudnessGain } from './loudness'
+import { shiftFormants } from './formant'
 /**
  * 相手のセリフ: the voices the other person's line can be given. The line
  * is said in our own voice; these make it someone else's.
- * - kid / high / low change how high the voice is and keep its pace
+ * - kid / high / low change how high the voice is and keep its pace; the
+ *   formants (how big the speaker sounds) move far less than the pitch, as
+ *   between real voices, so a raised voice doesn't sound like helium
  * - fast / slow change both together, like a tape played quicker or slower
  * - phone keeps the voice and narrows it to a telephone's band
  */
@@ -28,6 +31,8 @@ const semitones = (n: number) => 2 ** (n / 12)
 interface VoiceShape {
   /** How many times higher the voice is; its pace is kept. */
   pitch?: number
+  /** How many times higher its formants end up (with `pitch`; 1 = the speaker's own). */
+  formant?: number
   /** Played this many times quicker, higher with it. */
   speed?: number
   phone?: boolean
@@ -35,9 +40,9 @@ interface VoiceShape {
 
 const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
-  kid: { pitch: semitones(5) },
-  high: { pitch: semitones(3) },
-  low: { pitch: semitones(-4) },
+  kid: { pitch: semitones(8), formant: 1.2 },
+  high: { pitch: semitones(6), formant: 1.12 },
+  low: { pitch: semitones(-4), formant: 0.92 },
   fast: { speed: 1.25 },
   slow: { speed: 0.85 },
   phone: { phone: true },
@@ -53,7 +58,11 @@ export function shapeVoice(samples: Float32Array, sampleRate: number, voice: Hea
   const shape = SHAPES[voice ?? 'natural']
   let out = samples
   // Higher without quicker: made longer at the same pitch, then played that much faster.
-  if (shape.pitch) out = resample(timeStretch(out, sampleRate, shape.pitch), shape.pitch, samples.length)
+  if (shape.pitch) {
+    out = resample(timeStretch(out, sampleRate, shape.pitch), shape.pitch, samples.length)
+    // The shift took the formants up with the pitch: back to where they belong.
+    out = shiftFormants(out, sampleRate, (shape.formant ?? 1) / shape.pitch)
+  }
   if (shape.speed) out = resample(out, shape.speed)
   if (shape.phone) out = telephone(out, sampleRate)
   return out

@@ -67,8 +67,8 @@ describe('shapeVoice', () => {
   })
 
   it.each([
-    ['kid', 2 ** (5 / 12)],
-    ['high', 2 ** (3 / 12)],
+    ['kid', 2 ** (8 / 12)],
+    ['high', 2 ** (6 / 12)],
     ['low', 2 ** (-4 / 12)],
   ] as const)('makes the %s voice higher or lower without changing how long the line takes', (name, ratio) => {
     const out = shapeVoice(voice, RATE, name)
