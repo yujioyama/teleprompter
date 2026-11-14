@@ -42,7 +42,8 @@ const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
   kid: { pitch: semitones(11), formant: 1.45 },
   high: { pitch: semitones(7), formant: 1.12 },
-  low: { pitch: semitones(-4), formant: 0.92 },
+  // Our own voice is a man's already: a little lower is another man, more is a monster.
+  low: { pitch: semitones(-2), formant: 0.97 },
   fast: { speed: 1.25 },
   slow: { speed: 0.85 },
   phone: { phone: true },

@@ -596,13 +596,15 @@ export default function FinalizePage() {
   )
   const speakerInputs = combined?.cueInputs
   const hookFor = useCallback(
-    (cues: SubtitleCue[], position: SubtitlePosition) => withSpeakers(
-      withLineImages(
-        withOpening(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, position, cinemaLook),
-        { ...lineImages, cues },
+    (cues: SubtitleCue[], position: SubtitlePosition) => withLineImages(
+      // The speakers first: the opening keeps clear of their taller, bubbled cues.
+      withOpening(
+        withSpeakers(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, speakerInputs ?? []),
+        cues,
+        position,
+        cinemaLook,
       ),
-      cues,
-      speakerInputs ?? [],
+      { ...lineImages, cues },
     ),
     [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs],
   )

@@ -65,13 +65,51 @@ export interface TextBlockLayout {
   /** `lines` split into plain and emphasized (`*…*`, `{…}`) runs, markers removed. */
   runs: Run[][]
   lineHeightPx: number
+  /** Each line's measured width, in reference px. */
+  widths: number[]
+}
+
+/**
+ * 相手のセリフ: the other person's lines sit in a speech bubble, with their
+ * icon (bigger than the text, on a white disc) above its top-left corner and
+ * the bubble's tail pointing up at it. Everything is in reference px and the
+ * text is wrapped narrower by the bubble's padding, so bubble and icon always
+ * fit inside SUBTITLE_TEXT_WIDTH, as plain subtitles do.
+ */
+export const BUBBLE_PAD_X = 34
+export const BUBBLE_PAD_Y = 14
+export const BUBBLE_RADIUS = 34
+export const BUBBLE_BORDER = 5
+export const BUBBLE_FILL = 'rgba(6, 22, 38, 0.6)'
+export const SPEAKER_ICON_RADIUS = 52
+export const SPEAKER_ICON_EMOJI_PX = 66
+/** How far the icon sits in from the bubble's left edge (to its center), and the gap under it. */
+export const SPEAKER_ICON_INSET = 18
+export const SPEAKER_ICON_GAP = 24
+export const SPEAKER_TAIL_HALF_WIDTH = 20
+/** The text width inside a bubble: the bubble, border and all, is as wide as plain text at most. */
+export const SPEAKER_TEXT_WIDTH = SUBTITLE_TEXT_WIDTH - 2 * (BUBBLE_PAD_X + BUBBLE_BORDER)
+
+export interface SpeakerBubble {
+  /** The bubble's outer box (border included), in the cue image's px. */
+  left: number
+  top: number
+  width: number
+  height: number
+  /** The icon's center. */
+  iconX: number
+  iconY: number
+  /** Where the text's first line starts (its top). */
+  textTop: number
 }
 
 export interface CueLayout {
   en: TextBlockLayout
   ja: TextBlockLayout | null
-  /** Height of the rendered image: the lines plus outline room. */
+  /** Height of the rendered image: the lines plus outline room (and a 相手のセリフ's bubble and icon). */
   height: number
+  /** A 相手のセリフ cue's bubble and icon. */
+  bubble?: SpeakerBubble
 }
 
 /** A breakable unit of text; `spaceBefore` is true when whitespace separated it from the previous token. */
@@ -227,26 +265,89 @@ export function wrapText(text: string, maxWidth: number, width: (s: string) => n
   return lines
 }
 
-function layoutBlock(raw: string, style: TextStyle, measure: MeasureText): TextBlockLayout {
+function layoutBlock(raw: string, style: TextStyle, measure: MeasureText, maxWidth: number): TextBlockLayout {
   const emphasis = parseEmphasis(raw)
   let px = style.maxPx
   let lines: string[] = []
   for (; px >= style.minPx; px -= 2) {
     const font = fontFor(style, px)
-    lines = wrapText(emphasis.text, SUBTITLE_TEXT_WIDTH, s => measure(s, font))
+    lines = wrapText(emphasis.text, maxWidth, s => measure(s, font))
     if (lines.length <= style.maxLines) break
   }
   px = Math.max(px, style.minPx)
-  return { fontPx: px, lines, runs: emphasisRuns(lines, emphasis), lineHeightPx: Math.round(px * style.lineHeight) }
+  const font = fontFor(style, px)
+  return {
+    fontPx: px,
+    lines,
+    runs: emphasisRuns(lines, emphasis),
+    lineHeightPx: Math.round(px * style.lineHeight),
+    widths: lines.map(line => measure(line, font)),
+  }
 }
 
-/** Lay out one cue's subtitle (English, plus Japanese once translated) at the 1080px reference width. */
-export function layoutCue(cue: Pick<SubtitleCue, 'en' | 'ja'>, measure: MeasureText): CueLayout {
-  const en = layoutBlock(cue.en, EN_STYLE, measure)
-  const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure) : null
-  let height = SUBTITLE_PADDING_Y * 2 + en.lines.length * en.lineHeightPx
-  if (ja) height += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
-  return { en, ja, height }
+/**
+ * Lay out one cue's subtitle (English, plus Japanese once translated) at the
+ * 1080px reference width. With `speaker` (相手のセリフ) it is wrapped to fit
+ * a speech bubble, with room above for the icon.
+ */
+export function layoutCue(cue: Pick<SubtitleCue, 'en' | 'ja'>, measure: MeasureText, { speaker = false }: { speaker?: boolean } = {}): CueLayout {
+  const maxWidth = speaker ? SPEAKER_TEXT_WIDTH : SUBTITLE_TEXT_WIDTH
+  const en = layoutBlock(cue.en, EN_STYLE, measure, maxWidth)
+  const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure, maxWidth) : null
+  let textHeight = en.lines.length * en.lineHeightPx
+  if (ja) textHeight += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
+  if (!speaker) return { en, ja, height: SUBTITLE_PADDING_Y * 2 + textHeight }
+
+  const textWidth = Math.min(maxWidth, Math.max(...en.widths, ...(ja?.widths ?? [])))
+  const width = textWidth + 2 * (BUBBLE_PAD_X + BUBBLE_BORDER)
+  const left = (SUBTITLE_REFERENCE_WIDTH - width) / 2
+  const iconY = SUBTITLE_PADDING_Y + SPEAKER_ICON_RADIUS
+  const top = iconY + SPEAKER_ICON_RADIUS + SPEAKER_ICON_GAP
+  const textTop = top + BUBBLE_BORDER + BUBBLE_PAD_Y
+  const height = textHeight + 2 * (BUBBLE_BORDER + BUBBLE_PAD_Y)
+  const bubble: SpeakerBubble = {
+    left,
+    top,
+    width,
+    height,
+    iconX: left + SPEAKER_ICON_INSET + SPEAKER_ICON_RADIUS,
+    iconY,
+    textTop,
+  }
+  return { en, ja, height: top + height + SUBTITLE_PADDING_Y, bubble }
+}
+
+/**
+ * The bubble's outline with its tail, as an SVG path (the burn draws it as
+ * a canvas Path2D, the preview as an SVG, so both are the same shape): a
+ * rounded box, and from its top edge a short tail rising into the icon's
+ * disc, which is drawn over its tip. `inset` pulls it in (for a stroke
+ * centered on the edge). In the cue image's px.
+ */
+export function bubblePath(bubble: SpeakerBubble, inset = 0): string {
+  const l = bubble.left + inset
+  const t = bubble.top + inset
+  const r = bubble.left + bubble.width - inset
+  const b = bubble.top + bubble.height - inset
+  const k = Math.max(0, Math.min(BUBBLE_RADIUS - inset, (b - t) / 2))
+  const tailX = bubble.iconX
+  const tailTip = bubble.iconY + SPEAKER_ICON_RADIUS * 0.4
+  const n = (v: number) => Math.round(v * 10) / 10
+  return [
+    `M${n(l + k)} ${n(t)}`,
+    `L${n(tailX - SPEAKER_TAIL_HALF_WIDTH)} ${n(t)}`,
+    `L${n(tailX)} ${n(tailTip)}`,
+    `L${n(tailX + SPEAKER_TAIL_HALF_WIDTH)} ${n(t)}`,
+    `L${n(r - k)} ${n(t)}`,
+    `A${n(k)} ${n(k)} 0 0 1 ${n(r)} ${n(t + k)}`,
+    `L${n(r)} ${n(b - k)}`,
+    `A${n(k)} ${n(k)} 0 0 1 ${n(r - k)} ${n(b)}`,
+    `L${n(l + k)} ${n(b)}`,
+    `A${n(k)} ${n(k)} 0 0 1 ${n(l)} ${n(b - k)}`,
+    `L${n(l)} ${n(t + k)}`,
+    `A${n(k)} ${n(k)} 0 0 1 ${n(l + k)} ${n(t)}`,
+    'Z',
+  ].join(' ')
 }
 
 /**

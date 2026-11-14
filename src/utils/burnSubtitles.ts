@@ -24,7 +24,7 @@ import {
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
-import { SPEAKER_EMOJI_RATIO, SPEAKER_GAP, SPEAKER_RADIUS_RATIO, SPEAKER_TEXT_COLOR, speakerOf } from './speakers'
+import { SPEAKER_TEXT_COLOR, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
@@ -32,8 +32,12 @@ import type { MidZoomSegment } from './midZoom'
 import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from './lineImages'
 import { openingFilterStages, type OpeningLook } from './openingLook'
 import {
+  BUBBLE_BORDER,
+  BUBBLE_FILL,
   EN_STYLE,
   JA_STYLE,
+  SPEAKER_ICON_EMOJI_PX,
+  SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_PADDING_Y,
   SUBTITLE_REFERENCE_WIDTH,
@@ -42,7 +46,9 @@ import {
   fontFor,
   layoutCue,
   outlineWidth,
+  bubblePath,
   type MeasureText,
+  type SpeakerBubble,
 } from './subtitleLayout'
 
 /**
@@ -172,29 +178,43 @@ function drawOutlinedRuns(ctx: CanvasRenderingContext2D, runs: Run[], centerX: n
 }
 
 /**
- * The other person's icon: an emoji on a white disc, just left of where
- * their first line starts (`lineLeft`), in the margin the text never uses.
+ * 相手のセリフ: the speech bubble behind the text (tail rising to the icon),
+ * then the icon, an emoji on a white disc, over the tail's tip.
  */
-function drawSpeaker(ctx: CanvasRenderingContext2D, icon: string, lineLeft: number, y: number, fontPx: number) {
-  const radius = fontPx * SPEAKER_RADIUS_RATIO
-  const edge = outlineWidth(fontPx) / 2
-  const x = Math.max(radius + edge, lineLeft - SPEAKER_GAP - radius)
+function drawBubble(ctx: CanvasRenderingContext2D, bubble: SpeakerBubble) {
+  ctx.save()
+  const shape = new Path2D(bubblePath(bubble, BUBBLE_BORDER / 2))
+  ctx.shadowColor = SUBTITLE_SHADOW.color
+  ctx.shadowBlur = 12
+  ctx.shadowOffsetY = 3
+  ctx.fillStyle = BUBBLE_FILL
+  ctx.fill(shape)
+  ctx.shadowColor = 'transparent'
+  ctx.strokeStyle = SPEAKER_TEXT_COLOR
+  ctx.lineWidth = BUBBLE_BORDER
+  ctx.lineJoin = 'round'
+  ctx.stroke(shape)
+  ctx.restore()
+}
+
+function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: SpeakerBubble) {
   ctx.save()
   ctx.beginPath()
-  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.arc(bubble.iconX, bubble.iconY, SPEAKER_ICON_RADIUS, 0, Math.PI * 2)
   ctx.shadowColor = SUBTITLE_SHADOW.color
-  ctx.shadowBlur = fontPx * SUBTITLE_SHADOW.blurRatio
-  ctx.shadowOffsetY = fontPx * SUBTITLE_SHADOW.offsetYRatio
+  ctx.shadowBlur = 12
+  ctx.shadowOffsetY = 3
   ctx.fillStyle = '#fff'
   ctx.fill()
   ctx.shadowColor = 'transparent'
-  ctx.strokeStyle = '#000'
-  ctx.lineWidth = edge
+  ctx.strokeStyle = SPEAKER_TEXT_COLOR
+  ctx.lineWidth = BUBBLE_BORDER
   ctx.stroke()
-  ctx.font = `${Math.round(fontPx * SPEAKER_EMOJI_RATIO)}px ${EMOJI_FONT_FAMILY}`
+  ctx.font = `${SPEAKER_ICON_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
   ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
   ctx.fillStyle = '#000'
-  ctx.fillText(icon, x, y)
+  ctx.fillText(icon, bubble.iconX, bubble.iconY + SPEAKER_ICON_EMOJI_PX * 0.04)
   ctx.restore()
 }
 
@@ -240,26 +260,28 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * first line.
  */
 export async function renderCueImage(cue: SubtitleCue, speaker?: string): Promise<{ image: Blob; height: number }> {
-  const layout = layoutCue(cue, canvasMeasure())
+  const layout = layoutCue(cue, canvasMeasure(), { speaker: Boolean(speaker) })
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
 
-  let top = SUBTITLE_PADDING_Y
+  const bubble = speaker ? layout.bubble : undefined
+  if (bubble) drawBubble(ctx, bubble)
+  let top = bubble ? bubble.textTop : SUBTITLE_PADDING_Y
   const plain = speaker ? SPEAKER_TEXT_COLOR : undefined
-  const drawBlock = (block: TextBlockLayout, font: string, icon?: string) => {
-    block.runs.forEach((runs, i) => {
+  const drawBlock = (block: TextBlockLayout, font: string) => {
+    block.runs.forEach(runs => {
       ctx.font = font
       const y = top + block.lineHeightPx / 2
-      const left = drawOutlinedRuns(ctx, runs, width / 2, y, block.fontPx, plain)
-      if (icon && i === 0) drawSpeaker(ctx, icon, left, y, block.fontPx)
+      drawOutlinedRuns(ctx, runs, width / 2, y, block.fontPx, plain)
       top += block.lineHeightPx
     })
   }
-  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx), speaker)
+  drawBlock(layout.en, fontFor(EN_STYLE, layout.en.fontPx))
   if (layout.ja) {
     top += SUBTITLE_BLOCK_GAP
     drawBlock(layout.ja, fontFor(JA_STYLE, layout.ja.fontPx))
   }
+  if (bubble && speaker) drawSpeakerIcon(ctx, speaker, bubble)
   return { image: await toPng(canvas), height: layout.height }
 }
 

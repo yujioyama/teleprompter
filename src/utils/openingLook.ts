@@ -80,7 +80,8 @@ export function letterboxBarHeight(tops: number[]): number {
 /**
  * The look timed and sized from `cues` (as edited): the bars slide away as
  * line 1 ends, and are kept clear of every cue starting before they're
- * gone, each laid out and centered on `position` as the burn places it.
+ * gone, each laid out and centered on `position` as the burn places it
+ * (in its speech bubble, for the cues in `spokenCueIds`).
  * `grade` is the film look picked for it.
  */
 export function openingLookFor(
@@ -88,11 +89,12 @@ export function openingLookFor(
   position: SubtitlePosition,
   grade: CinemaLook | null = null,
   measure: MeasureText = createCanvasMeasure(),
+  spokenCueIds: ReadonlySet<string> = new Set(),
 ): OpeningLook {
   const at = clampTime(firstLineEnd(cues) ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold)
   const tops = cues
     .filter(c => c.start < at + LETTERBOX.duration)
-    .map(c => clampedSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure).height))
+    .map(c => clampedSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure, { speaker: spokenCueIds.has(c.id) }).height))
   return { kind: 'letterbox', at, height: letterboxBarHeight(tops), grade }
 }
 

@@ -3,8 +3,13 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SPEAKER_EMOJI_RATIO, SPEAKER_GAP, SPEAKER_RADIUS_RATIO, SPEAKER_TEXT_COLOR, speakerOf } from '../utils/speakers'
+import { SPEAKER_TEXT_COLOR, speakerOf } from '../utils/speakers'
 import {
+  BUBBLE_BORDER,
+  BUBBLE_FILL,
+  BUBBLE_PAD_Y,
+  SPEAKER_ICON_EMOJI_PX,
+  SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
   SUBTITLE_PADDING_Y,
@@ -13,9 +18,11 @@ import {
   SUBTITLE_TEXT_WIDTH,
   TextBlockLayout,
   createCanvasMeasure,
+  bubblePath,
   layoutCue,
   outlineWidth,
   type MeasureText,
+  type SpeakerBubble,
 } from '../utils/subtitleLayout'
 import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers } from '../utils/subtitleSticker'
 import { placeSticker, type StickerPose } from '../utils/stickerMotion'
@@ -54,45 +61,55 @@ function blockStyle(block: TextBlockLayout): CSSProperties {
   }
 }
 
-/**
- * A block's lines, with `*theme*` runs in yellow and `{word}` runs in mint, as
- * burned in. `icon` (相手のセリフ) sits on its white disc just left of the first line.
- */
-function BlockLines({ block, icon }: { block: TextBlockLayout; icon?: string }) {
-  const radius = block.fontPx * SPEAKER_RADIUS_RATIO
+/** A block's lines, with `*theme*` runs in yellow and `{word}` runs in mint, as burned in. */
+function BlockLines({ block }: { block: TextBlockLayout }) {
   return (
     <>
-      {block.runs.map((runs, i) => {
-        const text = runs.map((run, j) =>
-          run.emphasized
-            ? <span key={j} style={{ color: runColor(run) }}>{run.text}</span>
-            : <Fragment key={j}>{run.text}</Fragment>,
-        )
-        return (
-          <span key={i} className={styles.line}>
-            {icon && i === 0 ? (
-              <span className={styles.spoken}>
-                <span
-                  className={styles.speaker}
-                  data-testid="subtitle-speaker"
-                  style={{
-                    marginRight: cqw(SPEAKER_GAP),
-                    width: cqw(radius * 2),
-                    height: cqw(radius * 2),
-                    border: `${cqw(outlineWidth(block.fontPx) / 2)} solid #000`,
-                    fontFamily: EMOJI_FONT_FAMILY,
-                    fontSize: cqw(block.fontPx * SPEAKER_EMOJI_RATIO),
-                  }}
-                >
-                  {icon}
-                </span>
-                {text}
-              </span>
-            ) : text}
-          </span>
-        )
-      })}
+      {block.runs.map((runs, i) => (
+        <span key={i} className={styles.line}>
+          {runs.map((run, j) =>
+            run.emphasized
+              ? <span key={j} style={{ color: runColor(run) }}>{run.text}</span>
+              : <Fragment key={j}>{run.text}</Fragment>,
+          )}
+        </span>
+      ))}
     </>
+  )
+}
+
+/**
+ * 相手のセリフ: the speech bubble (tail rising to the icon) and the icon on
+ * its white disc, drawn as the burn draws them, over the whole cue box.
+ */
+function SpeakerBubbleArt({ bubble, icon, height }: { bubble: SpeakerBubble; icon: string; height: number }) {
+  return (
+    <svg
+      className={styles.bubble}
+      data-testid="subtitle-bubble"
+      viewBox={`0 0 ${SUBTITLE_REFERENCE_WIDTH} ${height}`}
+      aria-hidden="true"
+    >
+      <path
+        d={bubblePath(bubble, BUBBLE_BORDER / 2)}
+        fill={BUBBLE_FILL}
+        stroke={SPEAKER_TEXT_COLOR}
+        strokeWidth={BUBBLE_BORDER}
+        strokeLinejoin="round"
+      />
+      <circle cx={bubble.iconX} cy={bubble.iconY} r={SPEAKER_ICON_RADIUS - BUBBLE_BORDER / 2} fill="#fff" stroke={SPEAKER_TEXT_COLOR} strokeWidth={BUBBLE_BORDER} />
+      <text
+        data-testid="subtitle-speaker"
+        x={bubble.iconX}
+        y={bubble.iconY + SPEAKER_ICON_EMOJI_PX * 0.04}
+        fontSize={SPEAKER_ICON_EMOJI_PX}
+        fontFamily={EMOJI_FONT_FAMILY}
+        textAnchor="middle"
+        dominantBaseline="central"
+      >
+        {icon}
+      </text>
+    </svg>
   )
 }
 
@@ -193,10 +210,11 @@ export default function SubtitleOverlayPreview({
     [cues, firstShotDuration, hookStyle],
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
+  const isSpoken = Boolean(cue && speakerOf(hook, cue.id))
   const layout = useMemo(
     // No emoji in any cue's text: they are drawn as stickers and fairies instead.
-    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure) : null),
-    [cue, measure],
+    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure, { speaker: isSpoken }) : null),
+    [cue, measure, isSpoken],
   )
   // As burned: only translated cues count, and it shows over the window placeSticker gives it.
   const stickerOpening = hook?.opening ?? null
@@ -213,23 +231,27 @@ export default function SubtitleOverlayPreview({
   // As burned: only a translated cue shows its image.
   const lineImage = cue && cue.ja !== null ? hook?.lineImages?.find(i => i.cueId === cue.id) : undefined
 
-  // 相手のセリフ: tinted, with the other person's icon beside the first line.
+  // 相手のセリフ: tinted, in a speech bubble with the other person's icon above it.
   const speaker = cue ? speakerOf(hook, cue.id) : undefined
   const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
+  const bubble = speaker ? layout?.bubble : undefined
 
   const cueBox = cue && layout && (
     <div
       className={styles.wrapper}
       style={{
         top: `${clampedSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)}%`,
-        width: cqw(SUBTITLE_TEXT_WIDTH),
-        padding: `${cqw(SUBTITLE_PADDING_Y)} 0`,
+        width: cqw(bubble ? SUBTITLE_REFERENCE_WIDTH : SUBTITLE_TEXT_WIDTH),
+        padding: bubble
+          ? `${cqw(bubble.textTop)} 0 ${cqw(layout.height - bubble.top - bubble.height + BUBBLE_BORDER + BUBBLE_PAD_Y)}`
+          : `${cqw(SUBTITLE_PADDING_Y)} 0`,
       }}
       data-testid="subtitle-overlay-box"
       data-variant={cue.variant}
     >
+      {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} />}
       <p className={styles.en} style={{ ...blockStyle(layout.en), ...spokenColor }}>
-        <BlockLines block={layout.en} icon={speaker} />
+        <BlockLines block={layout.en} />
       </p>
       {layout.ja && (
         <p className={styles.ja} style={{ ...blockStyle(layout.ja), ...spokenColor, marginTop: cqw(SUBTITLE_BLOCK_GAP) }}>
