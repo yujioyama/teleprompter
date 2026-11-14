@@ -24,6 +24,19 @@ const region = (over: Partial<SpeechRegion> = {}): SpeechRegion => ({
 })
 
 describe('planHeardShot', () => {
+  it('takes the line from the loudest stretch, past a faint sound when the recording starts', () => {
+    // The take of "So what do you guys eat in Japan?": a soft sound at 0-0.44s, the line at 2.06-4.12s.
+    const plan = planHeardShot(region({
+      speechStart: 0, speechEnd: 10.16, ceiling: 10.17, duration: 10.17,
+      pauses: [{ start: 0.44, end: 2.04 }, { start: 4.22, end: 8.2 }],
+      loudest: { start: 2.06, end: 4.12 },
+    }))
+    expect(plan.voice.start).toBeCloseTo(1.76)
+    expect(plan.voice.end).toBeCloseTo(4.42)
+    expect(plan.listen.start).toBeCloseTo(4.37)
+    expect(plan.stretch).toBe(1)
+  })
+
   it('shows the listening after the line for as long as the line, when there is that much', () => {
     const plan = planHeardShot(region())
     expect(plan.voice.start).toBeCloseTo(0.7)
