@@ -132,3 +132,28 @@ describe('findSpeechRegion pauses', () => {
     expect(pauses[0].end).toBeCloseTo(3.16, 1)
   })
 })
+
+describe('findSpeechRegion loudest', () => {
+  it('is the line, not the faint tap before it or the rustle while listening', () => {
+    // As in a real 相手のセリフ take: a soft sound as the recording starts,
+    // the line at 2-4s, then a faint rustle from 8s while listening.
+    const clip = makeClip(10, [
+      { from: 0, to: 0.45, kind: 'voice', amp: 0.006 },
+      { from: 2, to: 4.2, kind: 'voice', amp: 0.3 },
+      { from: 8.2, to: 10, kind: 'voice', amp: 0.01 },
+    ], 0.0015)
+    const region = findSpeechRegion(clip, SR)!
+    expect(region.loudest!.start).toBeCloseTo(2, 1)
+    expect(region.loudest!.end).toBeCloseTo(4.2, 1)
+  })
+
+  it('keeps the words of one line together across short pauses', () => {
+    const clip = makeClip(6, [
+      { from: 1, to: 1.6, kind: 'voice' },
+      { from: 1.9, to: 2.8, kind: 'voice' },
+    ])
+    const region = findSpeechRegion(clip, SR)!
+    expect(region.loudest!.start).toBeCloseTo(1, 1)
+    expect(region.loudest!.end).toBeCloseTo(2.8, 1)
+  })
+})

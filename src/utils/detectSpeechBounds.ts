@@ -28,6 +28,10 @@ const ATTACH_GAP_S = 0.4
 // Gaps in the speech at least this long are listed as its pauses.
 const PAUSE_MERGE_GAP_S = 0.12
 
+// The loudest stretch (see SpeechRegion.loudest).
+const LINE_BELOW_PEAK_DB = 25
+const LINE_GAP_S = 0.6
+
 // Below this on both ends there's nothing worth trimming.
 const MIN_SAVED_S = 0.1
 
@@ -54,6 +58,13 @@ export interface SpeechRegion {
    * split into its lines. Missing on regions found before it was added.
    */
   pauses?: { start: number; end: number }[]
+  /**
+   * The loudest stretch of sound: windows within LINE_BELOW_PEAK_DB of the
+   * peak, joined over gaps shorter than LINE_GAP_S, the one with the most
+   * sound energy. In a 相手のセリフ take that's the line, not the faint tap
+   * before it or the rustle while listening. Missing on older regions.
+   */
+  loudest?: { start: number; end: number }
 }
 
 interface Segment {
@@ -144,7 +155,27 @@ export function findSpeechRegion(samples: Float32Array, sampleRate: number): Spe
   const pauses: { start: number; end: number }[] = []
   for (let i = 0; i < runs.length - 1; i++) pauses.push({ start: runs[i].end, end: runs[i + 1].start })
 
+  // The loudest stretch: loud windows joined over short gaps, by energy.
+  const lineThreshold = peak - LINE_BELOW_PEAK_DB
+  const stretches: (Segment & { energy: number })[] = []
+  levels.forEach((level, i) => {
+    if (level <= lineThreshold) return
+    const start = (i * windowSize) / sampleRate
+    const end = Math.min(((i + 1) * windowSize) / sampleRate, duration)
+    const energy = 10 ** (level / 10)
+    const last = stretches[stretches.length - 1]
+    if (last && start - last.end < LINE_GAP_S) {
+      last.end = end
+      last.energy += energy
+    } else stretches.push({ start, end, energy })
+  })
+  const loudest = stretches.reduce<(Segment & { energy: number }) | null>(
+    (best, s) => (!best || s.energy > best.energy ? s : best),
+    null,
+  )
+
   return {
+    ...(loudest ? { loudest: { start: loudest.start, end: loudest.end } } : {}),
     speechStart,
     speechEnd,
     floor: segments[first - 1]?.end ?? 0,
