@@ -8,6 +8,7 @@ import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
 import { isVoiceFile, resolveImportTargets, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
+import { withSpeakerVoice } from '../utils/speakerVoice'
 import { heardShotFailureText, makeHeardShot, makeHeardShotFromVoice } from '../utils/heardShot'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
@@ -213,10 +214,7 @@ export default function RecordPage() {
 
   function handleShotVoice(value: HeardVoice) {
     if (!currentShot || !id) return
-    const updatedShots = safeScript.shots.map(s =>
-      s.id === currentShot.id ? { ...s, voice: value === 'natural' ? undefined : value } : s
-    )
-    updateScript(id, { shots: updatedShots })
+    updateScript(id, { shots: withSpeakerVoice(safeScript.shots, currentShot.id, value) })
   }
 
   function handleShotTrimEnabled(value: boolean) {
@@ -331,7 +329,7 @@ export default function RecordPage() {
                   <div className={styles.shotSettingsRow}>
                     <div>
                       <div className={styles.shotSettingsLabel}>相手の声</div>
-                      <div className={styles.shotSettingsSub}>インポートするときにかかります。変えたら、動画をもう一度インポートしてください</div>
+                      <div className={styles.shotSettingsSub}>同じ相手のセリフ全部にかかります。インポートするときにかかるので、変えたら動画をもう一度インポートしてください</div>
                     </div>
                     <select
                       aria-label="相手の声"

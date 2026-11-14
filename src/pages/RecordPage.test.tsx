@@ -388,6 +388,17 @@ describe('RecordPage 相手のセリフ', () => {
     expect(vi.mocked(makeHeardShot).mock.calls[0][1]).toBe('phone')
   })
 
+  it("changes the voice on every line of the same person at once", () => {
+    const script = seedScript()
+    script.shots = script.shots.map((shot, i) => (i === 1 ? shot : { ...shot, heard: true, speaker: '👦', voice: 'kid' as const }))
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    fireEvent.click(screen.getByText(/このショットの設定/))
+    fireEvent.change(screen.getByLabelText('相手の声'), { target: { value: 'phoneKid' } })
+    const shots = (JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[])[0].shots
+    expect(shots.map(s => s.voice)).toEqual(['phoneKid', undefined, 'phoneKid'])
+  })
+
   it("says what to do on the other person's line, and marks it in the shot list", () => {
     renderRecordPage(seedHeard().id)
     expect(screen.getByRole('note')).toHaveTextContent('相手のセリフ')
