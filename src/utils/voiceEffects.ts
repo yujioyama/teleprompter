@@ -40,8 +40,8 @@ interface VoiceShape {
 
 const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
-  kid: { pitch: semitones(8), formant: 1.2 },
-  high: { pitch: semitones(6), formant: 1.12 },
+  kid: { pitch: semitones(11), formant: 1.45 },
+  high: { pitch: semitones(7), formant: 1.12 },
   low: { pitch: semitones(-4), formant: 0.92 },
   fast: { speed: 1.25 },
   slow: { speed: 0.85 },
