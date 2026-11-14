@@ -92,6 +92,21 @@ describe('shapeVoice', () => {
     expect(out.length).toBe(RATE)
     expect(rms(out) / rms(tone(400))).toBeCloseTo(1, 1)
   })
+
+  it.each([
+    ['phoneKid', 2 ** (11 / 12)],
+    ['phoneHigh', 2 ** (7 / 12)],
+    ['phoneLow', 2 ** (-2 / 12)],
+  ] as const)('gives the %s voice its pitch and a phone line, keeping how long the line takes', (name, ratio) => {
+    const out = shapeVoice(tone(400), RATE, name)
+    expect(out.length).toBe(RATE)
+    expect(pitchOf(out) / 400).toBeCloseTo(ratio, 1)
+    expect(voiceSpeed(name)).toBe(1)
+    // The same voice as without the phone, then down the line.
+    const plain = name === 'phoneKid' ? 'kid' : name === 'phoneHigh' ? 'high' : 'low'
+    const shaped = shapeVoice(tone(400), RATE, plain)
+    expect(Array.from(out)).toEqual(Array.from(telephone(shaped, RATE)))
+  })
 })
 
 describe('telephone', () => {

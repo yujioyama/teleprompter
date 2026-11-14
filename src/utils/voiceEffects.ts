@@ -7,9 +7,10 @@ import { shiftFormants } from './formant'
  *   formants (how big the speaker sounds) move far less than the pitch, as
  *   between real voices, so a raised voice doesn't sound like helium
  * - fast / slow change both together, like a tape played quicker or slower
- * - phone keeps the voice and narrows it to a telephone's band
+ * - phone keeps the voice and narrows it to a telephone's band; phoneKid /
+ *   phoneHigh / phoneLow are kid / high / low heard down a phone line
  */
-export const HEARD_VOICES = ['natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone'] as const
+export const HEARD_VOICES = ['natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow'] as const
 export type HeardVoice = (typeof HEARD_VOICES)[number]
 
 export const HEARD_VOICE_LABELS: Record<HeardVoice, string> = {
@@ -20,6 +21,9 @@ export const HEARD_VOICE_LABELS: Record<HeardVoice, string> = {
   fast: '早回し（高く速く）',
   slow: 'スロー（低くゆっくり）',
   phone: '電話',
+  phoneKid: '電話（子ども）',
+  phoneHigh: '電話（女の人）',
+  phoneLow: '電話（男の人）',
 }
 
 export function isHeardVoice(value: unknown): value is HeardVoice {
@@ -38,15 +42,22 @@ interface VoiceShape {
   phone?: boolean
 }
 
+const KID: VoiceShape = { pitch: semitones(11), formant: 1.45 }
+const HIGH: VoiceShape = { pitch: semitones(7), formant: 1.12 }
+// Our own voice is a man's already: a little lower is another man, more is a monster.
+const LOW: VoiceShape = { pitch: semitones(-2), formant: 0.97 }
+
 const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
-  kid: { pitch: semitones(11), formant: 1.45 },
-  high: { pitch: semitones(7), formant: 1.12 },
-  // Our own voice is a man's already: a little lower is another man, more is a monster.
-  low: { pitch: semitones(-2), formant: 0.97 },
+  kid: KID,
+  high: HIGH,
+  low: LOW,
   fast: { speed: 1.25 },
   slow: { speed: 0.85 },
   phone: { phone: true },
+  phoneKid: { ...KID, phone: true },
+  phoneHigh: { ...HIGH, phone: true },
+  phoneLow: { ...LOW, phone: true },
 }
 
 /** How many times quicker the line plays in this voice (1 unless 早回し / スロー). */
