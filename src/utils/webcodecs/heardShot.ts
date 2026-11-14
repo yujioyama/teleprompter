@@ -14,16 +14,25 @@ const EDGE_FADE_S = 0.01
  * of `take` encoded as any shot is, with the audio replaced by the part of
  * the take where the line is spoken, in `voice` (see shapeVoice).
  *
+ * `voiceSource`, when given, is where the line's voice is taken from in place
+ * of the take: a recording made ahead in the camera app (see
+ * makeHeardShotFromVoice), whose timeline `plan.voice` is in.
+ *
  * The picture goes through normalizeShotWebCodecs and the audio through
  * muxWithAudio, the same two steps every other clip already takes, so the
  * result is an ordinary take as far as trimming, joining and subtitles go.
  */
-export async function buildHeardShotWebCodecs(take: Blob, plan: HeardPlan, voice?: HeardVoice): Promise<Blob> {
+export async function buildHeardShotWebCodecs(
+  take: Blob,
+  plan: HeardPlan,
+  voice?: HeardVoice,
+  voiceSource?: Blob,
+): Promise<Blob> {
   const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end, undefined, [], undefined, {
     stretch: plan.stretch,
     slowZoom: heardZoomTo((plan.listen.end - plan.listen.start) * plan.stretch),
   })
-  const source = new Input({ source: new BlobSource(take), formats: ALL_FORMATS })
+  const source = new Input({ source: new BlobSource(voiceSource ?? take), formats: ALL_FORMATS })
   const listening = new Input({ source: new BlobSource(picture), formats: ALL_FORMATS })
   try {
     const audioTrack = await source.getPrimaryAudioTrack()
@@ -70,4 +79,14 @@ async function renderVoice(samples: Float32Array, sampleRate: number, seconds: n
   node.connect(gain).connect(ctx.destination)
   node.start(0)
   return ctx.startRendering()
+}
+
+/** How long a recording lasts, in seconds. */
+export async function mediaDurationWebCodecs(blob: Blob): Promise<number> {
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS })
+  try {
+    return await input.computeDuration()
+  } finally {
+    input.dispose()
+  }
 }

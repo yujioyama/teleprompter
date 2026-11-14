@@ -2,7 +2,7 @@ import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { CONVERSATION_PADDING } from './shotTrim'
 import { voiceSpeed, type HeardVoice } from './voiceEffects'
 import { canUseWebCodecs } from './webcodecs/support'
-import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
+import { buildHeardShotWebCodecs, mediaDurationWebCodecs } from './webcodecs/heardShot'
 
 /**
  * Silence kept around the voice, as much as a conversation keeps around
@@ -26,6 +26,14 @@ export const LINE_END_GAP_S = 0.6
 export const MIN_LISTEN_S = 0.4
 /** The listening is slowed down at most this much to last as long as the line. */
 export const MAX_STRETCH = 6
+
+/**
+ * A voice recorded ahead in the camera app plays this many seconds into the
+ * take (HeardVoice.playDelay there), so the face can be lined up with it.
+ */
+export const CAMERA_VOICE_DELAY_S = 0.6
+/** Left off the end of a take with a recorded voice: the camera stops it by itself, so only a frame or two. */
+const VOICE_TAKE_TAIL_S = 0.1
 
 export interface HeardPlan {
   /** Where the line is spoken in the take. */
@@ -77,6 +85,30 @@ export function planHeardShot(region: SpeechRegion, speed = 1): HeardPlan {
 }
 
 /**
+ * 相手のセリフ with the voice recorded ahead (see makeHeardShotFromVoice): the
+ * line is found in the voice recording, and the listening is the part of the
+ * take while it played (from CAMERA_VOICE_DELAY_S, at the voice's own speed,
+ * which the camera plays it at too). `voice` is in the recording's timeline,
+ * `listen` in the take's.
+ */
+export function planVoiceFileShot(voiceRegion: SpeechRegion, takeDuration: number, speed = 1): HeardPlan {
+  const line = lineOf(voiceRegion)
+  const voiceStart = Math.max(0, line.start - VOICE_PADDING_S)
+  const voiceEnd = Math.min(voiceRegion.duration, line.end + VOICE_PADDING_S)
+  const voiceLength = (voiceEnd - voiceStart) / speed
+  const listenStart = Math.min(CAMERA_VOICE_DELAY_S + voiceStart / speed, Math.max(0, takeDuration - MIN_LISTEN_S))
+  const available = takeDuration - VOICE_TAKE_TAIL_S - listenStart
+  const needed = Math.max(MIN_LISTEN_S, voiceLength / MAX_STRETCH)
+  if (available < needed) throw new NotEnoughListeningError(needed - Math.max(0, available))
+  const listenLength = Math.min(available, voiceLength)
+  return {
+    voice: { start: voiceStart, end: voiceEnd },
+    listen: { start: listenStart, end: listenStart + listenLength },
+    stretch: Math.max(1, voiceLength / listenLength),
+  }
+}
+
+/**
  * The line in the take: the loudest stretch of sound (see
  * SpeechRegion.loudest). Speech detection also takes in faint sounds: the
  * tap that starts the recording, a rustle while listening. A region found
@@ -109,6 +141,19 @@ export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blo
   const region = await detectSpeech(take)
   if (!region) throw new Error('no speech in the take')
   return buildHeardShotWebCodecs(take, planHeardShot(region, voiceSpeed(voice)), voice)
+}
+
+/**
+ * Like makeHeardShot, for a line whose voice was recorded ahead in the camera
+ * app (`voiceFile`) and played while filming: the voice comes from that clean
+ * recording, the picture from the take while it played.
+ */
+export async function makeHeardShotFromVoice(take: Blob, voiceFile: Blob, voice?: HeardVoice): Promise<Blob> {
+  if (!(await canUseWebCodecs())) throw new Error('WebCodecs is not available')
+  const region = await detectSpeech(voiceFile)
+  if (!region) throw new Error('no speech in the recorded voice')
+  const plan = planVoiceFileShot(region, await mediaDurationWebCodecs(take), voiceSpeed(voice))
+  return buildHeardShotWebCodecs(take, plan, voice, voiceFile)
 }
 
 /** What to tell the person when a 相手のセリフ take couldn't be made. */

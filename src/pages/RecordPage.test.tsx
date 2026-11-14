@@ -10,7 +10,7 @@ import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { shareOrDownload } from '../utils/shareOrDownload'
 import { detectSpeech, type SpeechRegion } from '../utils/detectSpeechBounds'
 import { listShotAnalyses } from '../utils/shotAnalysisStore'
-import { makeHeardShot, NotEnoughListeningError } from '../utils/heardShot'
+import { makeHeardShot, makeHeardShotFromVoice, NotEnoughListeningError } from '../utils/heardShot'
 
 vi.mock('../utils/ffmpegClient', () => ({ getFFmpeg: vi.fn(), releaseFFmpeg: vi.fn() }))
 vi.mock('../utils/shareOrDownload', () => ({ shareOrDownload: vi.fn(async () => true) }))
@@ -22,6 +22,7 @@ vi.mock('../utils/detectSpeechBounds', async importOriginal => ({
 vi.mock('../utils/heardShot', async importOriginal => ({
   ...(await importOriginal<typeof import('../utils/heardShot')>()),
   makeHeardShot: vi.fn(async () => new Blob(['heard'], { type: 'video/mp4' })),
+  makeHeardShotFromVoice: vi.fn(async () => new Blob(['heard from voice'], { type: 'video/mp4' })),
 }))
 
 vi.mock('../utils/processRecordedVideo', async () => {
@@ -351,6 +352,29 @@ describe('RecordPage 相手のセリフ', () => {
     ])
     await waitFor(() => expect(screen.getByText('3 / 3 ≡')).toBeInTheDocument())
     expect(makeHeardShot).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the voice recorded ahead in the camera app when it is picked with the take', async () => {
+    vi.mocked(makeHeardShotFromVoice).mockClear()
+    renderRecordPage(seedHeard().id)
+    const voice = new File(['v'], `TeleprompterCam-abc-voice-shot1of3-${SHOT_1}.m4a`, { type: 'audio/x-m4a' })
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      voice,
+    ])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+    expect(makeHeardShotFromVoice).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(makeHeardShotFromVoice).mock.calls[0][1]).toBe(voice)
+    expect(makeHeardShot).not.toHaveBeenCalled()
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+  })
+
+  it('says so when only voices were picked', async () => {
+    renderRecordPage(seedHeard().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      new File(['v'], `TeleprompterCam-abc-voice-shot1of3-${SHOT_1}.m4a`, { type: 'audio/x-m4a' }),
+    ])
+    expect(await screen.findByText(/動画も一緒に選んでください/)).toBeInTheDocument()
   })
 
   it("offers the other person's voice on such a shot, and uses it at import", async () => {
