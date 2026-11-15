@@ -14,6 +14,13 @@ import {
 import { forgetOnCancel } from '../cancellation'
 import { guardAgainstStall } from './stallGuard'
 
+/**
+ * Every video encode step's quality. A take is encoded again at each step
+ * (shot, subtitles, cover), so each loss adds up: 'very-high' is about 11.6
+ * Mbps at 1080x1920 ('high' was about 6, and the video looked soft).
+ */
+export const VIDEO_QUALITY = new Quality('very-high')
+
 export const OUTPUT_WIDTH = 1080
 export const OUTPUT_HEIGHT = 1920
 export const OUTPUT_FRAME_RATE = 30
