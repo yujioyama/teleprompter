@@ -12,7 +12,7 @@ const DEFAULTS = {
   noiseReduction: 'medium',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
-  bgmVolume: 0.2,
+  bgmVolume: 0.1,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
@@ -42,7 +42,7 @@ const DEFAULTS = {
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
-  bgmVolumeRev: 1,
+  bgmVolumeRev: 2,
 }
 
 beforeEach(() => {
@@ -150,16 +150,21 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current[0]).toMatchObject({
       defaultBgmId: 'warmpiano-my-nightly-prayer',
-      bgmVolume: 0.2,
+      bgmVolume: 0.1,
       subtitlePosition: SUBTITLE_POSITION_TOP,
     })
   })
 
-  it('turns a BGM left at the old 30% down to 20%, once', () => {
+  it('turns a BGM left at an old default (30%, 20%) down to 10%, once', () => {
     localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.3 }))
-    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.2)
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.1)
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.2, bgmVolumeRev: 1 }))
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.1)
+    // Picked since: it stays.
     localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.3, bgmVolumeRev: 1 }))
     expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.3)
+    localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.2, bgmVolumeRev: 2 }))
+    expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.2)
     localStorage.setItem('teleprompter_settings', JSON.stringify({ bgmVolume: 0.45 }))
     expect(renderHook(() => useSettings()).result.current[0].bgmVolume).toBe(0.45)
   })
