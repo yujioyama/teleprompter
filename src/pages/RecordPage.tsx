@@ -5,7 +5,7 @@ import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
-import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
+import { processRecordedVideo, inferMimeType, type ProcessedVideo } from '../utils/processRecordedVideo'
 import { isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
@@ -135,24 +135,32 @@ export default function RecordPage() {
         const mimeType = inferMimeType(file)
         // Our own voice gets the noise taken out; a 相手のセリフ take's sound is replaced anyway.
         const ownVoice = !shot.heard || safeScript.oneTake
-        const processed = await processRecordedVideo(file, mimeType, {
+        const processTake = () => processRecordedVideo(file, mimeType, {
           normalizeAudio: globalSettings.normalizeAudio,
           ...(ownVoice ? { noiseReduction: globalSettings.noiseReduction } : {}),
         })
-        // remuxMp4 always falls back to the original blob on failure, so this
-        // is still worth saving — just flagged as degraded rather than dropped.
-        let take = processed.blob
-        if (shot.heard && !safeScript.oneTake) {
-          // 相手のセリフ: the voice goes over the listening. A take that can't
-          // be turned into that is kept as it is, to be seen and retaken.
+        let processed: ProcessedVideo | null = null
+        let take: Blob
+        if (ownVoice) {
+          processed = await processTake()
+          take = processed.blob
+        } else {
+          // 相手のセリフ: the voice goes over the listening, built straight
+          // from the take as it came in. Its own sound is either replaced by
+          // the voice recorded ahead or leveled as the line (levelVoice), so
+          // bringing it to the target loudness first would only be a pass
+          // over the whole take for nothing. A take that can't be turned into
+          // that is kept, loudness-corrected as before, to be seen and retaken.
           try {
             const recordedVoice = voices.get(shot.id)
             take = recordedVoice
-              ? await makeHeardShotFromVoice(processed.blob, recordedVoice, voiceOf(shot))
-              : await makeHeardShot(processed.blob, voiceOf(shot))
+              ? await makeHeardShotFromVoice(file, recordedVoice, voiceOf(shot))
+              : await makeHeardShot(file, voiceOf(shot))
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
             unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
+            processed = await processTake()
+            take = processed.blob
           }
         }
         const savedAt = await saveShotVideo(safeScript.id, shot.id, take)
@@ -160,7 +168,9 @@ export default function RecordPage() {
         if (safeScript.oneTake || resolveShotTrimSettings(shot, globalSettings).trimEnabled) {
           await analyzeTake(safeScript.id, shot.id, savedAt, take)
         }
-        if (!processed.ok) {
+        // remuxMp4 always falls back to the original blob on failure, so a
+        // take whose conversion failed is still worth saving — just flagged.
+        if (processed && !processed.ok) {
           degradedShotTexts.push(stripEmphasis(shot.text))
         }
       } catch (err) {
