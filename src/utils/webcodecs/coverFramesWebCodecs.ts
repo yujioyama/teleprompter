@@ -11,7 +11,7 @@ import {
 import { createMp4Output, createPrimedAacSource, decodeAudioTrack, runOutput } from './audioTrack'
 import { concatClipsWebCodecs } from './concatClips'
 import { normalizeShotWebCodecs } from './normalizeShot'
-import { OUTPUT_CHANNELS, OUTPUT_FRAME_RATE, OUTPUT_SAMPLE_RATE } from './support'
+import { OUTPUT_CHANNELS, OUTPUT_FRAME_RATE, OUTPUT_SAMPLE_RATE, VIDEO_QUALITY } from './support'
 
 /** How long each cover frame shows, in seconds. */
 function frameDuration(): number {
@@ -94,7 +94,7 @@ export async function reencodeWithCoverFrames(
     const offset = placement === 'first' ? count * frameDuration() : 0
     const audio = await audioWithSilence(audioTrack, duration, count * frameDuration(), offset)
 
-    const videoSource = new VideoSampleSource({ codec: 'avc', quality: new Quality('high') })
+    const videoSource = new VideoSampleSource({ codec: 'avc', quality: VIDEO_QUALITY })
     const audioSource = await createPrimedAacSource()
     const output = createMp4Output()
     output.addVideoTrack(videoSource, { frameRate: OUTPUT_FRAME_RATE })

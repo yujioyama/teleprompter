@@ -6,9 +6,9 @@ import {
   Input,
   Mp4OutputFormat,
   Output,
-  Quality,
 } from 'mediabunny'
 import { assertUsable } from './normalizeShot'
+import { VIDEO_QUALITY } from './support'
 import { createOverlayProcess, type OverlayOptions, type SubtitleOverlay } from './subtitleOverlay'
 import { onAbort, throwIfCancelled } from '../cancellation'
 
@@ -45,7 +45,7 @@ export async function burnSubtitlesWebCodecs(
       tracks: 'primary',
       video: {
         codec: 'avc',
-        quality: new Quality('high'),
+        quality: VIDEO_QUALITY,
         allowTransformationMetadata: false,
         process: overlay.process,
       },

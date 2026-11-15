@@ -701,7 +701,7 @@ async function burnSubtitlesFFmpeg(
       '-map', '0:a',
       '-c:v', 'libx264',
       '-preset', 'veryfast',
-      '-crf', '20',
+      '-crf', '17',
       '-c:a', 'copy',
       '-shortest',
       '-movflags', '+faststart',

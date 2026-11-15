@@ -17,6 +17,7 @@ import {
   OUTPUT_HEIGHT,
   OUTPUT_SAMPLE_RATE,
   OUTPUT_WIDTH,
+  VIDEO_QUALITY,
 } from './support'
 import { encodesHeld, whenNotHeld } from './encodeHold'
 import { guardAgainstStall } from './stallGuard'
@@ -106,7 +107,7 @@ export async function normalizeShotWebCodecs(
         fit: 'contain',
         frameRate: OUTPUT_FRAME_RATE,
         codec: 'avc',
-        quality: new Quality('high'),
+        quality: VIDEO_QUALITY,
         allowTransformationMetadata: false,
         forceTranscode: true,
         process: whenNotHeld<VideoSample, VideoSample | VideoSample[] | OffscreenCanvas>(
