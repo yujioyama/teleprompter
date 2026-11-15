@@ -369,6 +369,26 @@ describe('RecordPage 相手のセリフ', () => {
     expect(await listShotVideos('script-1')).toHaveLength(1)
   })
 
+  it("builds such a shot from the take as it came in, without a loudness pass over it first", async () => {
+    vi.mocked(processRecordedVideo).mockClear()
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect(makeHeardShot).toHaveBeenCalledTimes(1)
+    expect((vi.mocked(makeHeardShot).mock.calls[0][0] as File).name).toBe(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`)
+    expect(processRecordedVideo).not.toHaveBeenCalled()
+  })
+
+  it('keeps a take that could not become such a shot loudness-corrected, as before', async () => {
+    const corrected = new Blob(['loudness-corrected take'], { type: 'video/mp4' })
+    vi.mocked(processRecordedVideo).mockClear().mockResolvedValue({ blob: corrected, ok: true, error: null })
+    vi.mocked(makeHeardShot).mockRejectedValue(new NotEnoughListeningError(1.2))
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect(processRecordedVideo).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(processRecordedVideo).mock.calls[0][2]).toEqual({ normalizeAudio: true })
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+  })
+
   it('says so when only voices were picked', async () => {
     renderRecordPage(seedHeard().id)
     selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
