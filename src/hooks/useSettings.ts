@@ -103,7 +103,7 @@ const DEFAULTS: AppSettings = {
   noiseReduction: 'medium',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
-  bgmVolume: 0.2,
+  bgmVolume: 0.1,
   bgmStopBeforePunchline: true,
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
@@ -133,7 +133,7 @@ const DEFAULTS: AppSettings = {
   inboxKey: '',
   bgmDefaultRev: 1,
   subtitlePositionRev: 1,
-  bgmVolumeRev: 1,
+  bgmVolumeRev: 2,
 }
 
 /** Stored settings brought up to date with the current shape. */
@@ -176,7 +176,10 @@ export function migrateSettings(stored: Record<string, unknown>): Partial<AppSet
   // The BGM went quieter (2026-11-14), under the brighter music box of the
   // conversations; one left on the old default follows. Saved since, a
   // settings object has bgmVolumeRev.
-  if (!('bgmVolumeRev' in next) && next.bgmVolume === 0.3) {
+  // And quieter again (2026-11-15, to 10%): the conversations' music box was
+  // still too loud. One left on either old default (30%, then 20%) follows.
+  const volumeRev = typeof next.bgmVolumeRev === 'number' ? next.bgmVolumeRev : 0
+  if ((volumeRev < 1 && next.bgmVolume === 0.3) || (volumeRev < 2 && next.bgmVolume === 0.2)) {
     next.bgmVolume = DEFAULTS.bgmVolume
   }
   if (!('subtitlePositionRev' in next) && next.subtitlePosition === SUBTITLE_POSITION_BOTTOM) {
