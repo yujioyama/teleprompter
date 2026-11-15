@@ -4,6 +4,8 @@ import {
   JA_STYLE,
   MeasureText,
   PHONE_BADGE_RADIUS,
+  PHONE_RING_WIDTH,
+  BUBBLE_BORDER,
   SPEAKER_ICON_RADIUS,
   SPEAKER_TEXT_WIDTH,
   SUBTITLE_FONT_FAMILY,
@@ -177,14 +179,16 @@ describe('layoutCue for 相手のセリフ', () => {
     expect(bubble.top + bubble.height).toBeLessThanOrEqual(layout.height)
   })
 
-  it("puts the 📞 to the right of the icon, level with it, clear of both the icon and the bubble", () => {
+  it('puts the 📞 on top of the icon (one disc), inside the image and clear of the bubble', () => {
     const bubble = layoutCue({ en: 'Huh?', ja: 'え?' }, measure, { speaker: true }).bubble!
     const badge = phoneBadgeCenter(bubble)
-    expect(badge.y).toBe(bubble.iconY)
-    expect(badge.x - PHONE_BADGE_RADIUS).toBeGreaterThan(bubble.iconX + SPEAKER_ICON_RADIUS)
-    expect(badge.y + PHONE_BADGE_RADIUS).toBeLessThan(bubble.top)
+    expect(badge.x).toBe(bubble.iconX)
+    expect(badge.y).toBeLessThan(bubble.iconY)
+    // On the ring: no further from the icon's center than its edge.
+    expect(bubble.iconY - badge.y).toBeLessThanOrEqual(SPEAKER_ICON_RADIUS)
     expect(badge.y - PHONE_BADGE_RADIUS).toBeGreaterThanOrEqual(0)
-    expect(badge.x + PHONE_BADGE_RADIUS).toBeLessThanOrEqual(SUBTITLE_REFERENCE_WIDTH)
+    expect(badge.y + PHONE_BADGE_RADIUS).toBeLessThan(bubble.top)
+    expect(PHONE_BADGE_RADIUS).toBeLessThan(SPEAKER_ICON_RADIUS / 2)
   })
 
   it('makes a short line a small bubble, and leaves plain cues as they were', () => {
@@ -215,9 +219,9 @@ describe('layoutSpeakerName', () => {
     expect(name.x).toBe(200 + SPEAKER_ICON_RADIUS + SPEAKER_NAME_GAP)
   })
 
-  it('goes right of the 📞 for someone on the phone', () => {
+  it('stays right beside the icon for someone on the phone (the 📞 is on top), past the thicker ring', () => {
     const name = layoutSpeakerName('Mom', bubble, true, measure)!
-    expect(name.x).toBe(phoneBadgeCenter(bubble).x + PHONE_BADGE_RADIUS + SPEAKER_NAME_GAP)
+    expect(name.x).toBe(200 + SPEAKER_ICON_RADIUS + (PHONE_RING_WIDTH - BUBBLE_BORDER) / 2 + SPEAKER_NAME_GAP)
   })
 
   it('shrinks, then shortens, a name with too little room, 10% in from the edge', () => {
