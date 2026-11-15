@@ -161,5 +161,8 @@ export function heardShotFailureText(err: unknown): string {
   if (err instanceof NotEnoughListeningError) {
     return `セリフのあと、あと約${Math.ceil(err.missingSeconds * 10) / 10}秒長く黙って聞く顔をしてから止めてください`
   }
-  return 'セリフの声を見つけられないか、この端末では作れませんでした'
+  // The reason itself, short, so a failure can be told apart without the console.
+  const reason = err instanceof Error ? err.message : String(err)
+  const short = reason.length > 80 ? `${reason.slice(0, 80)}…` : reason
+  return `セリフの声を見つけられないか、この端末では作れませんでした${short ? `［${short}］` : ''}`
 }
