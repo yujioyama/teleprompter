@@ -11,7 +11,9 @@ import {
   BUBBLE_PAD_Y,
   SPEAKER_ICON_EMOJI_PX,
   PHONE_BADGE_EMOJI_PX,
+  PHONE_BADGE_BORDER,
   PHONE_BADGE_RADIUS,
+  PHONE_RING_WIDTH,
   phoneBadgeCenter,
   layoutSpeakerName,
   SPEAKER_NAME_WEIGHT,
@@ -105,7 +107,15 @@ function SpeakerBubbleArt({ bubble, icon, height, phone = false, name = null }: 
         strokeWidth={BUBBLE_BORDER}
         strokeLinejoin="round"
       />
-      <circle cx={bubble.iconX} cy={bubble.iconY} r={SPEAKER_ICON_RADIUS - BUBBLE_BORDER / 2} fill="#fff" stroke={SPEAKER_TEXT_COLOR} strokeWidth={BUBBLE_BORDER} />
+      <circle
+        cx={bubble.iconX}
+        cy={bubble.iconY}
+        r={SPEAKER_ICON_RADIUS - BUBBLE_BORDER / 2}
+        fill="#fff"
+        stroke={SPEAKER_TEXT_COLOR}
+        strokeWidth={phone ? PHONE_RING_WIDTH : BUBBLE_BORDER}
+        data-testid="subtitle-speaker-disc"
+      />
       <text
         data-testid="subtitle-speaker"
         x={bubble.iconX}
@@ -119,7 +129,7 @@ function SpeakerBubbleArt({ bubble, icon, height, phone = false, name = null }: 
       </text>
       {phone && (
         <>
-          <circle cx={badgeX} cy={badgeY} r={PHONE_BADGE_RADIUS - BUBBLE_BORDER / 2} fill="#fff" stroke={SPEAKER_TEXT_COLOR} strokeWidth={BUBBLE_BORDER} />
+          <circle cx={badgeX} cy={badgeY} r={PHONE_BADGE_RADIUS} fill={SPEAKER_TEXT_COLOR} stroke="#fff" strokeWidth={PHONE_BADGE_BORDER} />
           <text
             data-testid="subtitle-phone"
             x={badgeX}

@@ -83,26 +83,34 @@ export const BUBBLE_BORDER = 5
 export const BUBBLE_FILL = 'rgba(6, 22, 38, 0.6)'
 export const SPEAKER_ICON_RADIUS = 52
 export const SPEAKER_ICON_EMOJI_PX = 66
-/** The 📞 beside the icon of someone on the phone: its own white disc, a little smaller than the icon's. */
-export const PHONE_BADGE_RADIUS = 38
-export const PHONE_BADGE_EMOJI_PX = 46
-/** Between the icon's disc and the 📞's. */
-export const PHONE_BADGE_GAP = 10
+/**
+ * Someone on the phone: still one disc. Its light-blue ring is thicker, and a
+ * small light-blue disc with the 📞 sits on top of it, at the middle — so the
+ * role to the right of the icon keeps its place.
+ */
+export const PHONE_RING_WIDTH = 10
+export const PHONE_BADGE_RADIUS = 21
+export const PHONE_BADGE_EMOJI_PX = 24
+/** The white edge that keeps the 📞's disc apart from the ring under it. */
+export const PHONE_BADGE_BORDER = 4
 
-/** Where the 📞's disc is centred: to the right of the icon, level with it. */
+/** Where the 📞's disc is centred: on the icon's ring, at its top, kept inside the cue image. */
 export function phoneBadgeCenter(bubble: Pick<SpeakerBubble, 'iconX' | 'iconY'>): { x: number; y: number } {
-  return { x: bubble.iconX + SPEAKER_ICON_RADIUS + PHONE_BADGE_GAP + PHONE_BADGE_RADIUS, y: bubble.iconY }
+  return {
+    x: bubble.iconX,
+    y: Math.max(PHONE_BADGE_RADIUS + PHONE_BADGE_BORDER / 2, bubble.iconY - SPEAKER_ICON_RADIUS),
+  }
 }
 /**
  * The other person's role (e.g. "Hairdresser"), small and white to the right
- * of their icon (and of the 📞, when there is one), level with it. It sits in
+ * of their icon, level with it. It sits in
  * the room the icon already takes above the bubble, so a cue is as tall with
  * it as without.
  */
 export const SPEAKER_NAME_MAX_PX = 38
 export const SPEAKER_NAME_MIN_PX = 28
 export const SPEAKER_NAME_WEIGHT = '800'
-/** Between the icon's (or the 📞's) disc and the name. */
+/** Between the icon's disc and the name. */
 export const SPEAKER_NAME_GAP = 14
 
 export interface SpeakerNameLayout {
@@ -127,7 +135,8 @@ export function layoutSpeakerName(
 ): SpeakerNameLayout | null {
   const trimmed = name?.trim()
   if (!trimmed) return null
-  const right = phone ? phoneBadgeCenter(bubble).x + PHONE_BADGE_RADIUS : bubble.iconX + SPEAKER_ICON_RADIUS
+  // The phone's thicker ring reaches a little further out.
+  const right = bubble.iconX + SPEAKER_ICON_RADIUS + (phone ? (PHONE_RING_WIDTH - BUBBLE_BORDER) / 2 : 0)
   const x = right + SPEAKER_NAME_GAP
   // 10% in from the right edge, past what TikTok's zoom crops off.
   const room = SUBTITLE_REFERENCE_WIDTH * 0.9 - x

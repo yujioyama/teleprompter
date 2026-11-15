@@ -39,7 +39,9 @@ import {
   JA_STYLE,
   SPEAKER_ICON_EMOJI_PX,
   PHONE_BADGE_EMOJI_PX,
+  PHONE_BADGE_BORDER,
   PHONE_BADGE_RADIUS,
+  PHONE_RING_WIDTH,
   phoneBadgeCenter,
   layoutSpeakerName,
   speakerNameFont,
@@ -215,7 +217,7 @@ function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: Sp
   ctx.fill()
   ctx.shadowColor = 'transparent'
   ctx.strokeStyle = SPEAKER_TEXT_COLOR
-  ctx.lineWidth = BUBBLE_BORDER
+  ctx.lineWidth = phone ? PHONE_RING_WIDTH : BUBBLE_BORDER
   ctx.stroke()
   ctx.font = `${SPEAKER_ICON_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
   ctx.textAlign = 'center'
@@ -223,18 +225,14 @@ function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: Sp
   ctx.fillStyle = '#000'
   ctx.fillText(icon, bubble.iconX, bubble.iconY + SPEAKER_ICON_EMOJI_PX * 0.04)
   if (phone) {
+    // A small light-blue disc on top of the ring, with the 📞 on it (see phoneBadgeCenter).
     const { x, y } = phoneBadgeCenter(bubble)
     ctx.beginPath()
     ctx.arc(x, y, PHONE_BADGE_RADIUS, 0, Math.PI * 2)
-    // Drawn as the icon's disc is: a white disc with its shadow and the light-blue ring.
-    ctx.shadowColor = SUBTITLE_SHADOW.color
-    ctx.shadowBlur = 12
-    ctx.shadowOffsetY = 3
-    ctx.fillStyle = '#fff'
+    ctx.fillStyle = SPEAKER_TEXT_COLOR
     ctx.fill()
-    ctx.shadowColor = 'transparent'
-    ctx.strokeStyle = SPEAKER_TEXT_COLOR
-    ctx.lineWidth = BUBBLE_BORDER
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = PHONE_BADGE_BORDER
     ctx.stroke()
     ctx.font = `${PHONE_BADGE_EMOJI_PX}px ${EMOJI_FONT_FAMILY}`
     ctx.fillStyle = '#000'
