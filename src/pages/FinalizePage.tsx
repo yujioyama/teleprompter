@@ -37,6 +37,7 @@ import { useSaveWhenSettled } from '../hooks/useSaveWhenSettled'
 import { hookOptionsOf, oneTakeHookSettings, withOpening, type HookSettings } from '../utils/subtitleHook'
 import { withLineImages } from '../utils/lineImages'
 import { DEFAULT_SPEAKER_ICON, withSpeakers } from '../utils/speakers'
+import { withScene } from '../utils/sceneLabel'
 import { isPhoneVoice } from '../utils/voiceEffects'
 import type { Shot } from '../types'
 import { useLineImages } from '../hooks/useLineImages'
@@ -112,7 +113,7 @@ function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false, s
       // 相手のセリフ: its subtitles are drawn as the other person's.
       const shot = shots.find(s => s.id === entry.shotId)
       return shot?.heard
-        ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON, ...(isPhoneVoice(shot.voice) ? { phone: true } : {}) }
+        ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON, ...(shot.speakerName ? { speakerName: shot.speakerName } : {}), ...(isPhoneVoice(shot.voice) ? { phone: true } : {}) }
         : input
     }
     const lines = takeLinesOf(entry.text)
@@ -598,18 +599,23 @@ export default function FinalizePage() {
     [script, storedLineImages, lineImagesLoading],
   )
   const speakerInputs = combined?.cueInputs
+  const scene = script?.scene
   const hookFor = useCallback(
     (cues: SubtitleCue[], position: SubtitlePosition) => withLineImages(
-      // The speakers first: the opening keeps clear of their taller, bubbled cues.
-      withOpening(
-        withSpeakers(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, speakerInputs ?? []),
+      withScene(
+        // The speakers first: the opening keeps clear of their taller, bubbled cues.
+        withOpening(
+          withSpeakers(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, speakerInputs ?? []),
+          cues,
+          position,
+          cinemaLook,
+        ),
         cues,
-        position,
-        cinemaLook,
+        scene,
       ),
       { ...lineImages, cues },
     ),
-    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs],
+    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs, scene],
   )
   const hook = useMemo(() => hookFor(subtitleCues, subtitlePosition), [hookFor, subtitleCues, subtitlePosition])
   // The subtitles the subtitle step will open with, known as soon as the
@@ -1221,6 +1227,7 @@ export default function FinalizePage() {
                 oneTake={oneTake}
                 lineImages={lineImages}
                 cinemaLook={cinemaLook}
+                scene={scene}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
                 onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? 'none' })}
                 burn={async (cues, position, onProgress, signal) => {

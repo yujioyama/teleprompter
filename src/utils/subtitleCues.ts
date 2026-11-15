@@ -103,6 +103,8 @@ export interface ShotCueInput {
   lineStarts?: number[]
   /** 相手のセリフ: the icon beside this shot's subtitles. Absent on our own lines. */
   speaker?: string
+  /** 相手のセリフ: the role beside the icon. Absent for the icon alone. */
+  speakerName?: string
   /** 相手のセリフ heard down a phone line: a small 📞 goes on the icon. */
   phone?: boolean
 }

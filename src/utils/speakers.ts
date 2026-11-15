@@ -12,6 +12,8 @@ export interface CueSpeaker {
   icon: string
   /** Heard down a phone line: a small 📞 on the icon. */
   phone?: boolean
+  /** Their role, small beside the icon (e.g. "Mom"). */
+  name?: string
 }
 
 /** The badge on the icon of someone on the phone. */
@@ -26,8 +28,8 @@ export const PHONE_BADGE = '📞'
 export function withSpeakers(hook: HookOptions, cues: SubtitleCue[], inputs: ShotCueInput[]): HookOptions {
   if (!inputs.some(input => input.speaker)) return hook
   const speakers: CueSpeaker[] = cuesByShot(cues, inputs.map(input => input.duration)).flatMap((group, i) => {
-    const { speaker: icon, phone } = inputs[i]
-    return icon ? group.map(cue => ({ cueId: cue.id, icon, ...(phone ? { phone: true } : {}) })) : []
+    const { speaker: icon, phone, speakerName: name } = inputs[i]
+    return icon ? group.map(cue => ({ cueId: cue.id, icon, ...(phone ? { phone: true } : {}), ...(name ? { name } : {}) })) : []
   })
   return speakers.length > 0 ? { ...hook, speakers } : hook
 }
@@ -40,4 +42,9 @@ export function speakerOf(hook: Pick<HookOptions, 'speakers'> | undefined, cueId
 /** Whether `cueId`'s speaker is on the phone (see CueSpeaker.phone). */
 export function onPhone(hook: Pick<HookOptions, 'speakers'> | undefined, cueId: string): boolean {
   return Boolean(hook?.speakers?.find(speaker => speaker.cueId === cueId)?.phone)
+}
+
+/** The role beside `cueId`'s icon, or undefined for none (see CueSpeaker.name). */
+export function speakerNameOf(hook: Pick<HookOptions, 'speakers'> | undefined, cueId: string): string | undefined {
+  return hook?.speakers?.find(speaker => speaker.cueId === cueId)?.name
 }

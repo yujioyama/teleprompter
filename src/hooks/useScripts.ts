@@ -34,6 +34,7 @@ export function useScripts() {
     japanese?: LineJapanese[],
     videoType?: VideoType,
     lineImages?: LineImage[],
+    scene?: string,
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -45,6 +46,7 @@ export function useScripts() {
       ...(japanese?.length ? { japanese } : {}),
       ...(videoType ? { videoType } : {}),
       ...(lineImages?.length ? { lineImages } : {}),
+      ...(scene ? { scene } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -57,7 +59,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages' | 'scene'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
@@ -67,6 +69,7 @@ export function useScripts() {
       if (!next.videoType) delete next.videoType
       if (!next.look) delete next.look
       if (!next.lineImages?.length) delete next.lineImages
+      if (!next.scene) delete next.scene
       return next
     })
     saveToStorage(updated)

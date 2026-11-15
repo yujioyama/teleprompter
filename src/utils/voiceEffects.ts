@@ -9,8 +9,20 @@ import { shiftFormants } from './formant'
  * - fast / slow change both together, like a tape played quicker or slower
  * - phone keeps the voice and narrows it to a telephone's band; phoneKid /
  *   phoneHigh / phoneLow are kid / high / low heard down a phone line
+ * - olderWoman / youngWoman / olderMan / youngMan (2026-11-15) tell two
+ *   people of one kind apart: besides pitch and formants they change the
+ *   pace alone (tempo, the pitch kept), the older ones a little slower and
+ *   darker, the younger ones a little quicker and brighter; phoneOlderWoman
+ *   and the rest are those down a phone line
+ *
+ * The voices there were before keep their names and sound, so a script
+ * made with them comes out as it did.
  */
-export const HEARD_VOICES = ['natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow'] as const
+export const HEARD_VOICES = [
+  'natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow',
+  'olderWoman', 'youngWoman', 'olderMan', 'youngMan',
+  'phoneOlderWoman', 'phoneYoungWoman', 'phoneOlderMan', 'phoneYoungMan',
+] as const
 export type HeardVoice = (typeof HEARD_VOICES)[number]
 
 export const HEARD_VOICE_LABELS: Record<HeardVoice, string> = {
@@ -24,6 +36,14 @@ export const HEARD_VOICE_LABELS: Record<HeardVoice, string> = {
   phoneKid: '電話（子ども）',
   phoneHigh: '電話（女の人）',
   phoneLow: '電話（男の人）',
+  olderWoman: '年上の女の人（母・先輩）',
+  youngWoman: '若い女の人（店員・美容師）',
+  olderMan: '年上の男の人（上司・父）',
+  youngMan: '若い男の人（同僚・友達）',
+  phoneOlderWoman: '電話（年上の女の人）',
+  phoneYoungWoman: '電話（若い女の人）',
+  phoneOlderMan: '電話（年上の男の人）',
+  phoneYoungMan: '電話（若い男の人）',
 }
 
 export function isHeardVoice(value: unknown): value is HeardVoice {
@@ -39,6 +59,8 @@ interface VoiceShape {
   formant?: number
   /** Played this many times quicker, higher with it. */
   speed?: number
+  /** Spoken this many times quicker at the same pitch. */
+  tempo?: number
   phone?: boolean
 }
 
@@ -48,6 +70,16 @@ const HIGH: VoiceShape = { pitch: semitones(7), formant: 1.12 }
 // like us, and much lower is a monster: another man is mostly in the body
 // (the formants), so those go down further than the pitch does.
 const LOW: VoiceShape = { pitch: semitones(-3), formant: 0.9 }
+// Each a few steps from its neighbour in pitch, body and pace at once, so
+// high and olderWoman, or low and olderMan, side by side are two people.
+// Below high and slower, with less brightness: someone settled.
+const OLDER_WOMAN: VoiceShape = { pitch: semitones(4.5), formant: 1.05, tempo: 0.9 }
+// Above high, brighter and a little quick.
+const YOUNG_WOMAN: VoiceShape = { pitch: semitones(9), formant: 1.17, tempo: 1.08 }
+// Below low and slower, the biggest body of all.
+const OLDER_MAN: VoiceShape = { pitch: semitones(-5), formant: 0.84, tempo: 0.88 }
+// Hardly lower than our own, but a slimmer body and a quicker pace, so it isn't us.
+const YOUNG_MAN: VoiceShape = { pitch: semitones(1), formant: 0.94, tempo: 1.1 }
 
 const SHAPES: Record<HeardVoice, VoiceShape> = {
   natural: {},
@@ -60,6 +92,14 @@ const SHAPES: Record<HeardVoice, VoiceShape> = {
   phoneKid: { ...KID, phone: true },
   phoneHigh: { ...HIGH, phone: true },
   phoneLow: { ...LOW, phone: true },
+  olderWoman: OLDER_WOMAN,
+  youngWoman: YOUNG_WOMAN,
+  olderMan: OLDER_MAN,
+  youngMan: YOUNG_MAN,
+  phoneOlderWoman: { ...OLDER_WOMAN, phone: true },
+  phoneYoungWoman: { ...YOUNG_WOMAN, phone: true },
+  phoneOlderMan: { ...OLDER_MAN, phone: true },
+  phoneYoungMan: { ...YOUNG_MAN, phone: true },
 }
 
 /** A voice heard down a phone line (電話, and the kid / woman / man on the phone). */
@@ -67,9 +107,10 @@ export function isPhoneVoice(voice: HeardVoice | undefined): boolean {
   return Boolean(voice && SHAPES[voice].phone)
 }
 
-/** How many times quicker the line plays in this voice (1 unless 早回し / スロー). */
+/** How many times quicker the line plays in this voice (1 unless 早回し / スロー or one with its own pace). */
 export function voiceSpeed(voice: HeardVoice | undefined): number {
-  return SHAPES[voice ?? 'natural'].speed ?? 1
+  const shape = SHAPES[voice ?? 'natural']
+  return (shape.speed ?? 1) * (shape.tempo ?? 1)
 }
 
 /** `samples` (mono) in the given voice. Its length is the input's divided by voiceSpeed. */
@@ -77,8 +118,10 @@ export function shapeVoice(samples: Float32Array, sampleRate: number, voice: Hea
   const shape = SHAPES[voice ?? 'natural']
   let out = samples
   // Higher without quicker: made longer at the same pitch, then played that much faster.
+  // A tempo of its own is the same stretch, by that much less, before the same resample.
   if (shape.pitch) {
-    out = resample(timeStretch(out, sampleRate, shape.pitch), shape.pitch, samples.length)
+    const tempo = shape.tempo ?? 1
+    out = resample(timeStretch(out, sampleRate, shape.pitch / tempo), shape.pitch, Math.round(samples.length / tempo))
     // The shift took the formants up with the pitch: back to where they belong.
     out = shiftFormants(out, sampleRate, (shape.formant ?? 1) / shape.pitch)
   }

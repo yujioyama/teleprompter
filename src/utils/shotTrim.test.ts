@@ -46,6 +46,7 @@ describe('resolveShotTrimSettings', () => {
     trimPaddingEnd: 0.4,
     normalizeAudio: true,
     voicePreset: 'natural',
+    noiseReduction: 'medium',
     defaultBgmId: null,
     conversationBgmId: null,
     bgmVolume: 0.3,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractShotId, isVoiceFile, resolveImportTargets, voicesByShotId } from './matchShotRecordings'
+import { extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from './matchShotRecordings'
 import { Shot } from '../types'
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
@@ -104,5 +104,22 @@ describe('voice files', () => {
   it('finds the shot each voice is for', () => {
     const voices = voicesByShotId([file(`TeleprompterCam-abc-voice-shot2of9-${ID}.m4a`), file('memo.m4a')])
     expect([...voices.keys()]).toEqual([ID])
+  })
+})
+
+describe('voiceOfVoiceFile', () => {
+  const id = '0b6c5a9e-1f2d-4c3b-9a8e-7d6c5b4a3f21'
+  it('reads the voice the camera app named in the file', () => {
+    expect(voiceOfVoiceFile(`TeleprompterCam-ab12-voice-olderWoman-shot2of5-${id}.m4a`)).toBe('olderWoman')
+    expect(voiceOfVoiceFile(`TeleprompterCam-ab12-voice-phoneYoungMan-shot1of5-${id}.m4a`)).toBe('phoneYoungMan')
+  })
+
+  it('has none in an older file, or for a name it does not know', () => {
+    expect(voiceOfVoiceFile(`TeleprompterCam-ab12-voice-shot2of5-${id}.m4a`)).toBeNull()
+    expect(voiceOfVoiceFile(`TeleprompterCam-ab12-voice-robot-shot2of5-${id}.m4a`)).toBeNull()
+  })
+
+  it('still matches a named file to its shot', () => {
+    expect(extractShotId(`TeleprompterCam-ab12-voice-olderWoman-shot2of5-${id}.m4a`)).toBe(id)
   })
 })

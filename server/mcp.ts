@@ -28,6 +28,13 @@ export interface McpDeps {
   records: () => RecordStore
 }
 
+// The same list as the app's HEARD_VOICES (src/utils/voiceEffects.ts).
+export const HEARD_VOICE_NAMES = [
+  'natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow',
+  'olderWoman', 'youngWoman', 'olderMan', 'youngMan',
+  'phoneOlderWoman', 'phoneYoungWoman', 'phoneOlderMan', 'phoneYoungMan',
+] as const
+
 const DESCRIPTION = [
   '完成したTikTokのスクリプトとキャプションを、ユーザーのteleprompterアプリの受け取り箱に送ります。',
   'ユーザーが「teleprompterに送って」などと頼んだときに使ってください。',
@@ -40,7 +47,8 @@ const DESCRIPTION = [
   'images には、行ごとに見せる画像を入れます（任意。1行に0〜1枚。例: [{ line: 4, url: "https://….jpg", credit: "KKPCW / CC BY-SA 4.0", source: "https://commons.wikimedia.org/wiki/File:…" }]）。line は script の何行目か（1から数える）、url は https の画像そのものの URL（幅1280px程度。SVG は不可）です。その行の字幕が出ているあいだ、頭の上に角丸の枠で表示され、その行の字幕は胸のあたりに下がります（1行目も同じ。画像のない行の字幕は上に出ます）。1行目の画像は、オチを先に見せないものを選んでください。',
   '画像を1枚でも付けた回は、絵文字のステッカーも妖精も一切出ません（1行目の絵文字はこれまでどおり書いてください。出すかどうかはアプリが決めます）。画像が無い回は今までどおりです。',
   '画像を選ぶときは、クレジットが要らない画像を優先してください（CC0、パブリックドメイン、Unsplash、Pexels）。そのときは credit と source を省略します。それで見つからないときだけ CC BY を、最後の手段として CC BY-SA を選び、credit に「作者名 / ライセンス」、source に出典ページの URL を入れます。credit は画像の下に小さく表示され、source とともにキャプションの末尾に自動で追記されるので、caption には書かないでください。',
-  'heard には、会話を再現する台本で「相手のセリフ」の行番号を入れます（任意。例: 1行目と3行目が相手なら [1, 3]。script の何行目か、1から数える）。その行は、ユーザーが自分でセリフを声に出したあと黙って聞く顔を撮り、動画では聞いている顔に声だけがのります（画面の外から話しかけられている形）。heard を付けた台本は1行ずつ撮ります。相手のセリフの行は script にそのまま書き（引用符や話者名は付けない）、絵文字は入れません。語り手ひとりの台本では省略します。相手のセリフの字幕は水色の文字で吹き出しに入り、吹き出しの左上に相手のアイコン（白い丸に絵文字）が付きます。heardIcon に相手を表す絵文字を1つ入れてください。性別や役が見て分かるものにします（例: 男の人なら 👨、女の人なら 👩、子どもなら 🧒、店員なら 🧑‍🍳。性別のない 🧑 は使わない。省略すると 🗣️）。声とそろえます（low・phoneLow なら男の人、high・phoneHigh なら女の人）。heardVoice で相手の声を選べます（ユーザーが自分の声で言ったセリフにかかる）: kid=子ども、high=高い声（女の人）、low=低い声（男の人）、fast=早回し（高く速く）、slow=スロー（低くゆっくり）、phone=電話、phoneKid=電話の子ども、phoneHigh=電話の女の人、phoneLow=電話の男の人、natural=そのまま（省略時）。相手が2人以上いる会話（例: 子どもとその母）では、heardCast に1人ずつ { lines: その人のセリフの行番号, icon: 絵文字, voice: 声 } を入れます（heard と heardIcon / heardVoice は省略してよく、heardCast の行が相手のセリフになります）。声は人ごとに聞き分けられるものを選んでください（例: 子ども kid、母 high）。',
+  'heard には、会話を再現する台本で「相手のセリフ」の行番号を入れます（任意。例: 1行目と3行目が相手なら [1, 3]。script の何行目か、1から数える）。その行は、ユーザーが自分でセリフを声に出したあと黙って聞く顔を撮り、動画では聞いている顔に声だけがのります（画面の外から話しかけられている形）。heard を付けた台本は1行ずつ撮ります。相手のセリフの行は script にそのまま書き（引用符や話者名は付けない）、絵文字は入れません。語り手ひとりの台本では省略します。相手のセリフの字幕は水色の文字で吹き出しに入り、吹き出しの左上に相手のアイコン（白い丸に絵文字）が付きます。heardIcon に相手を表す絵文字を1つ入れてください。性別や役が見て分かるものにします（例: 男の人なら 👨、女の人なら 👩、子どもなら 🧒、店員なら 🧑‍🍳。性別のない 🧑 は使わない。省略すると 🗣️）。声とそろえます（low・olderMan・youngMan と電話版なら男の人、high・olderWoman・youngWoman と電話版なら女の人）。heardVoice で相手の声を選べます（ユーザーが自分の声で言ったセリフにかかる）: kid=子ども、high=高い声（女の人）、low=低い声（男の人）、fast=早回し（高く速く）、slow=スロー（低くゆっくり）、phone=電話、phoneKid=電話の子ども、phoneHigh=電話の女の人、phoneLow=電話の男の人、olderWoman=年上の女の人（母・年上の先輩など。high より少し低く、少しゆっくり落ち着いた声）、youngWoman=若い女の人（店員・美容師など。high より明るく少し速い）、olderMan=年上の男の人（上司・父・おじいちゃんなど。low より低く少しゆっくり）、youngMan=若い男の人（同僚・友達など。low ほど低くなく少し速い）、phoneOlderWoman / phoneYoungWoman / phoneOlderMan / phoneYoungMan=それぞれの電話の声、natural=そのまま（省略時）。相手が2人以上いる会話（例: 子どもとその母）では、heardCast に1人ずつ { lines: その人のセリフの行番号, icon: 絵文字, voice: 声 } を入れます（heard と heardIcon / heardVoice は省略してよく、heardCast の行が相手のセリフになります）。声は人ごとに聞き分けられるものを選んでください（例: 子ども kid、母 high。女の人が2人なら美容師 youngWoman と母 olderWoman、男の人が2人なら同僚 youngMan と上司 olderMan のように、若い・年上で分けます）。heardName には相手の役名を英語で短く入れます（任意。例: Hairdresser / Mom / Boss / Aunt Linda）。アイコンの右に小さく出て、誰のセリフかが分かります。相手が2人以上なら heardCast の各人に name で入れます。省略するとアイコンだけになります。',
+  'scene には、会話の状況を表す短い英語のラベルを入れます（任意。例: "a wrong number" / "online meeting"）。1行目の字幕が出ているあいだだけ、画面上部の1行目の字幕のすぐ下に小さなラベルで出ます（上の端はSNSの表示に隠れるため）。2〜4語程度にし、オチは書きません。無ければ省略します。',
   '送ったあとに直した版を送り直すときは、前と同じ title で送ってください。受け取り箱でまだ開かれていない同じタイトルの前の版が、新しい版に置き換わります。',
   'japanese には、script の各行の日本語字幕を、番号なしで1行ずつ、script と同じ順番・同じ行数で入れます。アプリの字幕画面に最初から入ります。*…* と絵文字は日本語には入れません（{…} は下のルールどおりに付けます）。日本語字幕は次のルールで作ります。',
   JAPANESE_SUBTITLE_RULES,
@@ -113,23 +121,38 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           .optional()
           .describe('相手を表す絵文字1つ（相手のセリフの字幕の横に出る）。heard があるときだけ'),
         heardVoice: z
-          .enum(['natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow'])
+          .enum(HEARD_VOICE_NAMES)
           .optional()
-          .describe('相手の声。kid=子ども / high=高い声 / low=低い声 / fast=早回し / slow=スロー / phone=電話 / phoneKid・phoneHigh・phoneLow=電話の子ども・女の人・男の人 / natural=そのまま。heard があるときだけ'),
+          .describe('相手の声。kid=子ども / high=高い声 / low=低い声 / fast=早回し / slow=スロー / phone=電話 / phoneKid・phoneHigh・phoneLow=電話の子ども・女の人・男の人 / olderWoman・youngWoman=年上・若い女の人 / olderMan・youngMan=年上・若い男の人 / phoneOlderWoman など=その電話版 / natural=そのまま。heard があるときだけ'),
+        heardName: z
+          .string()
+          .trim()
+          .min(1)
+          .max(32)
+          .optional()
+          .describe('相手の役名（英語で短く。例: Hairdresser / Mom / Boss）。アイコンの横に小さく出る。heard があるときだけ'),
         heardCast: z
           .array(
             z.object({
               lines: z.preprocess(lineNumbersFromText, z.array(z.number().int().min(1)).min(1).max(300)).describe('その人のセリフの行番号'),
               icon: z.string().trim().min(1).max(16).optional().describe('その人を表す絵文字1つ'),
-              voice: z.enum(['natural', 'kid', 'high', 'low', 'fast', 'slow', 'phone', 'phoneKid', 'phoneHigh', 'phoneLow']).optional().describe('その人の声'),
+              voice: z.enum(HEARD_VOICE_NAMES).optional().describe('その人の声'),
+              name: z.string().trim().min(1).max(32).optional().describe('その人の役名（例: Mom）。アイコンの横に小さく出る'),
             }),
           )
           .max(6)
           .optional()
-          .describe('相手が2人以上の会話: 1人ずつ、その人のセリフの行番号・絵文字・声'),
+          .describe('相手が2人以上の会話: 1人ずつ、その人のセリフの行番号・絵文字・声・役名'),
+        scene: z
+          .string()
+          .trim()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe('会話の状況の短いラベル（例: "a wrong number" / "online meeting"）。1行目のあいだだけ、1行目の字幕のすぐ下に出る'),
       },
     },
-    async ({ title, script, caption, japanese, type, images, heard, heardIcon, heardVoice, heardCast }) => {
+    async ({ title, script, caption, japanese, type, images, heard, heardIcon, heardVoice, heardName, heardCast, scene }) => {
       const body = script.replace(/\r\n?/g, '\n')
       const lines = body.split('\n').filter(line => line.trim()).length
       if (japanese) {
@@ -155,6 +178,7 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
         lines: [...new Set(member.lines)].sort((a, b) => a - b),
         ...(member.icon ? { icon: member.icon } : {}),
         ...(member.voice && member.voice !== 'natural' ? { voice: member.voice } : {}),
+        ...(member.name ? { name: member.name } : {}),
       }))
       const twice = cast.flatMap(m => m.lines).find((line, i, all) => all.indexOf(line) !== i)
       if (twice !== undefined) {
@@ -172,8 +196,9 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           caption: captionWithCredits(caption ?? '', images ?? []),
           japanese,
           images,
-          ...(heardLines.length ? { heard: heardLines, ...(heardIcon ? { heardIcon } : {}), ...(heardVoice && heardVoice !== 'natural' ? { heardVoice } : {}), ...(cast.length ? { heardCast: cast } : {}) } : {}),
+          ...(heardLines.length ? { heard: heardLines, ...(heardIcon ? { heardIcon } : {}), ...(heardVoice && heardVoice !== 'natural' ? { heardVoice } : {}), ...(heardName ? { heardName } : {}), ...(cast.length ? { heardCast: cast } : {}) } : {}),
           ...(type ? { videoType: type } : {}),
+          ...(scene ? { scene } : {}),
         })
         const note = replaced > 0 ? '受け取り箱にあった同じタイトルの前の版は置き換えました。' : ''
         const withJapanese = (japanese ? '・日本語訳つき' : '') + (type ? `・Type ${type}` : '') +

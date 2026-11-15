@@ -89,6 +89,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   const hasHookCue = translated.some(c => c.variant === 'hook')
   const images = (look.hook.lineImages ?? []).filter(i => translated.some(c => c.id === i.cueId))
   const speakers = (look.hook.speakers ?? []).filter(s => translated.some(c => c.id === s.cueId))
+  const scene = look.hook.scene && translated.some(c => c.id === look.hook.scene!.cueId) ? look.hook.scene.text : null
   const placement = JSON.stringify([
     hasNormalCue ? look.position : null,
     hasHookCue ? look.hook.position : null,
@@ -105,7 +106,9 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     // The subtitle moved down and the image above the head (2026-11-06); old burns with an image are stale.
     ...(images.length > 0 ? ['image-above-v1', images.map(i => [i.cueId, i.imageId, blobId(i.blob), i.credit ?? null])] : []),
     // Likewise only a 相手のセリフ shot: its subtitle is tinted, with the icon beside it.
-    ...(speakers.length > 0 ? ['speaker-v1', speakers.map(s => [s.cueId, s.icon])] : []),
+    // And only the shot with line 1 carries the 状況のラベル.
+    ...(scene ? ['scene-v1', scene] : []),
+    ...(speakers.length > 0 ? ['speaker-v1', speakers.map(s => [s.cueId, s.icon, ...(s.phone ? ['phone'] : []), ...(s.name ? [s.name] : [])])] : []),
   ])
   const opening = openingPlan(look.hook, look.firstShotDuration)
   const firstShot = JSON.stringify(extras ? (opening ? [look.hook.punchIn, opening] : look.hook.punchIn) : null)

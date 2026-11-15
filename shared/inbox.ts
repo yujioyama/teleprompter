@@ -49,12 +49,16 @@ export interface InboxItem {
   heardIcon?: string
   /** The voice the other person's lines are given (see HEARD_VOICES); absent for the voice as spoken. */
   heardVoice?: string
+  /** The other person's role, burned small beside their icon (e.g. "Hairdresser"); absent for the icon alone. */
+  heardName?: string
   /**
    * A conversation with more than one other person: each one's lines, with
-   * their own icon and voice (in place of heardIcon / heardVoice there).
+   * their own icon, voice and name (in place of heardIcon / heardVoice / heardName there).
    * Every line here is also in `heard`. Absent when there is one other person.
    */
   heardCast?: HeardCastMember[]
+  /** A few words on where the conversation happens, over line 1 (e.g. "a wrong number"); absent for none. */
+  scene?: string
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }
@@ -65,4 +69,6 @@ export interface HeardCastMember {
   lines: number[]
   icon?: string
   voice?: string
+  /** Their role, beside their icon (e.g. "Mom"). */
+  name?: string
 }

@@ -3,7 +3,8 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerOf } from '../utils/speakers'
+import { SCENE_FILL, SCENE_FONT_PX, SCENE_GAP, SCENE_PAD_X, SCENE_PILL_HEIGHT, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
+import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
   BUBBLE_FILL,
@@ -12,6 +13,9 @@ import {
   PHONE_BADGE_EMOJI_PX,
   PHONE_BADGE_RADIUS,
   phoneBadgeCenter,
+  layoutSpeakerName,
+  SPEAKER_NAME_WEIGHT,
+  type SpeakerNameLayout,
   SPEAKER_ICON_RADIUS,
   SUBTITLE_BLOCK_GAP,
   SUBTITLE_FONT_FAMILY,
@@ -85,7 +89,7 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
  * 相手のセリフ: the speech bubble (tail rising to the icon) and the icon on
  * its white disc, drawn as the burn draws them, over the whole cue box.
  */
-function SpeakerBubbleArt({ bubble, icon, height, phone = false }: { bubble: SpeakerBubble; icon: string; height: number; phone?: boolean }) {
+function SpeakerBubbleArt({ bubble, icon, height, phone = false, name = null }: { bubble: SpeakerBubble; icon: string; height: number; phone?: boolean; name?: SpeakerNameLayout | null }) {
   const { x: badgeX, y: badgeY } = phoneBadgeCenter(bubble)
   return (
     <svg
@@ -128,6 +132,24 @@ function SpeakerBubbleArt({ bubble, icon, height, phone = false }: { bubble: Spe
             {PHONE_BADGE}
           </text>
         </>
+      )}
+      {name && (
+        <text
+          data-testid="subtitle-speaker-name"
+          x={name.x}
+          y={name.y}
+          fontSize={name.fontPx}
+          fontFamily={SUBTITLE_FONT_FAMILY}
+          fontWeight={SPEAKER_NAME_WEIGHT}
+          fill="#fff"
+          stroke="#000"
+          strokeWidth={outlineWidth(name.fontPx)}
+          strokeLinejoin="round"
+          paintOrder="stroke"
+          dominantBaseline="central"
+        >
+          {name.text}
+        </text>
       )}
     </svg>
   )
@@ -255,6 +277,11 @@ export default function SubtitleOverlayPreview({
   const speaker = cue ? speakerOf(hook, cue.id) : undefined
   const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
   const bubble = speaker ? layout?.bubble : undefined
+  const phone = cue ? onPhone(hook, cue.id) : false
+  // 状況のラベル: under line 1's subtitle, as burned.
+  const sceneText = cue && cue.ja !== null ? sceneOf(hook, cue.id) : undefined
+  const sceneLabel = sceneText ? layoutSceneLabel(sceneText, measure) : null
+  const speakerName = bubble ? layoutSpeakerName(cue ? speakerNameOf(hook, cue.id) : undefined, bubble, phone, measure) : null
 
   const cueBox = cue && layout && (
     <div
@@ -269,7 +296,7 @@ export default function SubtitleOverlayPreview({
       data-testid="subtitle-overlay-box"
       data-variant={cue.variant}
     >
-      {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} phone={cue ? onPhone(hook, cue.id) : false} />}
+      {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} phone={phone} name={speakerName} />}
       <p className={styles.en} style={{ ...blockStyle(layout.en), ...spokenColor }}>
         <BlockLines block={layout.en} />
       </p>
@@ -277,6 +304,25 @@ export default function SubtitleOverlayPreview({
         <p className={styles.ja} style={{ ...blockStyle(layout.ja), ...spokenColor, marginTop: cqw(SUBTITLE_BLOCK_GAP) }}>
           <BlockLines block={layout.ja} />
         </p>
+      )}
+      {sceneLabel && (
+        <span
+          className={styles.scene}
+          data-testid="subtitle-scene"
+          style={{
+            top: cqw(layout.height - SUBTITLE_PADDING_Y + SCENE_GAP),
+            width: cqw(sceneLabel.width),
+            height: cqw(SCENE_PILL_HEIGHT),
+            lineHeight: cqw(SCENE_PILL_HEIGHT),
+            padding: `0 ${cqw(SCENE_PAD_X)}`,
+            fontFamily: SUBTITLE_FONT_FAMILY,
+            fontSize: cqw(SCENE_FONT_PX),
+            borderRadius: cqw(SCENE_PILL_HEIGHT / 2),
+            background: SCENE_FILL,
+          }}
+        >
+          {sceneLabel.text}
+        </span>
       )}
     </div>
   )

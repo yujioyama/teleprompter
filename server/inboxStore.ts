@@ -10,7 +10,7 @@ export interface InboxStore {
    * Waiting items with the same title are older versions of this script
    * (Claude resent it after a fix), so they are replaced: `replaced` counts them.
    */
-  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType; images?: InboxImage[]; heard?: number[]; heardIcon?: string; heardVoice?: string; heardCast?: HeardCastMember[] }): Promise<{ item: InboxItem; replaced: number }>
+  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType; images?: InboxImage[]; heard?: number[]; heardIcon?: string; heardVoice?: string; heardName?: string; heardCast?: HeardCastMember[]; scene?: string }): Promise<{ item: InboxItem; replaced: number }>
   /** Newest first. */
   list(): Promise<InboxItem[]>
   /** Succeeds when the item is already gone. */
@@ -40,7 +40,7 @@ export function createInboxStore(
   }
 
   return {
-    async add({ title, body, caption, japanese, videoType, images, heard, heardIcon, heardVoice, heardCast }) {
+    async add({ title, body, caption, japanese, videoType, images, heard, heardIcon, heardVoice, heardName, heardCast, scene }) {
       const stale = (await list()).filter(old => old.title === title)
       const item: InboxItem = {
         id: newId(),
@@ -53,7 +53,9 @@ export function createInboxStore(
         ...(heard?.length ? { heard } : {}),
         ...(heard?.length && heardIcon ? { heardIcon } : {}),
         ...(heard?.length && heardVoice ? { heardVoice } : {}),
+        ...(heard?.length && heardName ? { heardName } : {}),
         ...(heard?.length && heardCast?.length ? { heardCast } : {}),
+        ...(scene ? { scene } : {}),
         createdAt: now().toISOString(),
       }
       // The new version is saved before the old ones go, so a failure in
