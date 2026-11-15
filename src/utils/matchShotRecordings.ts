@@ -1,4 +1,5 @@
 import { Shot } from '../types'
+import { isHeardVoice, type HeardVoice } from './voiceEffects'
 
 // teleprompter-cam saves takes to Files (このiPhone内 › TeleprompterCam) as:
 //   TeleprompterCam-<sessionTag>-shot<index>of<count>-<shot.id>.mov
@@ -21,6 +22,17 @@ export function extractShotId(filename: string): string | null {
  */
 export function isVoiceFile(file: Pick<File, 'name' | 'type'>): boolean {
   return /-voice-/.test(file.name) || file.type.startsWith('audio/') || /\.(m4a|aac|wav|caf|mp3)$/i.test(file.name)
+}
+
+/**
+ * The voice picked for it in the camera app, which names it in the file
+ * since 2026-11-15:
+ *   TeleprompterCam-<sessionTag>-voice-<voice>-shot<index>of<count>-<shot.id>.m4a
+ * null for an older file, or a name the app doesn't know.
+ */
+export function voiceOfVoiceFile(filename: string): HeardVoice | null {
+  const match = /-voice-([A-Za-z]+)-shot\d+of\d+-/.exec(filename)
+  return match && isHeardVoice(match[1]) ? match[1] : null
 }
 
 /** The picked voice files by the shot they're for; ones naming no shot are left out. */

@@ -155,7 +155,44 @@ describe('levelVoice', () => {
 
 describe('isPhoneVoice', () => {
   it('is true for the voices heard down a phone line only', () => {
-    expect(HEARD_VOICES.filter(isPhoneVoice)).toEqual(['phone', 'phoneKid', 'phoneHigh', 'phoneLow'])
+    expect(HEARD_VOICES.filter(isPhoneVoice)).toEqual(['phone', 'phoneKid', 'phoneHigh', 'phoneLow', 'phoneOlderWoman', 'phoneYoungWoman', 'phoneOlderMan', 'phoneYoungMan'])
     expect(isPhoneVoice(undefined)).toBe(false)
+  })
+
+  const voice = tone(200)
+
+  it.each([
+    ['olderWoman', 2 ** (4.5 / 12), 0.9],
+    ['youngWoman', 2 ** (9 / 12), 1.08],
+    ['olderMan', 2 ** (-5 / 12), 0.88],
+    ['youngMan', 2 ** (1 / 12), 1.1],
+  ] as const)('gives the %s voice its pitch and its own pace, the pitch kept', (name, ratio, tempo) => {
+    const out = shapeVoice(voice, RATE, name)
+    expect(out.length).toBe(Math.round(voice.length / tempo))
+    expect(pitchOf(out) / 200).toBeCloseTo(ratio, 1)
+    expect(voiceSpeed(name)).toBe(tempo)
+  })
+
+  it('keeps the new voices clearly apart from the ones beside them', () => {
+    // A couple of semitones and a different pace at least between neighbours.
+    const apart = (a: number, b: number) => Math.abs(12 * Math.log2(a / b))
+    const pitch = (name: Parameters<typeof shapeVoice>[2]) => pitchOf(shapeVoice(voice, RATE, name))
+    expect(apart(pitch('high'), pitch('olderWoman'))).toBeGreaterThan(2)
+    expect(apart(pitch('high'), pitch('youngWoman'))).toBeGreaterThan(1.5)
+    expect(apart(pitch('low'), pitch('olderMan'))).toBeGreaterThan(1.5)
+    expect(voiceSpeed('olderWoman')).not.toBe(voiceSpeed('high'))
+    expect(voiceSpeed('olderMan')).not.toBe(voiceSpeed('low'))
+  })
+
+  it.each([
+    ['phoneOlderWoman', 'olderWoman'],
+    ['phoneYoungWoman', 'youngWoman'],
+    ['phoneOlderMan', 'olderMan'],
+    ['phoneYoungMan', 'youngMan'],
+  ] as const)('makes %s the %s voice down a phone line', (name, plain) => {
+    expect(isPhoneVoice(name)).toBe(true)
+    expect(voiceSpeed(name)).toBe(voiceSpeed(plain))
+    const out = shapeVoice(tone(400), RATE, name)
+    expect(Array.from(out)).toEqual(Array.from(telephone(shapeVoice(tone(400), RATE, plain), RATE)))
   })
 })

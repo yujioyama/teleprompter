@@ -4,6 +4,7 @@ import BgmSettings from '../components/BgmSettings'
 import SubtitlePositionSettings from '../components/SubtitlePositionSettings'
 import ScriptBackup from '../components/ScriptBackup'
 import { VOICE_PRESET_OPTIONS } from '../utils/voicePreset'
+import { NOISE_REDUCTION_OPTIONS } from '../utils/ownVoiceNoise'
 import styles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
@@ -33,6 +34,26 @@ export default function SettingsPage() {
             />
             <span className={styles.toggleTrack} />
           </label>
+        </div>
+
+        <div className={`${styles.row} ${styles.sliderRow}`}>
+          <div>
+            <div className={styles.rowLabel}>ノイズ除去</div>
+            <div className={styles.rowSub}>自分が話すショットの音声から、部屋のサーという音を減らします（インポートのときにかかります。相手の声とBGMにはかかりません）</div>
+          </div>
+          <div className={styles.presets} role="group" aria-label="ノイズ除去">
+            {NOISE_REDUCTION_OPTIONS.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                className={`${styles.presetBtn} ${settings.noiseReduction === o.value ? styles.presetBtnActive : ''}`}
+                aria-pressed={settings.noiseReduction === o.value}
+                onClick={() => updateSettings({ noiseReduction: o.value })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className={`${styles.row} ${styles.sliderRow}`}>

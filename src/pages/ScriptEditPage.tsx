@@ -6,10 +6,13 @@ import { deleteInboxItem, type InboxItem } from '../utils/inbox'
 import { splitShots, DEFAULT_SPLIT_OPTIONS, SplitOptions } from '../utils/splitShots'
 import { reconcileShots } from '../utils/reconcileShots'
 import { lineJapaneseOf, lineKey, takeLinesOf } from '../utils/subtitleCues'
-import { isHeardVoice } from '../utils/voiceEffects'
+import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice } from '../utils/voiceEffects'
+import VoiceTry from '../components/VoiceTry'
 import { assignToLines, lineImagesOf, reconcileLineImages } from '../utils/lineImages'
 import { useLineImages } from '../hooks/useLineImages'
 import LineImageEditor from '../components/LineImageEditor'
+import { heardPeopleOfInbox, heardPeopleOfShots, SPEAKER_NAME_MAX_LENGTH, withHeardPeople, type HeardPerson } from '../utils/speakerNames'
+import { SCENE_MAX_LENGTH } from '../utils/sceneLabel'
 import { LineImage, Shot, type VideoType } from '../types'
 import styles from './ScriptEditPage.module.css'
 
@@ -42,13 +45,15 @@ function heardLinesOf(item: InboxItem | undefined, lines: string[]): (number | n
   })
 }
 
-/** Who says sent line `at` of a 相手のセリフ script: their icon and voice. */
-function speakerOfLine(item: InboxItem | undefined, at: number): Pick<Shot, 'speaker' | 'voice'> {
+/** Who says sent line `at` of a 相手のセリフ script: their icon, voice and role. */
+function speakerOfLine(item: InboxItem | undefined, at: number): Pick<Shot, 'speaker' | 'voice' | 'speakerName'> {
   const member = item?.heardCast?.find(m => m.lines.includes(at))
   const icon = member ? member.icon : item?.heardIcon
   const voice = member ? member.voice : item?.heardVoice
+  const name = member ? member.name : item?.heardName
   return {
     ...(icon ? { speaker: icon } : {}),
+    ...(name ? { speakerName: name } : {}),
     ...(isHeardVoice(voice) && voice !== 'natural' ? { voice } : {}),
   }
 }
@@ -112,6 +117,12 @@ export default function ScriptEditPage() {
     return inboxItem?.images ? lineImagesOf(inboxItem.body, inboxItem.images) : []
   })
   const { stored: storedImages, loading: imagesLoading, retry: retryImages } = useLineImages(lineImages, settings.inboxKey)
+  // 相手のセリフ: each other person's role, burned beside their icon.
+  const [people, setPeople] = useState<HeardPerson[]>(
+    () => existingScript ? heardPeopleOfShots(existingScript.shots) : heardPeopleOfInbox(inboxItem),
+  )
+  // The few words on where it happens, over line 1.
+  const [scene, setScene] = useState<string>(() => (existingScript ? existingScript.scene : inboxItem?.scene) ?? '')
 
   // Grow the textarea to fit its content so a long pasted script is visible
   // in full, instead of hiding most of it in a small scroll box nested
@@ -172,19 +183,19 @@ export default function ScriptEditPage() {
     }
 
     if (existingScript) {
-      const shots = reconcileShots(existingScript.shots, preview, generateId)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages })
+      const shots = withHeardPeople(reconcileShots(existingScript.shots, preview, generateId), people)
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages, scene: scene.trim() })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
-      const shots: Shot[] = preview.map((text, i) => {
+      const shots: Shot[] = withHeardPeople(preview.map((text, i) => {
         const at = heard[i]
         return { id: generateId(), text, ...(at ? { heard: true, ...speakerOfLine(inboxItem, at) } : {}) }
-      })
+      }), people)
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, lineImages)
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, lineImages, scene.trim())
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
@@ -327,6 +338,53 @@ export default function ScriptEditPage() {
             ))}
           </div>
         )}
+
+        {!oneTake && people.length > 0 && (
+          <div className={styles.splitOptions} role="group" aria-label="相手の役名">
+            <span className={styles.splitOptionsLabel}>相手の役名と声（役名は任意。アイコンの横に小さく出ます。声は撮った動画をインポートするときにかかります）</span>
+            {people.map(person => (
+              <div key={person.icon} className={styles.heardPerson}>
+                <span aria-hidden="true" className={styles.heardPersonIcon}>{person.icon}</span>
+                <input
+                  className={styles.titleInput}
+                  type="text"
+                  aria-label={`${person.icon} の役名`}
+                  placeholder="例: Mom / Boss / Hairdresser"
+                  maxLength={SPEAKER_NAME_MAX_LENGTH}
+                  value={person.name}
+                  onChange={e => {
+                    const name = e.target.value
+                    setPeople(all => all.map(p => (p.icon === person.icon ? { ...p, name } : p)))
+                  }}
+                />
+                <select
+                  aria-label={`${person.icon} の声`}
+                  value={person.voice}
+                  onChange={e => {
+                    const voice = e.target.value
+                    if (isHeardVoice(voice)) setPeople(all => all.map(p => (p.icon === person.icon ? { ...p, voice } : p)))
+                  }}
+                >
+                  {HEARD_VOICES.map(voice => (
+                    <option key={voice} value={voice}>{HEARD_VOICE_LABELS[voice]}</option>
+                  ))}
+                </select>
+                <VoiceTry voice={person.voice} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label className={styles.label} htmlFor="script-scene">状況のラベル（任意。1行目のあいだ、画面上部の字幕のすぐ下に小さく出ます）</label>
+        <input
+          id="script-scene"
+          className={styles.titleInput}
+          type="text"
+          placeholder="例: a wrong number / online meeting"
+          maxLength={SCENE_MAX_LENGTH}
+          value={scene}
+          onChange={e => setScene(e.target.value)}
+        />
 
         <label className={styles.label} htmlFor="script-caption">キャプション（任意）</label>
         <textarea

@@ -181,3 +181,20 @@
 .captionTextarea {
   margin-top: 4px;
 }
+
+/* 相手の役名と声: one row per other person. */
+.heardPerson {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.heardPerson .titleInput {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.heardPersonIcon {
+  font-size: 22px;
+}

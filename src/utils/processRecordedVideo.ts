@@ -1,9 +1,13 @@
 import { remuxMp4 } from './remuxMp4'
 import { canUseWebCodecs } from './webcodecs/support'
 import { normalizeLoudnessWebCodecs } from './webcodecs/normalizeLoudnessWebCodecs'
+import { finishAudio } from './normalizeLoudness'
+import type { NoiseReduction } from './ownVoiceNoise'
 
 export interface ProcessOptions {
   normalizeAudio: boolean
+  /** ノイズ除去 on our own voice; absent = off (a 相手のセリフ take, whose sound is replaced). */
+  noiseReduction?: NoiseReduction
 }
 
 export interface ProcessedVideo {
@@ -43,8 +47,19 @@ export async function processRecordedVideo(
   mimeType: string,
   options: ProcessOptions,
 ): Promise<ProcessedVideo> {
-  if (!isRemuxableContainer(mimeType) || !options.normalizeAudio) {
+  const denoise = options.noiseReduction ?? 'off'
+  if (!isRemuxableContainer(mimeType) || (!options.normalizeAudio && denoise === 'off')) {
     return { blob: raw, ok: true, error: null }
+  }
+
+  if (denoise !== 'off') {
+    try {
+      // WebCodecs when it can, ffmpeg's PCM round trip otherwise; the same blob back when nothing changed.
+      return { blob: await finishAudio(raw, { voice: 'none', normalize: options.normalizeAudio, denoise }), ok: true, error: null }
+    } catch (err) {
+      console.warn('[processRecordedVideo] noise reduction failed, importing without it:', err)
+      if (!options.normalizeAudio) return { blob: raw, ok: true, error: null }
+    }
   }
 
   if (await canUseWebCodecs()) {

@@ -20,6 +20,8 @@ export interface Shot {
   heard?: boolean
   /** The emoji shown beside a 相手のセリフ line's subtitle; absent for the usual one. */
   speaker?: string
+  /** The other person's role, burned small beside the icon (e.g. "Hairdresser"); absent for the icon alone. */
+  speakerName?: string
   /** The voice a 相手のセリフ line is given at import; absent for our own. */
   voice?: HeardVoice
 }
@@ -68,6 +70,8 @@ export interface Script {
   look?: StoredCinemaLook
   /** Images for some of the lines. With any, the video has no emoji stickers. */
   lineImages?: LineImage[]
+  /** A few words on where it happens, shown over line 1 (e.g. "a wrong number"); absent for none. */
+  scene?: string
   createdAt: string
   updatedAt: string
 }

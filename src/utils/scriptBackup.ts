@@ -36,6 +36,7 @@ function isShot(value: unknown): value is Shot {
     isOptional(shot.keepPause, 'boolean') &&
     isOptional(shot.heard, 'boolean') &&
     isOptional(shot.speaker, 'string') &&
+    isOptional(shot.speakerName, 'string') &&
     isOptional(shot.voice, 'string')
   )
 }
@@ -49,6 +50,7 @@ function isScript(value: unknown): value is Script {
     typeof script.createdAt === 'string' &&
     typeof script.updatedAt === 'string' &&
     isOptional(script.caption, 'string') &&
+    isOptional(script.scene, 'string') &&
     Array.isArray(script.shots) &&
     script.shots.every(isShot)
   )

@@ -16,6 +16,11 @@ import {
   layoutCue,
   outlineWidth,
   phoneBadgeCenter,
+  layoutSpeakerName,
+  speakerNameFont,
+  SPEAKER_NAME_GAP,
+  SPEAKER_NAME_MAX_PX,
+  SPEAKER_NAME_MIN_PX,
   tokenize,
   wrapText,
 } from './subtitleLayout'
@@ -197,5 +202,34 @@ describe('layoutCue for 相手のセリフ', () => {
     expect(path.startsWith('M')).toBe(true)
     expect(path).toContain(`L${layout.bubble!.iconX} `)
     expect(path.endsWith('Z')).toBe(true)
+  })
+})
+
+describe('layoutSpeakerName', () => {
+  const measure: MeasureText = (text, font) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.55
+  const bubble = { iconX: 200, iconY: 72 }
+
+  it('puts the name right of the icon, level with it, at the full size', () => {
+    const name = layoutSpeakerName('Mom', bubble, false, measure)!
+    expect(name).toMatchObject({ text: 'Mom', y: 72, fontPx: SPEAKER_NAME_MAX_PX })
+    expect(name.x).toBe(200 + SPEAKER_ICON_RADIUS + SPEAKER_NAME_GAP)
+  })
+
+  it('goes right of the 📞 for someone on the phone', () => {
+    const name = layoutSpeakerName('Mom', bubble, true, measure)!
+    expect(name.x).toBe(phoneBadgeCenter(bubble).x + PHONE_BADGE_RADIUS + SPEAKER_NAME_GAP)
+  })
+
+  it('shrinks, then shortens, a name with too little room, 10% in from the edge', () => {
+    const far = { iconX: 700, iconY: 72 }
+    const long = layoutSpeakerName('The Hairdresser Downstairs', far, false, measure)!
+    expect(long.fontPx).toBe(SPEAKER_NAME_MIN_PX)
+    expect(long.text.endsWith('…')).toBe(true)
+    expect(long.x + measure(long.text, speakerNameFont(long.fontPx))).toBeLessThanOrEqual(SUBTITLE_REFERENCE_WIDTH * 0.9)
+  })
+
+  it('has nothing to lay out without a name', () => {
+    expect(layoutSpeakerName(undefined, bubble, false, measure)).toBeNull()
+    expect(layoutSpeakerName('  ', bubble, false, measure)).toBeNull()
   })
 })

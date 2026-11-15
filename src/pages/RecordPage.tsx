@@ -6,11 +6,12 @@ import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType } from '../utils/processRecordedVideo'
-import { isVoiceFile, resolveImportTargets, voicesByShotId } from '../utils/matchShotRecordings'
+import { isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
 import { heardShotFailureText, makeHeardShot, makeHeardShotFromVoice } from '../utils/heardShot'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
+import VoiceTry from '../components/VoiceTry'
 import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
 import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -119,12 +120,25 @@ export default function RecordPage() {
     const failedShotTexts: string[] = []
     const degradedShotTexts: string[] = []
     const unheardShotTexts: string[] = []
+    // A voice picked in the camera app (named in its file) is the line's voice from now on, for every line of that person.
+    let shots = safeScript.shots
+    for (const { shot } of targets) {
+      const picked = voices.has(shot.id) ? voiceOfVoiceFile(voices.get(shot.id)!.name) : null
+      if (picked && picked !== (shot.voice ?? 'natural')) shots = withSpeakerVoice(shots, shot.id, picked)
+    }
+    if (shots !== safeScript.shots && id) updateScript(id, { shots })
+    const voiceOf = (shot: Shot) => shots.find(s => s.id === shot.id)?.voice
 
     for (let i = 0; i < targets.length; i++) {
       const { shot, file } = targets[i]
       try {
         const mimeType = inferMimeType(file)
-        const processed = await processRecordedVideo(file, mimeType, { normalizeAudio: globalSettings.normalizeAudio })
+        // Our own voice gets the noise taken out; a 相手のセリフ take's sound is replaced anyway.
+        const ownVoice = !shot.heard || safeScript.oneTake
+        const processed = await processRecordedVideo(file, mimeType, {
+          normalizeAudio: globalSettings.normalizeAudio,
+          ...(ownVoice ? { noiseReduction: globalSettings.noiseReduction } : {}),
+        })
         // remuxMp4 always falls back to the original blob on failure, so this
         // is still worth saving — just flagged as degraded rather than dropped.
         let take = processed.blob
@@ -134,8 +148,8 @@ export default function RecordPage() {
           try {
             const recordedVoice = voices.get(shot.id)
             take = recordedVoice
-              ? await makeHeardShotFromVoice(processed.blob, recordedVoice, shot.voice)
-              : await makeHeardShot(processed.blob, shot.voice)
+              ? await makeHeardShotFromVoice(processed.blob, recordedVoice, voiceOf(shot))
+              : await makeHeardShot(processed.blob, voiceOf(shot))
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
             unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
@@ -340,6 +354,7 @@ export default function RecordPage() {
                         <option key={voice} value={voice}>{HEARD_VOICE_LABELS[voice]}</option>
                       ))}
                     </select>
+                    <VoiceTry voice={currentShot.voice ?? 'natural'} />
                   </div>
                 )}
                 {/* Use global / override toggle */}

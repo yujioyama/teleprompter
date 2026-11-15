@@ -35,6 +35,7 @@ import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineImage, LineJapanese } from '../types'
 import { withLineImages, type StoredLineImage } from '../utils/lineImages'
 import { withSpeakers } from '../utils/speakers'
+import { withScene } from '../utils/sceneLabel'
 import { letterboxHeight, openingActive } from '../utils/openingLook'
 import { CINEMA_LOOKS, CINEMA_LOOK_LABELS, type CinemaLook } from '../../shared/cinemaLook'
 import OpeningLookCanvas from './OpeningLookCanvas'
@@ -115,6 +116,8 @@ interface SubtitleWorkflowProps {
   lineImages?: { images: LineImage[]; stored: Map<string, StoredLineImage>; lines: string[]; loading: boolean }
   /** The film look under the opening bars; null or absent = none. */
   cinemaLook?: CinemaLook | null
+  /** 状況のラベル, over line 1; absent for none. */
+  scene?: string
   /** The picker under the bars' hint; null = none (the bars alone). */
   onCinemaLookChange?: (look: CinemaLook | null) => void
 }
@@ -156,6 +159,7 @@ export default function SubtitleWorkflow({
   scriptJapanese = [],
   lineImages,
   cinemaLook = null,
+  scene,
   onCinemaLookChange,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
@@ -194,9 +198,9 @@ export default function SubtitleWorkflow({
   const hook = useMemo(() => {
     // The speakers first: the opening keeps clear of their taller, bubbled cues.
     const spoken = withSpeakers(hookOptionsOf(oneTake ? oneTakeHookSettings(hookSettings) : hookSettings), cues, shotCueInputs)
-    const opened = withOpening(spoken, cues, position, cinemaLook)
+    const opened = withScene(withOpening(spoken, cues, position, cinemaLook), cues, scene)
     return lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened
-  }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages, shotCueInputs])
+  }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages, shotCueInputs, scene])
   const hasLineImages = Boolean(lineImages?.images.length)
   // Picked but not going to show: not on this device, or no subtitle matches its line.
   const lineImagesLeftOut = !lineImages || lineImages.loading || cues.length === 0 ? 0 : lineImages.images.length - (hook.lineImages?.length ?? 0)

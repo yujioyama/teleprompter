@@ -10,6 +10,7 @@ import type { PunchInDuration, PunchInZoom, ZoomDirection } from '../utils/subti
 import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
+import type { NoiseReduction } from '../utils/ownVoiceNoise'
 import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
 import type { CoverFramePlacement, CoverFrameSource } from '../utils/coverFrames'
 
@@ -20,6 +21,8 @@ export interface AppSettings {
   normalizeAudio: boolean
   /** 声の加工 applied to the voice on every video. */
   voicePreset: VoicePreset
+  /** ノイズ除去 on our own takes as they're imported (not the other person's voice, not the BGM). */
+  noiseReduction: NoiseReduction
   /** BGM added to every video without stopping on the BGM step; null = none. */
   defaultBgmId: string | null
   /**
@@ -97,6 +100,7 @@ const DEFAULTS: AppSettings = {
   trimPaddingEnd: 0.2,
   normalizeAudio: true,
   voicePreset: 'natural',
+  noiseReduction: 'medium',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.2,

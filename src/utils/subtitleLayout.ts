@@ -93,6 +93,53 @@ export const PHONE_BADGE_GAP = 10
 export function phoneBadgeCenter(bubble: Pick<SpeakerBubble, 'iconX' | 'iconY'>): { x: number; y: number } {
   return { x: bubble.iconX + SPEAKER_ICON_RADIUS + PHONE_BADGE_GAP + PHONE_BADGE_RADIUS, y: bubble.iconY }
 }
+/**
+ * The other person's role (e.g. "Hairdresser"), small and white to the right
+ * of their icon (and of the 📞, when there is one), level with it. It sits in
+ * the room the icon already takes above the bubble, so a cue is as tall with
+ * it as without.
+ */
+export const SPEAKER_NAME_MAX_PX = 38
+export const SPEAKER_NAME_MIN_PX = 28
+export const SPEAKER_NAME_WEIGHT = '800'
+/** Between the icon's (or the 📞's) disc and the name. */
+export const SPEAKER_NAME_GAP = 14
+
+export interface SpeakerNameLayout {
+  /** As drawn: shortened with … when even the smallest size has no room. */
+  text: string
+  /** Its left end and vertical center, in the cue image's px. */
+  x: number
+  y: number
+  fontPx: number
+}
+
+export function speakerNameFont(px: number): string {
+  return `${SPEAKER_NAME_WEIGHT} ${px}px ${SUBTITLE_FONT_FAMILY}`
+}
+
+/** Where `name` goes beside the icon of `bubble`, kept 10% in from the right edge; null for none. */
+export function layoutSpeakerName(
+  name: string | undefined,
+  bubble: Pick<SpeakerBubble, 'iconX' | 'iconY'>,
+  phone: boolean,
+  measure: MeasureText,
+): SpeakerNameLayout | null {
+  const trimmed = name?.trim()
+  if (!trimmed) return null
+  const right = phone ? phoneBadgeCenter(bubble).x + PHONE_BADGE_RADIUS : bubble.iconX + SPEAKER_ICON_RADIUS
+  const x = right + SPEAKER_NAME_GAP
+  // 10% in from the right edge, past what TikTok's zoom crops off.
+  const room = SUBTITLE_REFERENCE_WIDTH * 0.9 - x
+  for (let px = SPEAKER_NAME_MAX_PX; px >= SPEAKER_NAME_MIN_PX; px -= 2) {
+    if (measure(trimmed, speakerNameFont(px)) <= room) return { text: trimmed, x, y: bubble.iconY, fontPx: px }
+  }
+  const font = speakerNameFont(SPEAKER_NAME_MIN_PX)
+  const chars = Array.from(trimmed)
+  while (chars.length > 1 && measure(`${chars.join('').trimEnd()}…`, font) > room) chars.pop()
+  return { text: `${chars.join('').trimEnd()}…`, x, y: bubble.iconY, fontPx: SPEAKER_NAME_MIN_PX }
+}
+
 /** How far the icon sits in from the bubble's left edge (to its center), and the gap under it. */
 export const SPEAKER_ICON_INSET = 18
 export const SPEAKER_ICON_GAP = 24

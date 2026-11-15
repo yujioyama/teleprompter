@@ -8,6 +8,7 @@ import type { FairyAppearance } from './fairyPlan'
 import type { MidZoomSegment } from './midZoom'
 import type { CueImage } from './lineImages'
 import type { CueSpeaker } from './speakers'
+import type { CueScene } from './sceneLabel'
 import { LETTERBOX, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
@@ -80,6 +81,8 @@ export interface HookOptions {
   lineImages?: CueImage[]
   /** The 相手のセリフ cues and the icon beside each (see withSpeakers); default none. */
   speakers?: CueSpeaker[]
+  /** 状況のラベル, over line 1 (see withScene); default none. */
+  scene?: CueScene
 }
 
 export type HookSettings = Pick<

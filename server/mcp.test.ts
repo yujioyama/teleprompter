@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { handleMcpRequest, RECORDS_TOOL_NAME, SUBTITLES_TOOL_NAME, TOOL_NAME, type McpDeps } from './mcp.js'
+import { HEARD_VOICES } from '../src/utils/voiceEffects'
+import { HEARD_VOICE_NAMES, handleMcpRequest, RECORDS_TOOL_NAME, SUBTITLES_TOOL_NAME, TOOL_NAME, type McpDeps } from './mcp.js'
 import { createInboxStore, type InboxStore } from './inboxStore.js'
 import { createSubtitleStore, type SubtitleStore } from './subtitleStore.js'
 import { createRecordStore, type RecordStore } from './recordStore.js'
@@ -87,7 +88,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardCast'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
@@ -127,11 +128,36 @@ describe('handleMcpRequest', () => {
       })
     })
 
+    it("keeps the other person's name, and each one's in a cast", async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A\nB', heard: [1], heardIcon: '💇', heardName: 'Hairdresser' }), deps)
+      expect((await store.list())[0]).toMatchObject({ heard: [1], heardName: 'Hairdresser' })
+      await handleMcpRequest(callTool({
+        title: 'b', script: 'A\nB\nC', heardCast: [{ lines: [1], icon: '👦', name: 'Kid' }, { lines: [3], icon: '👩' }],
+      }), deps)
+      const cast = (await store.list()).find(item => item.title === 'b')!.heardCast
+      expect(cast).toEqual([{ lines: [1], icon: '👦', name: 'Kid' }, { lines: [3], icon: '👩' }])
+    })
+
+    it('keeps the scene, and leaves the name off a script that is all one voice', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A', heardName: 'Mom', scene: 'a wrong number' }), deps)
+      const item = (await store.list())[0]
+      expect(item.scene).toBe('a wrong number')
+      expect(item).not.toHaveProperty('heardName')
+    })
+
     it('takes a line as one person’s only', async () => {
       const res = await handleMcpRequest(callTool({
         title: 'a', script: 'A\nB', heardCast: [{ lines: [1] }, { lines: [1, 2] }],
       }), deps)
       expect((await res.json()).result.isError).toBe(true)
+    })
+
+    it("offers the app's voices, the new older / young ones too", async () => {
+      expect([...HEARD_VOICE_NAMES]).toEqual([...HEARD_VOICES])
+      await handleMcpRequest(callTool({
+        title: 'a', script: 'A\nB', heardCast: [{ lines: [1], voice: 'youngWoman' }, { lines: [2], voice: 'phoneOlderWoman' }],
+      }), deps)
+      expect((await store.list())[0].heardCast).toEqual([{ lines: [1], voice: 'youngWoman' }, { lines: [2], voice: 'phoneOlderWoman' }])
     })
 
     it('takes only the voices there are', async () => {
