@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { IDBFactory } from 'fake-indexeddb'
 import ShotEditPage from './ShotEditPage'
+import { saveShotVideo } from '../utils/shotVideoStore'
 import type { Script } from '../types'
 
 const SCRIPT: Script = {
@@ -27,6 +29,7 @@ function renderPage() {
       <Routes>
         <Route path="/scripts/:id/shots" element={<ShotEditPage />} />
         <Route path="/scripts/:id/edit" element={<p>edit page</p>} />
+        <Route path="/scripts/:id/finalize" element={<p>finalize page</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -37,6 +40,7 @@ function deleteButtons() {
 }
 
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   localStorage.setItem('teleprompter_scripts', JSON.stringify([SCRIPT]))
 })
@@ -93,5 +97,22 @@ describe('ShotEditPage confirming an unchanged shot', () => {
     fireEvent.click(screen.getByText('二つ目'))
     fireEvent.click(screen.getByRole('button', { name: '完了' }))
     expect(screen.getByRole('button', { name: '元に戻す' })).toBeInTheDocument()
+  })
+})
+
+describe('ShotEditPage 仕上げ', () => {
+  it('goes to 仕上げ without the camera app once a take is in', async () => {
+    await saveShotVideo('s1', 'a', new Blob(['a'], { type: 'video/mp4' }))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '✂️ 動画を仕上げる' }))
+    expect(screen.getByText('finalize page')).toBeInTheDocument()
+  })
+
+  it('offers only 撮影開始 before anything is taken', async () => {
+    await saveShotVideo('other', 'a', new Blob(['a'], { type: 'video/mp4' }))
+    renderPage()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(screen.queryByRole('button', { name: '✂️ 動画を仕上げる' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '🎬 撮影開始' })).toBeInTheDocument()
   })
 })

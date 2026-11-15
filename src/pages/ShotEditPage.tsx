@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   DndContext,
@@ -12,6 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { useScripts } from '../hooks/useScripts'
 import { computeMergedText } from '../utils/mergeShots'
+import { listStoredShots } from '../utils/shotVideoStore'
 import { Shot } from '../types'
 import ShotCard from '../components/ShotCard'
 import styles from './ShotEditPage.module.css'
@@ -33,6 +34,21 @@ export default function ShotEditPage() {
   // offering to put them back says.
   const [undo, setUndo] = useState<{ snapshot: Shot[]; message: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Whether any take is in, so 仕上げ can be reopened from here (say after
+  // its 戻る) without going through the camera app again.
+  const [hasTakes, setHasTakes] = useState(false)
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    listStoredShots()
+      .then(stored => {
+        if (!cancelled) setHasTakes(stored.some(v => v.scriptId === id))
+      })
+      .catch(err => console.error('Failed to check for stored shot videos', err))
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   // All hooks MUST be called before any conditional return (React rules of hooks)
   // Support both pointer (desktop) and touch (iPhone) drag
@@ -199,6 +215,14 @@ export default function ShotEditPage() {
       </div>
 
       <div className={styles.footer}>
+        {hasTakes && (
+          <button
+            className={styles.finalizeBtn}
+            onClick={() => navigate(`/scripts/${safeScript.id}/finalize`)}
+          >
+            ✂️ 動画を仕上げる
+          </button>
+        )}
         <button className={styles.recordBtn} onClick={handleSave}>
           🎬 撮影開始
         </button>
