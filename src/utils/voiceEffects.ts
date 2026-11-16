@@ -61,6 +61,8 @@ interface VoiceShape {
   speed?: number
   /** Spoken this many times quicker at the same pitch. */
   tempo?: number
+  /** What is left of the sound above DARK_HZ (below 1: a darker, older voice). */
+  dark?: number
   phone?: boolean
 }
 
@@ -76,10 +78,10 @@ const LOW: VoiceShape = { pitch: semitones(-3), formant: 0.9 }
 const OLDER_WOMAN: VoiceShape = { pitch: semitones(4.5), formant: 1.05, tempo: 0.9 }
 // Above high, brighter and a little quick.
 const YOUNG_WOMAN: VoiceShape = { pitch: semitones(9), formant: 1.17, tempo: 1.08 }
-// Older is in the pace, not the depth: our own voice is a man's already, and
-// going below low (it was -5 semitones and a much bigger body) sounded like a
-// demon. Barely lower than our own and barely bigger, but clearly slower.
-const OLDER_MAN: VoiceShape = { pitch: semitones(-1), formant: 0.96, tempo: 0.88 }
+// Our own voice is a man's already: -5 semitones and a much bigger body
+// (0.84) sounded like a demon, and -1 like us. A little lower and bigger,
+// slower, and darker (older voices have less brightness), picked by ear.
+const OLDER_MAN: VoiceShape = { pitch: semitones(-2.5), formant: 0.92, tempo: 0.85, dark: 0.55 }
 // Hardly lower than our own, but a slimmer body and a quicker pace, so it isn't us.
 const YOUNG_MAN: VoiceShape = { pitch: semitones(1), formant: 0.94, tempo: 1.1 }
 
@@ -127,8 +129,23 @@ export function shapeVoice(samples: Float32Array, sampleRate: number, voice: Hea
     // The shift took the formants up with the pitch: back to where they belong.
     out = shiftFormants(out, sampleRate, (shape.formant ?? 1) / shape.pitch)
   }
+  if (shape.dark !== undefined) out = darken(out, sampleRate, shape.dark)
   if (shape.speed) out = resample(out, shape.speed)
   if (shape.phone) out = telephone(out, sampleRate)
+  return out
+}
+
+const DARK_HZ = 2500
+
+/** `samples` with what is above DARK_HZ turned down to `keep` of its level (a gentle high shelf). */
+export function darken(samples: Float32Array, sampleRate: number, keep: number): Float32Array {
+  const a = Math.exp((-2 * Math.PI * DARK_HZ) / sampleRate)
+  const out = new Float32Array(samples.length)
+  let low = 0
+  for (let i = 0; i < samples.length; i++) {
+    low = (1 - a) * samples[i] + a * low
+    out[i] = low + keep * (samples[i] - low)
+  }
   return out
 }
 

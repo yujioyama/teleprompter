@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HEARD_VOICES, isHeardVoice, isPhoneVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
+import { darken, HEARD_VOICES, isHeardVoice, isPhoneVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
 import { measureIntegratedLoudness, TARGET_LUFS } from './loudness'
 
 const RATE = 16000
@@ -164,7 +164,7 @@ describe('isPhoneVoice', () => {
   it.each([
     ['olderWoman', 2 ** (4.5 / 12), 0.9],
     ['youngWoman', 2 ** (9 / 12), 1.08],
-    ['olderMan', 2 ** (-1 / 12), 0.88],
+    ['olderMan', 2 ** (-2.5 / 12), 0.85],
     ['youngMan', 2 ** (1 / 12), 1.1],
   ] as const)('gives the %s voice its pitch and its own pace, the pitch kept', (name, ratio, tempo) => {
     const out = shapeVoice(voice, RATE, name)
@@ -179,7 +179,6 @@ describe('isPhoneVoice', () => {
     const pitch = (name: Parameters<typeof shapeVoice>[2]) => pitchOf(shapeVoice(voice, RATE, name))
     expect(apart(pitch('high'), pitch('olderWoman'))).toBeGreaterThan(2)
     expect(apart(pitch('high'), pitch('youngWoman'))).toBeGreaterThan(1.5)
-    expect(apart(pitch('low'), pitch('olderMan'))).toBeGreaterThan(1.5)
     expect(voiceSpeed('olderWoman')).not.toBe(voiceSpeed('high'))
     expect(voiceSpeed('olderMan')).not.toBe(voiceSpeed('low'))
   })
@@ -194,5 +193,20 @@ describe('isPhoneVoice', () => {
     expect(voiceSpeed(name)).toBe(voiceSpeed(plain))
     const out = shapeVoice(tone(400), RATE, name)
     expect(Array.from(out)).toEqual(Array.from(telephone(shapeVoice(tone(400), RATE, plain), RATE)))
+  })
+})
+
+describe('darken', () => {
+  it('turns the highs down and leaves the voice\'s lows as they were', () => {
+    const level = (hz: number) => rms(darken(tone(hz), RATE, 0.55)) / rms(tone(hz))
+    expect(level(150)).toBeGreaterThan(0.97)
+    expect(level(6000)).toBeLessThan(0.8)
+  })
+
+  it('makes olderMan darker than low, besides slower', () => {
+    // Its pitch sits near low's on purpose (lower still is a demon).
+    const brightness = (out: Float32Array) => rms(out.subarray(1).map((v, i) => v - out[i])) / rms(out)
+    expect(brightness(shapeVoice(tone(1200), RATE, 'olderMan'))).toBeLessThan(brightness(shapeVoice(tone(1200), RATE, 'low')))
+    expect(voiceSpeed('olderMan')).toBeLessThan(voiceSpeed('low'))
   })
 })
