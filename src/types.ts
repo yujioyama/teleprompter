@@ -1,5 +1,5 @@
 import type { HeardVoice } from './utils/voiceEffects'
-import type { VideoType } from '../shared/inbox'
+import type { CoverText, VideoType } from '../shared/inbox'
 import type { StoredCinemaLook } from '../shared/cinemaLook'
 
 export type { VideoType }
@@ -72,6 +72,8 @@ export interface Script {
   lineImages?: LineImage[]
   /** A few words on where it happens, shown over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
+  /** The cover's words as Claude sent them, in place of the script's `*…*` and `{…}`; absent for those. */
+  cover?: CoverText
   createdAt: string
   updatedAt: string
 }

@@ -234,6 +234,14 @@ describe('ScriptEditPage from the Claude inbox', () => {
     expect(stored()[0]).not.toHaveProperty('look')
   })
 
+  it('keeps the cover words Claude sent with the script', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, cover: { en: 'on mute', ja: 'myuuto ミュート' } } } })
+    fireEvent.click(screen.getByText('行に分ける'))
+    fireEvent.click(screen.getByText('編集へ進む →'))
+    expect(await screen.findByText('ショット編集')).toBeInTheDocument()
+    expect(stored()[0].cover).toEqual({ en: 'on mute', ja: 'myuuto ミュート' })
+  })
+
   it('stores no type when none was picked', async () => {
     renderAt({ pathname: '/scripts/new', state: { inboxItem: ITEM } })
     expect(within(screen.getByRole('group', { name: '動画の型' })).getByLabelText('なし')).toBeChecked()

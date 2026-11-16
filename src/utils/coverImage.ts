@@ -4,6 +4,7 @@ import { STICKER_EMOJI_PX, STICKER_PLACEMENTS, STICKER_SHADOW, findSticker, type
 import { dieCutSticker } from './stickerCanvas'
 import { drawCinemaLook } from './drawCinemaLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
+import type { CoverText } from '../../shared/inbox'
 
 /**
  * A cover image for the profile grid: a frame of the video with the
@@ -53,15 +54,23 @@ function firstMatch(texts: (string | null | undefined)[], pattern: RegExp): stri
  * `{…}`. Either is an empty string when the script has no such marker, and
  * the sticker is one when the first line has no emoji, or when the script has
  * line images, whose videos show no stickers (the cover goes in as frames too).
+ * Words Claude sent for the cover (`sent`) take the place of the markers: a
+ * conversation has no `*…*` or `{…}`, and its cover would be the face alone.
  */
-export function coverWordsOf(shotTexts: string[], jaLines: (string | null)[] = [], hasLineImages = false): CoverWords {
+export function coverWordsOf(
+  shotTexts: string[],
+  jaLines: (string | null)[] = [],
+  hasLineImages = false,
+  sent?: CoverText,
+): CoverWords {
+  const sticker = hasLineImages ? '' : (findSticker(shotTexts[0] ?? '') ?? '')
+  if (sent && (sent.en.trim() || sent.ja.trim())) return { en: sent.en.trim(), ja: sent.ja.trim(), sticker }
   const en = firstMatch(shotTexts, STAR) ?? ''
   const romaji = firstMatch(shotTexts, BRACE) ?? ''
   const kana = firstMatch(jaLines, BRACE) ?? ''
   // Show the kana only when it adds something: not when the translator
   // left the romaji as it was.
   const ja = kana && kana.toLowerCase() !== romaji.toLowerCase() ? [romaji, kana].filter(Boolean).join(' ') : romaji
-  const sticker = hasLineImages ? '' : (findSticker(shotTexts[0] ?? '') ?? '')
   return { en, ja, sticker }
 }
 
