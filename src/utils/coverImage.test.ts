@@ -51,6 +51,16 @@ describe('coverWordsOf', () => {
     expect(coverWordsOf(['5 * 3 * 2', 'plain'])).toEqual({ en: '', ja: '', sticker: '' })
   })
 
+  it('takes the words Claude sent over the markers, keeping the sticker', () => {
+    const sent = { en: ' on mute ', ja: 'myuuto ミュート' }
+    expect(coverWordsOf(['Hey 🎤 *there*', 'plain'], [], false, sent)).toEqual({ en: 'on mute', ja: 'myuuto ミュート', sticker: '🎤' })
+    expect(coverWordsOf(['*turmeric*'], [], false, { en: '', ja: 'ukon' })).toEqual({ en: '', ja: 'ukon', sticker: '' })
+  })
+
+  it('falls back to the markers when the sent words are blank', () => {
+    expect(coverWordsOf(['*turmeric*'], [], false, { en: ' ', ja: '' })).toEqual({ en: 'turmeric', ja: '', sticker: '' })
+  })
+
   it("takes the first line's emoji as the sticker", () => {
     expect(coverWordsOf(['I put *Vaseline*🧴 on', 'then 🤯']).sticker).toBe('🧴')
     expect(coverWordsOf(['no emoji here', 'then 🤯']).sticker).toBe('')

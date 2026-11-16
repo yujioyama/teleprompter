@@ -35,6 +35,7 @@ export function useScripts() {
     videoType?: VideoType,
     lineImages?: LineImage[],
     scene?: string,
+    cover?: Script['cover'],
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -47,6 +48,7 @@ export function useScripts() {
       ...(videoType ? { videoType } : {}),
       ...(lineImages?.length ? { lineImages } : {}),
       ...(scene ? { scene } : {}),
+      ...(cover ? { cover } : {}),
       createdAt: now,
       updatedAt: now,
     }

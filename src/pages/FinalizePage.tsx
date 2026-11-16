@@ -654,7 +654,7 @@ export default function FinalizePage() {
   const burnCoverFor = useCallback(
     async (cues: SubtitleCue[]): Promise<BurnCover | undefined> => {
       if (!coverInBurn || !combinedBlob || !script) return undefined
-      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length))
+      const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length), script.cover)
       const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
       const key = JSON.stringify([blobId(combinedBlob), words, coverTextPosition, sticker, coverLook])
       if (burnCoverRef.current?.key !== key) {
@@ -853,7 +853,7 @@ export default function FinalizePage() {
     setAutoCover('making')
     makeCover(
       combinedBlob,
-      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja), hasLineImages),
+      coverWordsOf(script.shots.map(s => s.text), subtitleCues.map(c => c.ja), hasLineImages, script.cover),
       settings.coverTextPosition,
       coverStickerSpot(stickerPlacement, settings.coverStickerSpot),
       coverLook,
@@ -1451,6 +1451,7 @@ export default function FinalizePage() {
                     script.shots.map(s => s.text),
                     subtitleCues.map(c => c.ja),
                     hasLineImages,
+                    script.cover,
                   )}
                   filenameBase={script.title}
                   initialPosition={settings.coverTextPosition}

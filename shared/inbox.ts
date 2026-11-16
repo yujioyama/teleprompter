@@ -59,8 +59,18 @@ export interface InboxItem {
   heardCast?: HeardCastMember[]
   /** A few words on where the conversation happens, over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
+  /** The words for the cover, in place of the script's `*…*` and `{…}` (a conversation has none); absent for those. */
+  cover?: CoverText
   /** ISO timestamp of when it arrived. */
   createdAt: string
+}
+
+/** The cover's two rows; either may be '' when Claude sent only the other. */
+export interface CoverText {
+  /** The English phrase, the big yellow row. */
+  en: string
+  /** The Japanese word (romaji, then its kana), the mint row. */
+  ja: string
 }
 
 /** One of the other people in a conversation (see InboxItem.heardCast). */
