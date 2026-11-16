@@ -9,7 +9,7 @@ import { processRecordedVideo, inferMimeType, type ProcessedVideo } from '../uti
 import { isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
-import { heardShotFailureText, makeHeardShot, makeHeardShotFromVoice } from '../utils/heardShot'
+import { DEVICE_RESTART_HINT, heardShotFailureText, makeHeardShot, makeHeardShotFromVoice, needsDeviceRestart } from '../utils/heardShot'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import VoiceTry from '../components/VoiceTry'
 import { HEARD_VOICES, HEARD_VOICE_LABELS, isHeardVoice, type HeardVoice } from '../utils/voiceEffects'
@@ -120,6 +120,7 @@ export default function RecordPage() {
     const failedShotTexts: string[] = []
     const degradedShotTexts: string[] = []
     const unheardShotTexts: string[] = []
+    let restartHint = false
     // A voice picked in the camera app (named in its file) is the line's voice from now on, for every line of that person.
     let shots = safeScript.shots
     for (const { shot } of targets) {
@@ -159,6 +160,7 @@ export default function RecordPage() {
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
             unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
+            if (needsDeviceRestart(err)) restartHint = true
             processed = await processTake()
             take = processed.blob
           }
@@ -193,6 +195,7 @@ export default function RecordPage() {
     }
     if (unheardShotTexts.length > 0) {
       messages.push(`相手のセリフにできず、撮ったまま保存しました: ${unheardShotTexts.join(', ')}`)
+      if (restartHint) messages.push(DEVICE_RESTART_HINT)
     }
     if (messages.length > 0) {
       setBulkImportError(messages.join(' / '))
