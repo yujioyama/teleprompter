@@ -3,7 +3,7 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SCENE_FILL, SCENE_FONT_PX, SCENE_GAP, SCENE_PAD_X, SCENE_PILL_HEIGHT, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
+import { SCENE_FILL, SCENE_FONT_PX, SCENE_GAP, SCENE_PILL_HEIGHT, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
@@ -323,15 +323,33 @@ export default function SubtitleOverlayPreview({
             top: cqw(layout.height - SUBTITLE_PADDING_Y + SCENE_GAP),
             width: cqw(sceneLabel.width),
             height: cqw(SCENE_PILL_HEIGHT),
-            lineHeight: cqw(SCENE_PILL_HEIGHT),
-            padding: `0 ${cqw(SCENE_PAD_X)}`,
             fontFamily: SUBTITLE_FONT_FAMILY,
-            fontSize: cqw(SCENE_FONT_PX),
             borderRadius: cqw(SCENE_PILL_HEIGHT / 2),
             background: SCENE_FILL,
           }}
         >
-          {sceneLabel.text}
+          <span
+            className={styles.sceneTag}
+            style={{
+              left: cqw(SCENE_TAG_INSET),
+              top: cqw(SCENE_TAG_INSET),
+              width: cqw(sceneLabel.tagWidth),
+              height: cqw(SCENE_TAG_HEIGHT),
+              lineHeight: cqw(SCENE_TAG_HEIGHT),
+              fontSize: cqw(SCENE_TAG_FONT_PX),
+              borderRadius: cqw(SCENE_TAG_HEIGHT / 2),
+              background: SCENE_TAG_FILL,
+              color: SCENE_TAG_COLOR,
+            }}
+          >
+            {SCENE_TAG}
+          </span>
+          <span
+            className={styles.sceneText}
+            style={{ left: cqw(sceneLabel.textLeft), lineHeight: cqw(SCENE_PILL_HEIGHT), fontSize: cqw(SCENE_FONT_PX) }}
+          >
+            {sceneLabel.text}
+          </span>
         </span>
       )}
     </div>
