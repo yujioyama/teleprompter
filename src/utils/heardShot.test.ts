@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { CAMERA_VOICE_DELAY_S, heardShotFailureText, lineEndOf, makeHeardShot, NotEnoughListeningError, planHeardShot, planVoiceFileShot } from './heardShot'
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
-import { canUseWebCodecs } from './webcodecs/support'
+import { hasWebCodecs, webCodecsUnavailableReason } from './webcodecs/support'
 import { buildHeardShotWebCodecs } from './webcodecs/heardShot'
 
 vi.mock('./detectSpeechBounds', async importOriginal => ({
@@ -10,7 +10,8 @@ vi.mock('./detectSpeechBounds', async importOriginal => ({
 }))
 vi.mock('./webcodecs/support', async importOriginal => ({
   ...(await importOriginal<typeof import('./webcodecs/support')>()),
-  canUseWebCodecs: vi.fn(async () => true),
+  hasWebCodecs: vi.fn(async () => true),
+  webCodecsUnavailableReason: vi.fn(() => null),
 }))
 vi.mock('./webcodecs/heardShot', () => ({ buildHeardShotWebCodecs: vi.fn(async () => new Blob(['heard'])) }))
 
@@ -105,7 +106,7 @@ describe('lineEndOf', () => {
 describe('makeHeardShot', () => {
   beforeEach(() => {
     vi.mocked(detectSpeech).mockReset().mockResolvedValue(region())
-    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(hasWebCodecs).mockResolvedValue(true)
     vi.mocked(buildHeardShotWebCodecs).mockClear()
   })
 
@@ -122,8 +123,9 @@ describe('makeHeardShot', () => {
   it('rejects without speech or without WebCodecs', async () => {
     vi.mocked(detectSpeech).mockResolvedValueOnce(null)
     await expect(makeHeardShot(new Blob(['take']))).rejects.toThrow('no speech')
-    vi.mocked(canUseWebCodecs).mockResolvedValueOnce(false)
-    await expect(makeHeardShot(new Blob(['take']))).rejects.toThrow('WebCodecs')
+    vi.mocked(hasWebCodecs).mockResolvedValueOnce(false)
+    vi.mocked(webCodecsUnavailableReason).mockReturnValueOnce('no AAC encoder')
+    await expect(makeHeardShot(new Blob(['take']))).rejects.toThrow('WebCodecs unavailable: no AAC encoder')
     expect(heardShotFailureText(new Error('x'))).toContain('見つけられない')
   })
 })

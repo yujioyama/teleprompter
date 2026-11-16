@@ -1,7 +1,7 @@
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { CONVERSATION_PADDING } from './shotTrim'
 import { voiceSpeed, type HeardVoice } from './voiceEffects'
-import { canUseWebCodecs } from './webcodecs/support'
+import { hasWebCodecs, webCodecsUnavailableReason } from './webcodecs/support'
 import { buildHeardShotWebCodecs, mediaDurationWebCodecs } from './webcodecs/heardShot'
 
 /**
@@ -137,7 +137,7 @@ export function lineEndOf(region: SpeechRegion): number {
  * the caller keeps the take as it was.
  */
 export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blob> {
-  if (!(await canUseWebCodecs())) throw new Error('WebCodecs is not available')
+  await requireWebCodecs()
   const region = await detectSpeech(take)
   if (!region) throw new Error('no speech in the take')
   return buildHeardShotWebCodecs(take, planHeardShot(region, voiceSpeed(voice)), voice)
@@ -149,11 +149,16 @@ export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blo
  * recording, the picture from the take while it played.
  */
 export async function makeHeardShotFromVoice(take: Blob, voiceFile: Blob, voice?: HeardVoice): Promise<Blob> {
-  if (!(await canUseWebCodecs())) throw new Error('WebCodecs is not available')
+  await requireWebCodecs()
   const region = await detectSpeech(voiceFile)
   if (!region) throw new Error('no speech in the recorded voice')
   const plan = planVoiceFileShot(region, await mediaDurationWebCodecs(take), voiceSpeed(voice))
   return buildHeardShotWebCodecs(take, plan, voice, voiceFile)
+}
+
+/** The clip is only built with WebCodecs: without it, say why it isn't there. */
+async function requireWebCodecs(): Promise<void> {
+  if (!(await hasWebCodecs())) throw new Error(`WebCodecs unavailable: ${webCodecsUnavailableReason() ?? 'unknown'}`)
 }
 
 /** What to tell the person when a 相手のセリフ take couldn't be made. */
