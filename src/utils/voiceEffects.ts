@@ -76,8 +76,10 @@ const LOW: VoiceShape = { pitch: semitones(-3), formant: 0.9 }
 const OLDER_WOMAN: VoiceShape = { pitch: semitones(4.5), formant: 1.05, tempo: 0.9 }
 // Above high, brighter and a little quick.
 const YOUNG_WOMAN: VoiceShape = { pitch: semitones(9), formant: 1.17, tempo: 1.08 }
-// Below low and slower, the biggest body of all.
-const OLDER_MAN: VoiceShape = { pitch: semitones(-5), formant: 0.84, tempo: 0.88 }
+// Older is in the pace, not the depth: our own voice is a man's already, and
+// going below low (it was -5 semitones and a much bigger body) sounded like a
+// demon. Barely lower than our own and barely bigger, but clearly slower.
+const OLDER_MAN: VoiceShape = { pitch: semitones(-1), formant: 0.96, tempo: 0.88 }
 // Hardly lower than our own, but a slimmer body and a quicker pace, so it isn't us.
 const YOUNG_MAN: VoiceShape = { pitch: semitones(1), formant: 0.94, tempo: 1.1 }
 

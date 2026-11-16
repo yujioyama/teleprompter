@@ -164,7 +164,7 @@ describe('isPhoneVoice', () => {
   it.each([
     ['olderWoman', 2 ** (4.5 / 12), 0.9],
     ['youngWoman', 2 ** (9 / 12), 1.08],
-    ['olderMan', 2 ** (-5 / 12), 0.88],
+    ['olderMan', 2 ** (-1 / 12), 0.88],
     ['youngMan', 2 ** (1 / 12), 1.1],
   ] as const)('gives the %s voice its pitch and its own pace, the pitch kept', (name, ratio, tempo) => {
     const out = shapeVoice(voice, RATE, name)
