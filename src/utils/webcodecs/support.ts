@@ -34,11 +34,21 @@ export const OUTPUT_CHANNELS = 2
  */
 export const SETUP_TIMEOUT_MS = 15_000
 
+/**
+ * How long the browser's own AAC encoder check may take before the WASM
+ * AAC encoder is used instead. On some iPhones the check never answers
+ * (with another app holding the microphone, for one), and it alone held
+ * up the whole support check until it was given up on.
+ */
+export const NATIVE_AAC_CHECK_MS = 4_000
+
 let support: Promise<boolean> | null = null
 let disabled = false
 let disabledReason: string | null = null
 /** Why detect() last found the pipeline missing on this device, or null. */
 let unsupportedReason: string | null = null
+/** What detect() is waiting on, so a check that never finishes says where it stopped. */
+let detectStage = 'start'
 
 /**
  * Whether the WebCodecs (Mediabunny) pipeline can be used for encoding the
@@ -55,7 +65,7 @@ export function canUseWebCodecs(): Promise<boolean> {
     const attempt: Promise<boolean> = guardAgainstStall(() => detect(), { timeoutMs: SETUP_TIMEOUT_MS }).catch(err => {
       // Given up on like a runtime failure — unless 中断する already dropped
       // this check and a fresh one is under way.
-      if (support === attempt) disableWebCodecs(new Error(`support check: ${err.message}`))
+      if (support === attempt) disableWebCodecs(new Error(`support check (${detectStage}): ${err.message}`))
       return false
     })
     support = forgetOnCancel(attempt, () => {
@@ -108,7 +118,7 @@ export async function hasWebCodecs(): Promise<boolean> {
   if (!disabled) return false
   if (!recheck) {
     const attempt: Promise<boolean> = guardAgainstStall(() => detect(), { timeoutMs: SETUP_TIMEOUT_MS }).catch(err => {
-      unsupportedReason = `support check: ${err.message}`
+      unsupportedReason = `support check (${detectStage}): ${err.message}`
       return false
     })
     recheck = forgetOnCancel(attempt, () => {
@@ -125,23 +135,37 @@ async function detect(): Promise<boolean> {
   }
   if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined') return missing('no VideoEncoder/VideoDecoder')
   try {
+    detectStage = 'H.264'
     const videoOk = await canEncodeVideo('avc', {
       width: OUTPUT_WIDTH,
       height: OUTPUT_HEIGHT,
       frameRate: OUTPUT_FRAME_RATE,
     })
     if (!videoOk) return missing(`no H.264 encoder for ${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`)
+    detectStage = 'AAC'
     const audioOptions = { sampleRate: OUTPUT_SAMPLE_RATE, numberOfChannels: OUTPUT_CHANNELS }
-    if (!(await canEncodeAudio('aac', audioOptions))) {
+    // A native check that doesn't answer counts as no native AAC: the WASM one does the same job.
+    const nativeAac = await guardAgainstStall(() => canEncodeAudio('aac', audioOptions), {
+      timeoutMs: NATIVE_AAC_CHECK_MS,
+    }).catch(err => {
+      console.warn('[webcodecs] native AAC check did not answer, using the WASM encoder:', err)
+      return false
+    })
+    if (!nativeAac) {
+      detectStage = 'WASM AAC'
       const { registerAacEncoder } = await import('@mediabunny/aac-encoder')
+      // Takes 48kHz stereo AAC. Not checked with canEncodeAudio again:
+      // Mediabunny keeps its first answer for the same settings (a false,
+      // or the native check that never answered), so that would only
+      // repeat it.
       registerAacEncoder()
-      if (!(await canEncodeAudio('aac', audioOptions))) return missing('no AAC encoder')
     }
+    detectStage = 'done'
     unsupportedReason = null
     return true
   } catch (err) {
     console.warn('[webcodecs] support check failed:', err)
-    return missing(`support check: ${err instanceof Error ? err.message : String(err)}`)
+    return missing(`support check (${detectStage}): ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 

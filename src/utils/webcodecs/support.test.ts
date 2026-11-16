@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const canEncodeVideo = vi.fn()
+const canEncodeAudio = vi.fn()
+const registerAacEncoder = vi.fn()
+vi.mock('@mediabunny/aac-encoder', () => ({ registerAacEncoder }))
 const outputStart = vi.fn()
 
 vi.mock('mediabunny', () => ({
@@ -16,7 +19,7 @@ vi.mock('mediabunny', () => ({
     this.start = outputStart
   }),
   Quality: vi.fn(),
-  canEncodeAudio: vi.fn(async () => true),
+  canEncodeAudio,
   canEncodeVideo,
 }))
 
@@ -37,6 +40,8 @@ beforeEach(() => {
   )
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   canEncodeVideo.mockReset().mockResolvedValue(true)
+  canEncodeAudio.mockReset().mockResolvedValue(true)
+  registerAacEncoder.mockReset()
   outputStart.mockReset().mockImplementation(never)
 })
 
@@ -63,6 +68,28 @@ describe('hasWebCodecs', () => {
     const { hasWebCodecs, webCodecsUnavailableReason } = await import('./support')
     await expect(hasWebCodecs()).resolves.toBe(false)
     expect(webCodecsUnavailableReason()).toBe('no H.264 encoder for 1080x1920')
+  })
+})
+
+describe('the AAC check', () => {
+  it('uses the WASM encoder when the native check never answers', async () => {
+    canEncodeAudio.mockImplementation(never)
+    const { canUseWebCodecs, NATIVE_AAC_CHECK_MS } = await import('./support')
+
+    const check = canUseWebCodecs()
+    await vi.advanceTimersByTimeAsync(NATIVE_AAC_CHECK_MS + 1000)
+    await expect(check).resolves.toBe(true)
+    expect(registerAacEncoder).toHaveBeenCalled()
+  })
+
+  it('a check that never finishes says which step it stopped at', async () => {
+    canEncodeVideo.mockImplementation(never)
+    const { canUseWebCodecs, webCodecsUnavailableReason, SETUP_TIMEOUT_MS } = await import('./support')
+
+    const check = canUseWebCodecs()
+    await vi.advanceTimersByTimeAsync(SETUP_TIMEOUT_MS)
+    await expect(check).resolves.toBe(false)
+    expect(webCodecsUnavailableReason()).toMatch(/support check \(H\.264\): .*no progress/)
   })
 })
 
