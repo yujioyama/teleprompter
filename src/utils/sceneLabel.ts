@@ -5,23 +5,38 @@ import { SUBTITLE_VIDEO_HEIGHT } from './subtitlePosition'
 
 /**
  * 状況のラベル: a few words on where a conversation happens ("a wrong
- * number", "online meeting"), shown over line 1 only, as a small white tag
- * on a dark pill right under line 1's subtitle. Under it rather than above:
- * line 1's subtitle already fills the band between the SNS header (top
- * ~15%) and the head, so above it the tag would be hidden under the header.
+ * number", "online meeting"), shown over line 1 only, right under line 1's
+ * subtitle: a dark pill that starts with a yellow SCENE tag (so the
+ * words read as the setting, not a line), then the words in white. Under it
+ * rather than above: line 1's subtitle already fills the band between the
+ * SNS header (top ~15%) and the head, so above it the tag would be hidden
+ * under the header.
  */
 export const SCENE_MAX_LENGTH = 40
-export const SCENE_FONT_PX = 34
+export const SCENE_FONT_PX = 44
 export const SCENE_FONT = `700 ${SCENE_FONT_PX}px ${SUBTITLE_FONT_FAMILY}`
-export const SCENE_PAD_X = 22
-export const SCENE_PAD_Y = 10
+export const SCENE_PAD_Y = 12
 export const SCENE_PILL_HEIGHT = Math.round(SCENE_FONT_PX * 1.2) + SCENE_PAD_Y * 2
-export const SCENE_FILL = 'rgba(0, 0, 0, 0.55)'
+export const SCENE_FILL = 'rgba(0, 0, 0, 0.78)'
+/** The SCENE tag at the pill's start. */
+export const SCENE_TAG = 'SCENE'
+export const SCENE_TAG_FONT_PX = 28
+export const SCENE_TAG_FONT = `800 ${SCENE_TAG_FONT_PX}px ${SUBTITLE_FONT_FAMILY}`
+export const SCENE_TAG_FILL = '#ffd23f'
+export const SCENE_TAG_COLOR = '#111'
+/** Between the pill's edge and the tag, all round. */
+export const SCENE_TAG_INSET = 9
+export const SCENE_TAG_HEIGHT = SCENE_PILL_HEIGHT - SCENE_TAG_INSET * 2
+export const SCENE_TAG_PAD_X = 18
+/** Between the tag and the words. */
+export const SCENE_TAG_GAP = 18
+/** After the words, to the pill's end. */
+export const SCENE_PAD_RIGHT = 30
 /** Room around the pill for its shadow, in the label image. */
 export const SCENE_SHADOW_ROOM = 8
 export const SCENE_IMAGE_HEIGHT = SCENE_PILL_HEIGHT + SCENE_SHADOW_ROOM * 2
 /** Between the subtitle's text box and the pill (the subtitle image's own bottom padding comes off it). */
-export const SCENE_GAP = 8
+export const SCENE_GAP = 10
 
 /** The cue the label shows over (line 1's) and its words. */
 export interface CueScene {
@@ -30,10 +45,14 @@ export interface CueScene {
 }
 
 export interface SceneLabelLayout {
-  /** As drawn: shortened with … when it would be wider than a subtitle. */
+  /** As drawn: shortened with … when the pill would be wider than a subtitle. */
   text: string
   /** The pill's width, centered on the frame. */
   width: number
+  /** The SCENE tag's width; it starts SCENE_TAG_INSET in from the pill's left. */
+  tagWidth: number
+  /** Where the words start, from the pill's left. */
+  textLeft: number
 }
 
 /** `hook` with the label on the first cue; unchanged without one. */
@@ -50,14 +69,16 @@ export function sceneOf(hook: Pick<HookOptions, 'scene'> | undefined, cueId: str
 }
 
 export function layoutSceneLabel(text: string, measure: MeasureText): SceneLabelLayout {
-  const room = SUBTITLE_TEXT_WIDTH - SCENE_PAD_X * 2
+  const tagWidth = Math.ceil(measure(SCENE_TAG, SCENE_TAG_FONT)) + SCENE_TAG_PAD_X * 2
+  const textLeft = SCENE_TAG_INSET + tagWidth + SCENE_TAG_GAP
+  const room = SUBTITLE_TEXT_WIDTH - textLeft - SCENE_PAD_RIGHT
   let shown = text.trim()
   if (measure(shown, SCENE_FONT) > room) {
     const chars = Array.from(shown)
     while (chars.length > 1 && measure(`${chars.join('').trimEnd()}…`, SCENE_FONT) > room) chars.pop()
     shown = `${chars.join('').trimEnd()}…`
   }
-  return { text: shown, width: Math.ceil(measure(shown, SCENE_FONT)) + SCENE_PAD_X * 2 }
+  return { text: shown, width: textLeft + Math.ceil(measure(shown, SCENE_FONT)) + SCENE_PAD_RIGHT, tagWidth, textLeft }
 }
 
 /**

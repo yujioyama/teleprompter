@@ -24,7 +24,7 @@ import {
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
-import { SCENE_FILL, SCENE_FONT, SCENE_IMAGE_HEIGHT, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, layoutSceneLabel, sceneLabelY, sceneOf } from './sceneLabel'
+import { SCENE_FILL, SCENE_FONT, SCENE_IMAGE_HEIGHT, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneLabelY, sceneOf } from './sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
@@ -394,26 +394,37 @@ export async function renderStickerSprite(emoji: string): Promise<{ image: Blob;
 }
 
 /**
- * Render the 状況のラベル: its words, white, on a dark pill centered on a
- * transparent PNG as wide as the video and SCENE_IMAGE_HEIGHT tall.
+ * Render the 状況のラベル: a dark pill with the yellow SCENE tag at its
+ * start and the words in white, centered on a transparent PNG as wide as
+ * the video and SCENE_IMAGE_HEIGHT tall.
  */
 export async function renderSceneImage(text: string): Promise<{ image: Blob; height: number }> {
   const label = layoutSceneLabel(text, canvasMeasure())
   const { canvas, ctx } = overlayCanvas(SCENE_IMAGE_HEIGHT)
   const left = (SUBTITLE_REFERENCE_WIDTH - label.width) / 2
+  const middle = SCENE_SHADOW_ROOM + SCENE_PILL_HEIGHT / 2
   ctx.save()
   ctx.beginPath()
   ctx.roundRect(left, SCENE_SHADOW_ROOM, label.width, SCENE_PILL_HEIGHT, SCENE_PILL_HEIGHT / 2)
   ctx.shadowColor = SUBTITLE_SHADOW.color
-  ctx.shadowBlur = 6
+  ctx.shadowBlur = 8
   ctx.shadowOffsetY = 2
   ctx.fillStyle = SCENE_FILL
   ctx.fill()
   ctx.restore()
-  ctx.font = SCENE_FONT
+  ctx.beginPath()
+  ctx.roundRect(left + SCENE_TAG_INSET, SCENE_SHADOW_ROOM + SCENE_TAG_INSET, label.tagWidth, SCENE_TAG_HEIGHT, SCENE_TAG_HEIGHT / 2)
+  ctx.fillStyle = SCENE_TAG_FILL
+  ctx.fill()
+  ctx.textBaseline = 'middle'
   ctx.textAlign = 'center'
+  ctx.font = SCENE_TAG_FONT
+  ctx.fillStyle = SCENE_TAG_COLOR
+  ctx.fillText(SCENE_TAG, left + SCENE_TAG_INSET + label.tagWidth / 2, middle)
+  ctx.textAlign = 'left'
+  ctx.font = SCENE_FONT
   ctx.fillStyle = '#fff'
-  ctx.fillText(label.text, SUBTITLE_REFERENCE_WIDTH / 2, SCENE_SHADOW_ROOM + SCENE_PILL_HEIGHT / 2)
+  ctx.fillText(label.text, left + label.textLeft, middle)
   return { image: await toPng(canvas), height: SCENE_IMAGE_HEIGHT }
 }
 

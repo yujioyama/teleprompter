@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { layoutSceneLabel, sceneLabelY, sceneOf, SCENE_IMAGE_HEIGHT, withScene } from './sceneLabel'
+import { layoutSceneLabel, sceneLabelY, sceneOf, SCENE_IMAGE_HEIGHT, SCENE_TAG_INSET, withScene } from './sceneLabel'
 import { SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
 import type { HookOptions } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
@@ -24,6 +24,13 @@ describe('状況のラベル', () => {
     const label = layoutSceneLabel('x'.repeat(80), measure)
     expect(label.text.endsWith('…')).toBe(true)
     expect(label.width).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
+  })
+
+  it('starts with the SCENE tag, the words after it', () => {
+    const label = layoutSceneLabel('a wrong number', measure)
+    expect(label.tagWidth).toBeGreaterThan(0)
+    expect(label.textLeft).toBeGreaterThan(SCENE_TAG_INSET + label.tagWidth)
+    expect(label.width).toBeGreaterThan(label.textLeft)
   })
 
   it('sits right under the subtitle, and stays on screen', () => {

@@ -375,7 +375,7 @@ export default function ScriptEditPage() {
           </div>
         )}
 
-        <label className={styles.label} htmlFor="script-scene">状況のラベル（任意。1行目のあいだ、画面上部の字幕のすぐ下に小さく出ます）</label>
+        <label className={styles.label} htmlFor="script-scene">状況のラベル（任意。1行目のあいだ、字幕のすぐ下に「SCENE」タグ付きで出ます）</label>
         <input
           id="script-scene"
           className={styles.titleInput}
