@@ -442,6 +442,21 @@ describe('RecordPage 相手のセリフ', () => {
     expect(screen.getAllByText(/相手のセリフにできず、撮ったまま保存しました: ショット1\(セリフのあと、あと約1.2秒長く黙って聞く顔をしてから止めてください\)/).length).toBeGreaterThan(0)
   })
 
+  it('asks for an iPhone restart when the video encoder stopped answering', async () => {
+    vi.mocked(makeHeardShot).mockRejectedValue(new Error('WebCodecs unavailable: Error: support check (H.264): no progress for 15s'))
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect(screen.getAllByText(/iPhoneを再起動してから、もう一度インポートしてください/).length).toBeGreaterThan(0)
+  })
+
+  it('does not ask for a restart for other failures', async () => {
+    vi.mocked(makeHeardShot).mockRejectedValue(new Error('no speech in the take'))
+    renderRecordPage(seedHeard().id)
+    await importShot1()
+    expect(screen.getAllByText(/相手のセリフにできず/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/再起動/)).not.toBeInTheDocument()
+  })
+
   it('has no such setting for a 一発撮り script', () => {
     renderRecordPage(seedHeard({ oneTake: true, shots: [{ id: SHOT_1, text: 'ショット1' }] }).id)
     fireEvent.click(screen.getByText(/このショットの設定/))

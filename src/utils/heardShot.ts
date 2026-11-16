@@ -171,3 +171,16 @@ export function heardShotFailureText(err: unknown): string {
   const short = reason.length > 80 ? `${reason.slice(0, 80)}…` : reason
   return `セリフの声を見つけられないか、この端末では作れませんでした${short ? `［${short}］` : ''}`
 }
+
+/**
+ * Whether the device's video encoder stopped answering (the support check
+ * never finished). Seen on an iPhone where Safari's
+ * VideoEncoder.isConfigSupported hung for every call: relaunching the app
+ * didn't help, restarting the iPhone did.
+ */
+export function needsDeviceRestart(err: unknown): boolean {
+  return err instanceof Error && /support check \([^)]*\):.*no progress/.test(err.message)
+}
+
+/** Said once after the failed lines when needsDeviceRestart held for any of them. */
+export const DEVICE_RESTART_HINT = 'iPhoneの動画処理が止まっているようです。iPhoneを再起動してから、もう一度インポートしてください'
