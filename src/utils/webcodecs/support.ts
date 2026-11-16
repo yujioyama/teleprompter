@@ -37,6 +37,8 @@ export const SETUP_TIMEOUT_MS = 15_000
 let support: Promise<boolean> | null = null
 let disabled = false
 let disabledReason: string | null = null
+/** Why detect() last found the pipeline missing on this device, or null. */
+let unsupportedReason: string | null = null
 
 /**
  * Whether the WebCodecs (Mediabunny) pipeline can be used for encoding the
@@ -83,25 +85,63 @@ export function webCodecsDisabledReason(): string | null {
   return disabledReason
 }
 
+/**
+ * Why WebCodecs isn't being used, or null when it is (or hasn't been
+ * checked yet): turned off after a failure, or missing on this device.
+ */
+export function webCodecsUnavailableReason(): string | null {
+  return disabledReason ?? unsupportedReason
+}
+
+let recheck: Promise<boolean> | null = null
+
+/**
+ * Like canUseWebCodecs, for work that has no ffmpeg.wasm fallback (a
+ * 相手のセリフ clip): after disableWebCodecs() turned the pipeline off for
+ * everything else, the device is checked again, once, and the work tried on
+ * it anyway, since giving up is all that's left otherwise. One step failing
+ * earlier in the session is no reason for every later line to fail
+ * without even trying.
+ */
+export async function hasWebCodecs(): Promise<boolean> {
+  if (await canUseWebCodecs()) return true
+  if (!disabled) return false
+  if (!recheck) {
+    const attempt: Promise<boolean> = guardAgainstStall(() => detect(), { timeoutMs: SETUP_TIMEOUT_MS }).catch(err => {
+      unsupportedReason = `support check: ${err.message}`
+      return false
+    })
+    recheck = forgetOnCancel(attempt, () => {
+      if (recheck === attempt) recheck = null
+    })
+  }
+  return recheck
+}
+
 async function detect(): Promise<boolean> {
-  if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined') return false
+  const missing = (reason: string) => {
+    unsupportedReason = reason
+    return false
+  }
+  if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined') return missing('no VideoEncoder/VideoDecoder')
   try {
     const videoOk = await canEncodeVideo('avc', {
       width: OUTPUT_WIDTH,
       height: OUTPUT_HEIGHT,
       frameRate: OUTPUT_FRAME_RATE,
     })
-    if (!videoOk) return false
+    if (!videoOk) return missing(`no H.264 encoder for ${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`)
     const audioOptions = { sampleRate: OUTPUT_SAMPLE_RATE, numberOfChannels: OUTPUT_CHANNELS }
     if (!(await canEncodeAudio('aac', audioOptions))) {
       const { registerAacEncoder } = await import('@mediabunny/aac-encoder')
       registerAacEncoder()
-      if (!(await canEncodeAudio('aac', audioOptions))) return false
+      if (!(await canEncodeAudio('aac', audioOptions))) return missing('no AAC encoder')
     }
+    unsupportedReason = null
     return true
   } catch (err) {
     console.warn('[webcodecs] support check failed:', err)
-    return false
+    return missing(`support check: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 

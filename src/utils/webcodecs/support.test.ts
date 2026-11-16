@@ -46,6 +46,26 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('hasWebCodecs', () => {
+  it('checks the device again after a failure turned WebCodecs off', async () => {
+    const { canUseWebCodecs, disableWebCodecs, hasWebCodecs, webCodecsUnavailableReason } = await import('./support')
+    await expect(canUseWebCodecs()).resolves.toBe(true)
+    disableWebCodecs(new Error('encode failed'))
+
+    await expect(canUseWebCodecs()).resolves.toBe(false)
+    expect(webCodecsUnavailableReason()).toBe('Error: encode failed')
+    await expect(hasWebCodecs()).resolves.toBe(true)
+    expect(canEncodeVideo).toHaveBeenCalledTimes(2)
+  })
+
+  it('says why when the device has no encoder for the output', async () => {
+    canEncodeVideo.mockResolvedValue(false)
+    const { hasWebCodecs, webCodecsUnavailableReason } = await import('./support')
+    await expect(hasWebCodecs()).resolves.toBe(false)
+    expect(webCodecsUnavailableReason()).toBe('no H.264 encoder for 1080x1920')
+  })
+})
+
 describe('canUseWebCodecs', () => {
   it('gives up on a support check that never finishes, and says why', async () => {
     canEncodeVideo.mockImplementation(never)
