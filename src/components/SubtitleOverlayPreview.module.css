@@ -69,7 +69,7 @@
   pointer-events: none;
 }
 
-/* 状況のラベル: under line 1's text box, centered; SCENE tag, then the words. */
+/* 状況のラベル: in line 1's image's place, centered; SCENE tag, then the words. */
 .scene {
   position: absolute;
   left: 50%;

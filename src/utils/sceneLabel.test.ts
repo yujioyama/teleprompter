@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { layoutSceneLabel, sceneLabelY, sceneUnder, SCENE_TOP_BAND_Y, SCENE_SHADOW_ROOM, sceneOf, SCENE_IMAGE_HEIGHT, SCENE_TAG_INSET, withScene } from './sceneLabel'
-import { SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
+import { layoutSceneLabel, sceneOf, SCENE_FONT_MAX_PX, SCENE_FONT_MIN_PX, SCENE_IMAGE_HEIGHT, SCENE_LABEL_Y, SCENE_MAX_WIDTH, SCENE_TAG_INSET, withScene } from './sceneLabel'
+import { type MeasureText } from './subtitleLayout'
 import { LINE_IMAGE_SLOT } from './lineImages'
 import type { HookOptions } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
@@ -24,7 +24,7 @@ describe('状況のラベル', () => {
   it('shortens a label wider than a subtitle', () => {
     const label = layoutSceneLabel('x'.repeat(80), measure)
     expect(label.text.endsWith('…')).toBe(true)
-    expect(label.width).toBeLessThanOrEqual(SUBTITLE_TEXT_WIDTH)
+    expect(label.width).toBeLessThanOrEqual(SCENE_MAX_WIDTH)
   })
 
   it('starts with the SCENE tag, the words after it', () => {
@@ -34,17 +34,18 @@ describe('状況のラベル', () => {
     expect(label.width).toBeGreaterThan(label.textLeft)
   })
 
-  it('sits right under a subtitle in the upper half, and stays on screen', () => {
-    expect(sceneUnder(22.5)).toBe(true)
-    expect(sceneLabelY(300, 200, 22.5)).toBeGreaterThan(300 + 200 - 40)
-    expect(sceneLabelY(300, 200, 22.5)).toBeLessThan(300 + 200)
-    expect(sceneLabelY(1850, 200, 50)).toBe(1920 - SCENE_IMAGE_HEIGHT)
+  it('sits in line 1\'s image slot, below the SNS header', () => {
+    expect(SCENE_LABEL_Y).toBeGreaterThan(1920 * 0.15)
+    expect(SCENE_LABEL_Y + SCENE_IMAGE_HEIGHT).toBeLessThanOrEqual(LINE_IMAGE_SLOT.top + LINE_IMAGE_SLOT.height)
   })
 
-  it('goes in the line image\'s place for a subtitle in the lower half, off the face and the SNS caption', () => {
-    expect(sceneUnder(72.3)).toBe(false)
-    expect(sceneLabelY(1100, 400, 72.3)).toBe(SCENE_TOP_BAND_Y - SCENE_SHADOW_ROOM)
-    expect(SCENE_TOP_BAND_Y).toBeGreaterThan(1920 * 0.15)
+  it('is big for a short label and smaller for a long one, within the width', () => {
+    const short = layoutSceneLabel('a wrong number', measure)
+    expect(short.fontPx).toBe(SCENE_FONT_MAX_PX)
+    const long = layoutSceneLabel('a parent-teacher meeting online', measure)
+    expect(long.fontPx).toBeLessThan(SCENE_FONT_MAX_PX)
+    expect(long.fontPx).toBeGreaterThanOrEqual(SCENE_FONT_MIN_PX)
+    expect(long.width).toBeLessThanOrEqual(SCENE_MAX_WIDTH)
   })
 
   it('keeps the opening bars off the label', () => {
