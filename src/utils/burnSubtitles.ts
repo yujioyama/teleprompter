@@ -24,7 +24,7 @@ import {
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
-import { SCENE_FILL, SCENE_FONT, SCENE_IMAGE_HEIGHT, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneLabelY, sceneOf } from './sceneLabel'
+import { SCENE_FILL, SCENE_IMAGE_HEIGHT, SCENE_LABEL_Y, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneFont, sceneOf } from './sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
@@ -422,7 +422,7 @@ export async function renderSceneImage(text: string): Promise<{ image: Blob; hei
   ctx.fillStyle = SCENE_TAG_COLOR
   ctx.fillText(SCENE_TAG, left + SCENE_TAG_INSET + label.tagWidth / 2, middle)
   ctx.textAlign = 'left'
-  ctx.font = SCENE_FONT
+  ctx.font = sceneFont(label.fontPx)
   ctx.fillStyle = '#fff'
   ctx.fillText(label.text, left + label.textLeft, middle)
   return { image: await toPng(canvas), height: SCENE_IMAGE_HEIGHT }
@@ -497,7 +497,7 @@ export async function renderSubtitleOverlays(
     const scene = sceneOf(look.hook, cue.id)
     if (scene) {
       const label = await renderSceneImage(scene)
-      overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image: label.image, y: sceneLabelY(y, height, position) })
+      overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image: label.image, y: SCENE_LABEL_Y })
     }
   }
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration, look.firstClipDuration)

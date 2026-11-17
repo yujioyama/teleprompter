@@ -3,7 +3,7 @@ import { SubtitleCue } from '../utils/subtitleCues'
 import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, safeSubtitlePosition, subtitleY } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SCENE_FILL, SCENE_FONT_PX, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneLabelY, sceneOf } from '../utils/sceneLabel'
+import { SCENE_FILL, SCENE_LABEL_Y, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
@@ -288,7 +288,7 @@ export default function SubtitleOverlayPreview({
   const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
   const bubble = speaker ? layout?.bubble : undefined
   const phone = cue ? onPhone(hook, cue.id) : false
-  // 状況のラベル: beside line 1's subtitle, on the side the burn puts it.
+  // 状況のラベル: in line 1's image's place, as burned.
   const sceneText = cue && cue.ja !== null ? sceneOf(hook, cue.id) : undefined
   const sceneLabel = sceneText ? layoutSceneLabel(sceneText, measure) : null
   const speakerName = bubble ? layoutSpeakerName(cue ? speakerNameOf(hook, cue.id) : undefined, bubble, phone, measure) : null
@@ -327,7 +327,7 @@ export default function SubtitleOverlayPreview({
           className={styles.scene}
           data-testid="subtitle-scene"
           style={{
-            top: cqw(sceneLabelY(cueTop, layout.height, cuePosition) - cueTop + SCENE_SHADOW_ROOM),
+            top: cqw(SCENE_LABEL_Y - cueTop + SCENE_SHADOW_ROOM),
             width: cqw(sceneLabel.width),
             height: cqw(SCENE_PILL_HEIGHT),
             fontFamily: SUBTITLE_FONT_FAMILY,
@@ -353,7 +353,7 @@ export default function SubtitleOverlayPreview({
           </span>
           <span
             className={styles.sceneText}
-            style={{ left: cqw(sceneLabel.textLeft), lineHeight: cqw(SCENE_PILL_HEIGHT), fontSize: cqw(SCENE_FONT_PX) }}
+            style={{ left: cqw(sceneLabel.textLeft), lineHeight: cqw(SCENE_PILL_HEIGHT), fontSize: cqw(sceneLabel.fontPx) }}
           >
             {sceneLabel.text}
           </span>
