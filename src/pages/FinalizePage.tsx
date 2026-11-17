@@ -39,6 +39,8 @@ import { withLineImages } from '../utils/lineImages'
 import { DEFAULT_SPEAKER_ICON, withSpeakers } from '../utils/speakers'
 import { withScene } from '../utils/sceneLabel'
 import { isPhoneVoice } from '../utils/voiceEffects'
+import { cardClipsOf, withCardClips, type CardClip } from '../utils/cardClips'
+import { cardAudioOf, cardCueInput, cardSpansOf, cardsInOrder, isCardClip } from '../utils/insertCard'
 import type { Shot } from '../types'
 import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -106,18 +108,24 @@ function trimSignatureOf(clips: Pick<ShotClip, 'shotId' | 'start' | 'end'>[]): s
 
 // The text each shot of a combined video is subtitled with, and for how long.
 // A 一発撮り take is subtitled line by line, split at the pauses in its speech.
+// A 挿入カード has no text, only its length.
 function cueInputsOf(entries: ShotEntry[], clips: ShotClip[], oneTake = false, shots: Shot[] = []): ShotCueInput[] {
-  return entries.map((entry, i) => {
-    const input: ShotCueInput = { text: entry.text, duration: clips[i].end - clips[i].start }
+  return clips.map(clip => {
+    const duration = clip.end - clip.start
+    if (isCardClip(clip)) return cardCueInput(duration)
+    const entry = entries.find(e => e.shotId === clip.shotId)!
+    const input: ShotCueInput = { text: entry.text, duration }
     if (!oneTake) {
-      // 相手のセリフ: its subtitles are drawn as the other person's.
       const shot = shots.find(s => s.id === entry.shotId)
+      // 心の声: its subtitles go in a thought bubble.
+      if (shot?.thought) return { ...input, thought: true }
+      // 相手のセリフ: its subtitles are drawn as the other person's.
       return shot?.heard
         ? { ...input, speaker: shot.speaker ?? DEFAULT_SPEAKER_ICON, ...(shot.speakerName ? { speakerName: shot.speakerName } : {}), ...(isPhoneVoice(shot.voice) ? { phone: true } : {}) }
         : input
     }
     const lines = takeLinesOf(entry.text)
-    return { ...input, lineStarts: lineStartsInTake(lines, clips[i].start, clips[i].end, entry.speech) }
+    return { ...input, lineStarts: lineStartsInTake(lines, clip.start, clip.end, entry.speech) }
   })
 }
 
@@ -155,8 +163,12 @@ function subtitlesSignatureOf(subtitles: SavedSubtitles): string {
 }
 
 // The clips of a 結合 tied to the takes they were cut from, for saving.
-function savedClipsOf(clips: ShotClip[], takes: Map<string, string>): SavedCombinedClip[] {
-  return clips.map(({ shotId, start, end }) => ({ shotId, start, end, videoUpdatedAt: takes.get(shotId)! }))
+// A card has no take: it's tied to how it looks and sounds instead.
+function savedClipsOf(clips: ShotClip[], takes: Map<string, string>, cards: CardClip[] = []): SavedCombinedClip[] {
+  return clips.map(({ shotId, start, end }) => ({
+    shotId, start, end,
+    videoUpdatedAt: isCardClip({ shotId }) ? (cards.find(c => c.clip.shotId === shotId)?.signature ?? 'card') : takes.get(shotId)!,
+  }))
 }
 
 function findLastIndexBefore(entries: ShotEntry[], index: number): number {
@@ -191,6 +203,8 @@ export default function FinalizePage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const { status: combineStatus, combined, show: showCombined, combine, cancel: cancelCombine } = useCombine()
+  // Said when the cards couldn't be made and the 結合 went ahead without them.
+  const [cardNotice, setCardNotice] = useState<string | null>(null)
   const combinedBlob = combined?.blob ?? null
   const combinedUrl = combined?.url ?? null
   const combinedClips = combined?.clips ?? NO_CLIPS
@@ -325,8 +339,15 @@ export default function FinalizePage() {
         console.warn('[FinalizePage] could not read the saved trims and 結合:', err)
         return { trims: {}, combined: null, subtitles: null, burned: null }
       })
-      return { stored, takes, analyses, progress }
-    }).then(({ stored, takes, analyses, progress }) => {
+      // The cards are drawn again (once each) to restore a saved 結合 with them in it.
+      const cards = progress.combined?.clips.some(isCardClip)
+        ? await cardClipsOf(script, settings.inboxKey).catch((err): CardClip[] => {
+          console.warn('[FinalizePage] could not draw the cards again:', err)
+          return []
+        })
+        : []
+      return { stored, takes, analyses, progress, cards }
+    }).then(({ stored, takes, analyses, progress, cards }) => {
       if (cancelled) return
       takesRef.current = takes
       const byShotId = new Map(stored.map(v => [v.shotId, v.blob]))
@@ -367,9 +388,17 @@ export default function FinalizePage() {
       markTrimsSaved(trimSignatureOf(handSetTrimsOf(next)))
       // Back where 結合 left off, as long as it's still these takes.
       const withVideo = next.filter(e => e.blob)
-      const combined = combinedForTakes(progress.combined, withVideo.map(e => [e.shotId, takes.get(e.shotId)!]))
+      const expected = withCardClips(
+        withVideo.map(e => ({ shotId: e.shotId, at: takes.get(e.shotId)! })),
+        cards,
+        card => ({ shotId: card.clip.shotId, at: card.signature }),
+      )
+      const combined = combinedForTakes(progress.combined, expected.map(e => [e.shotId, e.at]))
       if (combined) {
-        const clips = combined.clips.map((clip, i) => ({ ...clip, blob: withVideo[i].blob! }))
+        const clips = combined.clips.map(clip => ({
+          ...clip,
+          blob: isCardClip(clip) ? cards.find(c => c.clip.shotId === clip.shotId)!.clip.blob : withVideo.find(e => e.shotId === clip.shotId)!.blob!,
+        }))
         showCombined({ blob: combined.blob, clips, cueInputs: cueInputsOf(withVideo, clips, Boolean(script.oneTake), script.shots), trim: combined.trim ?? null })
         // And the subtitles made on that very 結合, back on their step.
         const subtitles = progress.subtitles
@@ -561,7 +590,7 @@ export default function FinalizePage() {
   // reopened from a save, where encoding every shot again would only cost
   // memory iOS reloads the page over.
   const combining = combineStatus.state === 'combining'
-  const combinedIsCurrent = combineStatus.state === 'done' && trimSignatureOf(combinedClips) === trimSignature
+  const combinedIsCurrent = combineStatus.state === 'done' && trimSignatureOf(combinedClips.filter(clip => !isCardClip(clip))) === trimSignature
   useEffect(() => {
     if (step !== 'trim' || !canCombine || combining || combinedIsCurrent) return
     const timer = setTimeout(() => {
@@ -703,6 +732,9 @@ export default function FinalizePage() {
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
+  // 挿入カード: where the BGM goes soft and muffled, unless that's switched off for the script.
+  const muffleCards = cardAudioOf(script).muffle
+  const cardSpans = useMemo(() => (muffleCards ? cardSpansOf(combinedClips) : []), [muffleCards, combinedClips])
   const bgmStopAt = useMemo(
     () => oneTake
       ? (bgmStopBeforePunchline && subtitleCues.length > 1 ? subtitleCues[subtitleCues.length - 1].start : null)
@@ -728,7 +760,7 @@ export default function FinalizePage() {
         volume: bgmVolume,
         normalize: normalizeAudio,
         voice: voicePreset,
-        ending: bgmEnding(defaultTrack.genre, bgmStopAt),
+        ending: bgmEnding(defaultTrack.genre, bgmStopAt, cardSpans),
         // The cover the burn is to put in comes first, over silence.
         lead: coverInBurn ? coverLeadSeconds(burnCoverCount) : 0,
       }
@@ -741,7 +773,7 @@ export default function FinalizePage() {
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, preparedAudio, coverInBurn, burnCoverCount, youtubeEnabled, youtubeTrack, youtubeAudio])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, cardSpans, preparedAudio, coverInBurn, burnCoverCount, youtubeEnabled, youtubeTrack, youtubeAudio])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -952,7 +984,18 @@ export default function FinalizePage() {
     setSubtitleState(initialSubtitleState())
     preparedAudio.clear()
     youtubeAudio.clear()
-    const clips = availableEntries.map(clipOf)
+    // 挿入カード: drawn first, then joined in between the takes like takes.
+    let cards: CardClip[] = []
+    setCardNotice(null)
+    if (script && cardsInOrder(script).length > 0) {
+      try {
+        cards = await cardClipsOf(script, settings.inboxKey)
+      } catch (err) {
+        console.warn('[FinalizePage] could not make the cards:', err)
+        setCardNotice(`カードを作れなかったので、カードなしで結合しました${err instanceof Error ? `（${err.message}）` : ''}`)
+      }
+    }
+    const clips = withCardClips(availableEntries.map(clipOf), cards, card => card.clip)
     const joined = await combine(getEncodeCache(), clips)
     if (!joined) return false
     // Same clips, same order, same trim values used just above to build
@@ -967,7 +1010,7 @@ export default function FinalizePage() {
     }
     showCombined({ blob: joined, clips, cueInputs: cueInputsOf(availableEntries, clips, Boolean(script?.oneTake), script?.shots), trim })
     if (script) {
-      const saved = savedClipsOf(clips, takesRef.current)
+      const saved = savedClipsOf(clips, takesRef.current, cards)
       // Subtitles made on the previous 結合 no longer line up with this one, nor does its burn.
       updateFinalizeProgress(script.id, { combined: { blob: joined, clips: saved, trim }, subtitles: null, burned: null }).catch(err =>
         console.warn('[FinalizePage] could not save the 結合:', err),
@@ -1045,7 +1088,7 @@ export default function FinalizePage() {
       savedAt: new Date().toISOString(),
       postAt,
       durationSec: Math.round(combinedClips.reduce((sum, c) => sum + c.end - c.start, 0) * 10) / 10,
-      shotCount: combinedClips.length,
+      shotCount: combinedClips.filter(clip => !isCardClip(clip)).length,
       burn: burnedBlob ? burnInputs : null,
       mix: mixed ? mixInputs : null,
       voicePreset,
@@ -1191,6 +1234,8 @@ export default function FinalizePage() {
 
               {combineStatus.state === 'cancelled' && <p className={styles.missing}>中断しました</p>}
 
+              {cardNotice && <p className={styles.missing}>{cardNotice}</p>}
+
               {combineStatus.state === 'error' && (
                 <p className={styles.missing}>
                   {oneTake ? '動画の準備' : '結合'}に失敗しました: {combineStatus.error}
@@ -1303,7 +1348,7 @@ export default function FinalizePage() {
                     volume,
                     normalize: normalizeAudio,
                     voice: voicePreset,
-                    ending: bgmEnding(track.genre, bgmStopAt),
+                    ending: bgmEnding(track.genre, bgmStopAt, cardSpans),
                     lead: burnedCover ? coverLeadSeconds(burnedCover.count) : 0,
                   }
                   mixKeyRef.current = key

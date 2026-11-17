@@ -2,6 +2,7 @@ import type { InboxItem } from '../../shared/inbox'
 import type { Script } from '../types'
 import { listLineImageIds, pruneLineImages, saveLineImage } from './lineImageStore'
 import type { StoredLineImage } from './lineImages'
+import { cardImageUrlsOf } from './insertCard'
 
 /** Plenty for the slots it is shown in; a full-size photo would decode to more than an iPhone gives the page. */
 const MAX_SIDE = 1280
@@ -96,12 +97,15 @@ export async function ensureLineImages(wanted: { imageId: string; url?: string }
  * neither it nor a script refers to any more (a thrown-away item's).
  */
 export async function receiveInboxImages(
-  items: Pick<InboxItem, 'images'>[],
-  scripts: Pick<Script, 'lineImages'>[],
+  items: Pick<InboxItem, 'images' | 'cards'>[],
+  scripts: Pick<Script, 'lineImages' | 'cards'>[],
   inboxKey: string,
 ): Promise<void> {
-  const waiting = items.flatMap(item => item.images ?? []).map(({ url }) => ({ imageId: url, url }))
-  const kept = scripts.flatMap(script => script.lineImages ?? []).map(image => image.imageId)
+  const waiting = [
+    ...items.flatMap(item => item.images ?? []).map(({ url }) => ({ imageId: url, url })),
+    ...items.flatMap(item => cardImageUrlsOf(item.cards)).map(url => ({ imageId: url, url })),
+  ]
+  const kept = [...scripts.flatMap(script => script.lineImages ?? []).map(image => image.imageId), ...scripts.flatMap(script => cardImageUrlsOf(script.cards))]
   try {
     await pruneLineImages(new Set([...kept, ...waiting.map(image => image.imageId)]))
   } catch (err) {

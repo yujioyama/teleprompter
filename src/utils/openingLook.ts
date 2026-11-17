@@ -90,11 +90,12 @@ export function openingLookFor(
   grade: CinemaLook | null = null,
   measure: MeasureText = createCanvasMeasure(),
   spokenCueIds: ReadonlySet<string> = new Set(),
+  thoughtCueIds: ReadonlySet<string> = new Set(),
 ): OpeningLook {
   const at = clampTime(firstLineEnd(cues) ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold)
   const tops = cues
     .filter(c => c.start < at + LETTERBOX.duration)
-    .map(c => safeSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure, { speaker: spokenCueIds.has(c.id) }).height))
+    .map(c => safeSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure, { speaker: spokenCueIds.has(c.id), thought: thoughtCueIds.has(c.id) }).height))
   return { kind: 'letterbox', at, height: letterboxBarHeight(tops), grade }
 }
 

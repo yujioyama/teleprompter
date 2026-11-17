@@ -5,7 +5,7 @@ import { getFFmpeg } from './ffmpegClient'
 import { finishAudio } from './normalizeLoudness'
 import type { VoicePreset } from './voicePreset'
 import { canUseWebCodecs } from './webcodecs/support'
-import { bgmEnvelope, PLAYS_TO_END, type BgmEnding } from './bgmStop'
+import { bgmEnvelope, CARD_DUCK_LEVEL, CARD_MUFFLE_HZ, CARD_RAMP_SECONDS, PLAYS_TO_END, type BgmEnding, type CardSpan } from './bgmStop'
 import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 
 /**
@@ -28,9 +28,29 @@ export function buildMixFilterComplex(durationSeconds: number, volume: number, e
   }
   const fadeOut = `afade=t=out:st=${fade.start.toFixed(3)}:d=${+fade.length.toFixed(3)}`
   return (
-    `[1:a]aloop=loop=-1:size=2e9,atrim=0:${duration},afade=t=in:d=1,${ducking}${fadeOut},volume=${volume}[bgm];` +
+    `[1:a]aloop=loop=-1:size=2e9,atrim=0:${duration},afade=t=in:d=1,${ducking}${fadeOut},${cardFilters(ending.cards ?? [])}volume=${volume}[bgm];` +
     `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]`
   )
+}
+
+/**
+ * 挿入カード: the BGM softer while each card is up (cardDuckAt, written out),
+ * and muffled. The muffle switches on and off with the card rather than
+ * gliding, which ffmpeg's lowpass can't do; the level's ramps soften it.
+ */
+export function cardFilters(cards: CardSpan[]): string {
+  if (cards.length === 0) return ''
+  const r = CARD_RAMP_SECONDS
+  const depth = +(1 - CARD_DUCK_LEVEL).toFixed(3)
+  const factors = cards.map(({ start, end }) => {
+    const s = start.toFixed(3)
+    const e = (end + r).toFixed(3)
+    return `(1-${depth}*min(clip((t-${s})/${r},0,1),clip((${e}-t)/${r},0,1)))`
+  })
+  const muffles = cards.map(({ start, end }) =>
+    `lowpass=f=${CARD_MUFFLE_HZ}:enable='between(t,${(start + r / 2).toFixed(3)},${(end + r / 2).toFixed(3)})',`,
+  )
+  return `volume='${factors.join('*')}':eval=frame,${muffles.join('')}`
 }
 
 /** Probe a written file's container duration in seconds, via FFmpeg's own log output. */

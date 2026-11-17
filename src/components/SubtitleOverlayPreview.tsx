@@ -4,7 +4,7 @@ import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, safeSubtitlePosition, subtitle
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
 import { SCENE_FILL, SCENE_LABEL_Y, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
-import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
+import { PHONE_BADGE, SPEAKER_TEXT_COLOR, isThought, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
   BUBBLE_FILL,
@@ -32,6 +32,13 @@ import {
   outlineWidth,
   type MeasureText,
   type SpeakerBubble,
+  CLOUD_BORDER,
+  CLOUD_FILL,
+  CLOUD_PAD_Y,
+  THOUGHT_BORDER_COLOR,
+  THOUGHT_TEXT_COLOR,
+  cloudPath,
+  type ThoughtCloud,
 } from '../utils/subtitleLayout'
 import { EMOJI_FONT_FAMILY, STICKER_EMOJI_PX, STICKER_OUTLINE_PX, stripStickers } from '../utils/subtitleSticker'
 import { placeSticker, type StickerPose } from '../utils/stickerMotion'
@@ -84,6 +91,23 @@ function BlockLines({ block }: { block: TextBlockLayout }) {
         </span>
       ))}
     </>
+  )
+}
+
+/** 心の声: the cloud and its trailing circles, drawn as the burn draws them. */
+function ThoughtCloudArt({ cloud, height }: { cloud: ThoughtCloud; height: number }) {
+  return (
+    <svg
+      className={styles.bubble}
+      data-testid="subtitle-thought"
+      viewBox={`0 0 ${SUBTITLE_REFERENCE_WIDTH} ${height}`}
+      aria-hidden="true"
+    >
+      <path d={cloudPath(cloud)} fill={CLOUD_FILL} stroke={THOUGHT_BORDER_COLOR} strokeWidth={CLOUD_BORDER} strokeLinejoin="round" />
+      {cloud.dots.map(dot => (
+        <circle key={`${dot.x}-${dot.y}`} cx={dot.x} cy={dot.y} r={dot.r} fill={CLOUD_FILL} stroke={THOUGHT_BORDER_COLOR} strokeWidth={CLOUD_BORDER} />
+      ))}
+    </svg>
   )
 }
 
@@ -262,11 +286,12 @@ export default function SubtitleOverlayPreview({
     [cues, firstShotDuration, hookStyle],
   )
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
-  const isSpoken = Boolean(cue && speakerOf(hook, cue.id))
+  const isThinking = Boolean(cue && isThought(hook, cue.id))
+  const isSpoken = Boolean(cue && speakerOf(hook, cue.id)) && !isThinking
   const layout = useMemo(
     // No emoji in any cue's text: they are drawn as stickers and fairies instead.
-    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure, { speaker: isSpoken }) : null),
-    [cue, measure, isSpoken],
+    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure, { speaker: isSpoken, thought: isThinking }) : null),
+    [cue, measure, isSpoken, isThinking],
   )
   // As burned: only translated cues count, and it shows over the window placeSticker gives it.
   const stickerOpening = hook?.opening ?? null
@@ -284,8 +309,10 @@ export default function SubtitleOverlayPreview({
   const lineImage = cue && cue.ja !== null ? hook?.lineImages?.find(i => i.cueId === cue.id) : undefined
 
   // 相手のセリフ: tinted, in a speech bubble with the other person's icon above it.
-  const speaker = cue ? speakerOf(hook, cue.id) : undefined
-  const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
+  const speaker = cue && isSpoken ? speakerOf(hook, cue.id) : undefined
+  // 心の声: paler and a little slanted, in a cloud.
+  const cloud = layout?.cloud
+  const spokenColor = cloud ? { color: THOUGHT_TEXT_COLOR, fontStyle: 'italic' as const } : speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
   const bubble = speaker ? layout?.bubble : undefined
   const phone = cue ? onPhone(hook, cue.id) : false
   // 状況のラベル: in line 1's image's place, as burned.
@@ -305,14 +332,17 @@ export default function SubtitleOverlayPreview({
       className={styles.wrapper}
       style={{
         top: `${cuePosition}%`,
-        width: cqw(bubble ? SUBTITLE_REFERENCE_WIDTH : SUBTITLE_TEXT_WIDTH),
-        padding: bubble
-          ? `${cqw(bubble.textTop)} 0 ${cqw(layout.height - bubble.top - bubble.height + BUBBLE_BORDER + BUBBLE_PAD_Y)}`
-          : `${cqw(SUBTITLE_PADDING_Y)} 0`,
+        width: cqw(bubble || cloud ? SUBTITLE_REFERENCE_WIDTH : SUBTITLE_TEXT_WIDTH),
+        padding: cloud
+          ? `${cqw(cloud.textTop)} 0 ${cqw(layout.height - cloud.top - cloud.height + CLOUD_PAD_Y)}`
+          : bubble
+            ? `${cqw(bubble.textTop)} 0 ${cqw(layout.height - bubble.top - bubble.height + BUBBLE_BORDER + BUBBLE_PAD_Y)}`
+            : `${cqw(SUBTITLE_PADDING_Y)} 0`,
       }}
       data-testid="subtitle-overlay-box"
       data-variant={cue.variant}
     >
+      {cloud && <ThoughtCloudArt cloud={cloud} height={layout.height} />}
       {bubble && speaker && <SpeakerBubbleArt bubble={bubble} icon={speaker} height={layout.height} phone={phone} name={speakerName} />}
       <p className={styles.en} style={{ ...blockStyle(layout.en), ...spokenColor }}>
         <BlockLines block={layout.en} />

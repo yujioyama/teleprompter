@@ -107,6 +107,10 @@ export interface ShotCueInput {
   speakerName?: string
   /** 相手のセリフ heard down a phone line: a small 📞 goes on the icon. */
   phone?: boolean
+  /** 心の声: its subtitles go in a thought bubble. */
+  thought?: boolean
+  /** 挿入カード: not a line at all, only time between two. No cue, and the shots keep their numbers. */
+  card?: boolean
 }
 
 /** Each line of a script Claude sent, with the Japanese it sent for that line. */
@@ -271,7 +275,14 @@ export function lineStartsInTake(
 export function cuesFromShotEntries(entries: ShotCueInput[]): SubtitleCue[] {
   const cues: SubtitleCue[] = []
   let offset = 0
-  entries.forEach((entry, i) => {
+  // Counted without the cards, so a cue's id is the same with or without them.
+  let i = -1
+  entries.forEach(entry => {
+    if (entry.card) {
+      offset += entry.duration
+      return
+    }
+    i++
     const text = entry.text.trim()
     const lines = entry.lineStarts ? takeLinesOf(text) : []
     if (entry.lineStarts && lines.length > 1 && entry.lineStarts.length === lines.length - 1) {

@@ -82,6 +82,8 @@ export interface HookOptions {
   lineImages?: CueImage[]
   /** The 相手のセリフ cues and the icon beside each (see withSpeakers); default none. */
   speakers?: CueSpeaker[]
+  /** 心の声: the cues drawn in a thought cloud; absent for none. */
+  thoughts?: string[]
   /** 状況のラベル, over line 1 (see withScene); default none. */
   scene?: CueScene
 }
@@ -149,7 +151,7 @@ export function withOpening(
 ): HookOptions {
   // 相手のセリフ cues are taller (bubble and icon): withSpeakers goes first.
   const spoken = new Set((hook.speakers ?? []).map(s => s.cueId))
-  const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null, undefined, spoken)
+  const opening = openingLookFor(cues, hook.style ? hook.position : position, look ?? null, undefined, spoken, new Set(hook.thoughts ?? []))
   // Bars alone have no color to keep on or soften.
   const graded = opening.grade ? { ...opening, through: hook.lookThrough ?? false, strength: hook.lookStrength ?? 1 } : opening
   return { ...hook, punchIn: null, opening: graded }

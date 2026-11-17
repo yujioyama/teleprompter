@@ -383,3 +383,12 @@
   -webkit-box-orient: vertical;
 }
 
+
+.cardMark {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(246, 239, 226, 0.14);
+  color: #f6efe2;
+  font-size: 14px;
+}

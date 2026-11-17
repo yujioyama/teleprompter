@@ -10,6 +10,7 @@ const DEFAULTS = {
   normalizeAudio: true,
   voicePreset: 'natural',
   noiseReduction: 'medium',
+  thoughtEcho: 'medium',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.1,

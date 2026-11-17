@@ -7,6 +7,7 @@ import { stripEmphasis } from './subtitleEmphasis'
 import { styleCues, type HookOptions } from './subtitleHook'
 import { stickerOf, stripStickers } from './subtitleSticker'
 import type { VoicePreset } from './voicePreset'
+import { cardRecordsOf, thoughtLinesOfShots } from './insertCard'
 
 /** What the subtitle burn of the saved video was made from. */
 export interface BurnInputs {
@@ -44,6 +45,8 @@ export function buildVideoRecord(input: {
   trim: TrimRecord | null
 }): VideoRecord {
   const { script, burn, mix } = input
+  const cards = cardRecordsOf(script)
+  const thought = script.oneTake ? [] : thoughtLinesOfShots(script.shots)
   return {
     scriptId: script.id,
     title: script.title,
@@ -75,6 +78,8 @@ export function buildVideoRecord(input: {
       ...(script.videoType ? { videoType: script.videoType } : {}),
       opening: burn?.hook.opening ? { kind: burn.hook.opening.kind, at: burn.hook.opening.at, look: burn.hook.opening.grade } : null,
       ...(burn?.hook.lineImages?.length ? { lineImages: burn.hook.lineImages.length } : {}),
+      ...(cards.length ? { cards } : {}),
+      ...(thought.length ? { thought } : {}),
     },
   }
 }

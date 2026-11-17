@@ -272,3 +272,76 @@ export function levelVoice(samples: Float32Array, sampleRate: number): Float32Ar
   if (gainDb !== null) applyGainWithLimiter([samples], sampleRate, gainDb)
   return samples
 }
+
+/**
+ * 心の声: how much echo the thought's voice is given. The voice stays our
+ * own (no pitch or pace change); the echo and a softer top end make it the
+ * voice in our head.
+ */
+export const THOUGHT_ECHOES = ['light', 'medium', 'strong'] as const
+export type ThoughtEcho = (typeof THOUGHT_ECHOES)[number]
+export const THOUGHT_ECHO_LABELS: Record<ThoughtEcho, string> = {
+  light: '弱め',
+  medium: 'ふつう',
+  strong: '強め',
+}
+export function isThoughtEcho(value: unknown): value is ThoughtEcho {
+  return typeof value === 'string' && (THOUGHT_ECHOES as readonly string[]).includes(value)
+}
+
+/** How much of the echo is mixed in, and how long it rings (the comb filters' feedback). */
+const ECHO_SHAPES: Record<ThoughtEcho, { wet: number; feedback: number }> = {
+  light: { wet: 0.22, feedback: 0.7 },
+  medium: { wet: 0.34, feedback: 0.78 },
+  strong: { wet: 0.48, feedback: 0.84 },
+}
+/** Above this the thought is softened, as a voice heard from inside is. */
+const THOUGHT_MUFFLE_HZ = 4500
+// Schroeder's reverb: four combs side by side, then two all-passes, at these
+// delays (ms) — mutually prime-ish, so the echoes don't pile up on one note.
+const COMB_MS = [29.7, 37.1, 41.1, 43.7]
+const ALLPASS_MS = [5.0, 1.7]
+const ALLPASS_GAIN = 0.7
+/** How long the echo rings on after the voice, at most. */
+export const THOUGHT_TAIL_S = 0.6
+
+/**
+ * `samples` (mono) as a thought: the same voice, its top end softened, with
+ * an echo of `echo`'s strength. The result runs THOUGHT_TAIL_S longer, for
+ * the echo to ring out.
+ */
+export function thinkingVoice(samples: Float32Array, sampleRate: number, echo: ThoughtEcho = 'medium'): Float32Array {
+  const { wet, feedback } = ECHO_SHAPES[echo]
+  const length = samples.length + Math.round(THOUGHT_TAIL_S * sampleRate)
+  const dry = new Float32Array(length)
+  dry.set(samples)
+  biquad(dry, sampleRate, 'lowpass', Math.min(THOUGHT_MUFFLE_HZ, sampleRate * 0.45))
+  const echoed = new Float32Array(length)
+  for (const ms of COMB_MS) {
+    const delay = Math.max(1, Math.round((ms / 1000) * sampleRate))
+    const line = new Float32Array(delay)
+    let at = 0
+    for (let i = 0; i < length; i++) {
+      const out = line[at]
+      line[at] = dry[i] + out * feedback
+      echoed[i] += out / COMB_MS.length
+      at = (at + 1) % delay
+    }
+  }
+  for (const ms of ALLPASS_MS) {
+    const delay = Math.max(1, Math.round((ms / 1000) * sampleRate))
+    const line = new Float32Array(delay)
+    let at = 0
+    for (let i = 0; i < length; i++) {
+      const buffered = line[at]
+      const input = echoed[i]
+      const out = -ALLPASS_GAIN * input + buffered
+      line[at] = input + ALLPASS_GAIN * out
+      echoed[i] = out
+      at = (at + 1) % delay
+    }
+  }
+  const out = new Float32Array(length)
+  for (let i = 0; i < length; i++) out[i] = (1 - wet) * dry[i] + wet * echoed[i] * 2
+  return out
+}

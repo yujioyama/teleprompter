@@ -1,6 +1,6 @@
 import { detectSpeech, type SpeechRegion } from './detectSpeechBounds'
 import { CONVERSATION_PADDING } from './shotTrim'
-import { voiceSpeed, type HeardVoice } from './voiceEffects'
+import { voiceSpeed, type HeardVoice, type ThoughtEcho } from './voiceEffects'
 import { hasWebCodecs, webCodecsUnavailableReason } from './webcodecs/support'
 import { buildHeardShotWebCodecs, mediaDurationWebCodecs } from './webcodecs/heardShot'
 
@@ -136,23 +136,31 @@ export function lineEndOf(region: SpeechRegion): number {
  * speech, not enough listening after it, or no WebCodecs to build it with;
  * the caller keeps the take as it was.
  */
-export async function makeHeardShot(take: Blob, voice?: HeardVoice): Promise<Blob> {
+export async function makeHeardShot(take: Blob, voice?: HeardVoice, thought?: ThoughtEcho): Promise<Blob> {
   await requireWebCodecs()
   const region = await detectSpeech(take)
   if (!region) throw new Error('no speech in the take')
+  if (thought) return buildHeardShotWebCodecs(take, planHeardShot(region), undefined, undefined, thought)
   return buildHeardShotWebCodecs(take, planHeardShot(region, voiceSpeed(voice)), voice)
 }
+
+/**
+ * 心の声 goes through the same two: the take is the thinking face while the
+ * voice (recorded ahead and played, or else said first) is heard, and
+ * `thought` gives that voice its echo in place of another person's voice.
+ */
 
 /**
  * Like makeHeardShot, for a line whose voice was recorded ahead in the camera
  * app (`voiceFile`) and played while filming: the voice comes from that clean
  * recording, the picture from the take while it played.
  */
-export async function makeHeardShotFromVoice(take: Blob, voiceFile: Blob, voice?: HeardVoice): Promise<Blob> {
+export async function makeHeardShotFromVoice(take: Blob, voiceFile: Blob, voice?: HeardVoice, thought?: ThoughtEcho): Promise<Blob> {
   await requireWebCodecs()
   const region = await detectSpeech(voiceFile)
   if (!region) throw new Error('no speech in the recorded voice')
-  const plan = planVoiceFileShot(region, await mediaDurationWebCodecs(take), voiceSpeed(voice))
+  const plan = planVoiceFileShot(region, await mediaDurationWebCodecs(take), thought ? 1 : voiceSpeed(voice))
+  if (thought) return buildHeardShotWebCodecs(take, plan, undefined, voiceFile, thought)
   return buildHeardShotWebCodecs(take, plan, voice, voiceFile)
 }
 
@@ -162,9 +170,10 @@ async function requireWebCodecs(): Promise<void> {
 }
 
 /** What to tell the person when a 相手のセリフ take couldn't be made. */
-export function heardShotFailureText(err: unknown): string {
+export function heardShotFailureText(err: unknown, thought = false): string {
   if (err instanceof NotEnoughListeningError) {
-    return `セリフのあと、あと約${Math.ceil(err.missingSeconds * 10) / 10}秒長く黙って聞く顔をしてから止めてください`
+    const face = thought ? '考える顔' : '黙って聞く顔'
+    return `セリフのあと、あと約${Math.ceil(err.missingSeconds * 10) / 10}秒長く${face}をしてから止めてください`
   }
   // The reason itself, short, so a failure can be told apart without the console.
   const reason = err instanceof Error ? err.message : String(err)

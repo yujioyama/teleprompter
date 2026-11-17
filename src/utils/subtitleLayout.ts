@@ -176,6 +176,75 @@ export interface CueLayout {
   height: number
   /** A 相手のセリフ cue's bubble and icon. */
   bubble?: SpeakerBubble
+  /** A 心の声 cue's cloud and the little circles trailing from it. */
+  cloud?: ThoughtCloud
+}
+
+/**
+ * 心の声: the line sits in a cloud, as a thought does in a comic, with a
+ * trail of two or three small circles going down towards the face instead
+ * of a pointed tail. No icon or role: it's our own thought. Its text is a
+ * little slanted and paler than our spoken lines, and not the other
+ * person's light blue.
+ */
+export const CLOUD_PAD_X = 46
+export const CLOUD_PAD_Y = 26
+/** How far apart the cloud's bumps are along its edge, and how far each bulges out. */
+export const CLOUD_BUMP_SPACING = 64
+export const CLOUD_BUMP_DEPTH = 14
+export const CLOUD_BORDER = 4
+export const CLOUD_FILL = 'rgba(28, 22, 44, 0.58)'
+export const THOUGHT_BORDER_COLOR = '#E6DCFF'
+/** What a 心の声 subtitle is filled with: paler than our white, and not the other person's blue. */
+export const THOUGHT_TEXT_COLOR = '#DCD3EE'
+/** The circles trailing down from the cloud: radius, and where each sits from the cloud's bottom middle. */
+export const THOUGHT_DOTS: { r: number; dx: number; dy: number }[] = [
+  { r: 15, dx: -34, dy: 26 },
+  { r: 10, dx: -58, dy: 62 },
+  { r: 6, dx: -74, dy: 88 },
+]
+/** The text width inside a cloud: the cloud, bumps and all, is as wide as plain text at most. */
+export const THOUGHT_TEXT_WIDTH = SUBTITLE_TEXT_WIDTH - 2 * (CLOUD_PAD_X + CLOUD_BUMP_DEPTH + CLOUD_BORDER)
+
+export interface ThoughtCloud {
+  /** The cloud's box, its bumps reaching CLOUD_BUMP_DEPTH outside it, in the cue image's px. */
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Where the text's first line starts (its top). */
+  textTop: number
+  /** The trailing circles' centers and radii. */
+  dots: { x: number; y: number; r: number }[]
+}
+
+/**
+ * The cloud's outline as an SVG path (the burn draws it as a Path2D, the
+ * preview as an SVG): round bumps all the way around a rounded box, each an
+ * arc bulging out between two points on the box's edge, clockwise.
+ */
+export function cloudPath(cloud: Pick<ThoughtCloud, 'left' | 'top' | 'width' | 'height'>): string {
+  const { left: l, top: t, width: w, height: h } = cloud
+  const n = (v: number) => Math.round(v * 10) / 10
+  // Bumps along each side, evenly spread so each corner gets one.
+  const across = Math.max(2, Math.round(w / CLOUD_BUMP_SPACING))
+  const down = Math.max(1, Math.round(h / CLOUD_BUMP_SPACING))
+  const points: [number, number][] = []
+  for (let i = 0; i < across; i++) points.push([l + (w * i) / across, t])
+  for (let i = 0; i < down; i++) points.push([l + w, t + (h * i) / down])
+  for (let i = 0; i < across; i++) points.push([l + w - (w * i) / across, t + h])
+  for (let i = 0; i < down; i++) points.push([l, t + h - (h * i) / down])
+  const parts = [`M${n(points[0][0])} ${n(points[0][1])}`]
+  points.forEach((_, i) => {
+    const [x0, y0] = points[i]
+    const [x1, y1] = points[(i + 1) % points.length]
+    const chord = Math.hypot(x1 - x0, y1 - y0)
+    // A radius giving about CLOUD_BUMP_DEPTH of bulge over this chord.
+    const r = Math.max(chord / 2 + 0.1, (chord * chord) / (8 * CLOUD_BUMP_DEPTH) + CLOUD_BUMP_DEPTH / 2)
+    parts.push(`A${n(r)} ${n(r)} 0 0 1 ${n(x1)} ${n(y1)}`)
+  })
+  parts.push('Z')
+  return parts.join(' ')
 }
 
 /** A breakable unit of text; `spaceBefore` is true when whitespace separated it from the previous token. */
@@ -356,12 +425,29 @@ function layoutBlock(raw: string, style: TextStyle, measure: MeasureText, maxWid
  * 1080px reference width. With `speaker` (相手のセリフ) it is wrapped to fit
  * a speech bubble, with room above for the icon.
  */
-export function layoutCue(cue: Pick<SubtitleCue, 'en' | 'ja'>, measure: MeasureText, { speaker = false }: { speaker?: boolean } = {}): CueLayout {
-  const maxWidth = speaker ? SPEAKER_TEXT_WIDTH : SUBTITLE_TEXT_WIDTH
+export function layoutCue(
+  cue: Pick<SubtitleCue, 'en' | 'ja'>,
+  measure: MeasureText,
+  { speaker = false, thought = false }: { speaker?: boolean; thought?: boolean } = {},
+): CueLayout {
+  const maxWidth = thought ? THOUGHT_TEXT_WIDTH : speaker ? SPEAKER_TEXT_WIDTH : SUBTITLE_TEXT_WIDTH
   const en = layoutBlock(cue.en, EN_STYLE, measure, maxWidth)
   const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure, maxWidth) : null
   let textHeight = en.lines.length * en.lineHeightPx
   if (ja) textHeight += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx
+  if (thought) {
+    const textWidth = Math.min(maxWidth, Math.max(...en.widths, ...(ja?.widths ?? [])))
+    const width = textWidth + 2 * CLOUD_PAD_X
+    const height = textHeight + 2 * CLOUD_PAD_Y
+    const left = (SUBTITLE_REFERENCE_WIDTH - width) / 2
+    const top = SUBTITLE_PADDING_Y + CLOUD_BUMP_DEPTH + CLOUD_BORDER
+    const bottom = top + height + CLOUD_BUMP_DEPTH
+    const middle = SUBTITLE_REFERENCE_WIDTH / 2
+    const dots = THOUGHT_DOTS.map(dot => ({ x: middle + dot.dx, y: bottom + dot.dy, r: dot.r }))
+    const last = dots[dots.length - 1]
+    const cloud: ThoughtCloud = { left, top, width, height, textTop: top + CLOUD_PAD_Y, dots }
+    return { en, ja, height: last.y + last.r + CLOUD_BORDER + SUBTITLE_PADDING_Y, cloud }
+  }
   if (!speaker) return { en, ja, height: SUBTITLE_PADDING_Y * 2 + textHeight }
 
   const textWidth = Math.min(maxWidth, Math.max(...en.widths, ...(ja?.widths ?? [])))

@@ -372,3 +372,83 @@ describe('ScriptEditPage caption', () => {
     expect(stored()[0]).toMatchObject({ title: '直した', videoType: 'B', look: 'nightBlue' })
   })
 })
+
+describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
+  const DENTIST: InboxItem = {
+    ...ITEM,
+    title: 'Raise Your Hand',
+    body: 'Open wide.\nThis will not hurt.\nIt will hurt.\nRaise your hand if it hurts.\nI cannot talk.',
+    heard: [1, 2, 4],
+    heardIcon: '🧑‍⚕️',
+    thought: [3, 5],
+    cards: [{ afterLine: 2, text: '2 days later', background: 'peach' }],
+  }
+
+  async function submit() {
+    fireEvent.click(screen.getByRole('button', { name: '編集へ進む →' }))
+    await screen.findByText('ショット編集')
+    return stored()[0]
+  }
+
+  it("marks Claude's 心の声 lines and puts its cards after their lines", async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: DENTIST } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    expect(within(screen.getByRole('radiogroup', { name: '3行目は誰の' })).getByRole('radio', { name: '心の声' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByLabelText('カードの文字')).toHaveValue('2 days later')
+    const script = await submit()
+    expect(script.shots.map(s => (s.thought ? 'thought' : s.heard ? 'heard' : 'self'))).toEqual(['heard', 'heard', 'thought', 'heard', 'thought'])
+    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: '2 days later', background: 'peach' }])
+    expect(script).not.toHaveProperty('cardAudio')
+  })
+
+  it('switches a line between 自分, 相手 and 心の声', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, body: 'A\nB\nC', heard: [1] } } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    const line = (n: number, role: string) => within(screen.getByRole('radiogroup', { name: `${n}行目は誰の` })).getByRole('radio', { name: role })
+    fireEvent.click(line(1, '自分'))
+    fireEvent.click(line(2, '心の声'))
+    fireEvent.click(line(3, '相手'))
+    const script = await submit()
+    expect(script.shots.map(s => [Boolean(s.heard), Boolean(s.thought)])).toEqual([[false, false], [false, true], [true, false]])
+  })
+
+  it('adds a card between two lines, with its words, background and sound', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: { ...ITEM, body: 'A\nB\nC', heard: [2] } } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    // Between lines only: not after the last.
+    expect(screen.getAllByText(/ここにカードを入れる/)).toHaveLength(2)
+    fireEvent.click(screen.getAllByText(/ここにカードを入れる/)[1])
+    fireEvent.change(screen.getByLabelText('カードの文字'), { target: { value: 'That night' } })
+    fireEvent.change(screen.getByLabelText('カードの背景'), { target: { value: 'mint' } })
+    fireEvent.click(screen.getByLabelText(/効果音を鳴らす/))
+    expect(screen.getByLabelText('カードのプレビュー: That night')).toBeInTheDocument()
+    const script = await submit()
+    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: 'That night', background: 'mint' }])
+    expect(script.cardAudio).toEqual({ muffle: true, sound: false })
+  })
+
+  it('takes a card out again', async () => {
+    renderAt({ pathname: '/scripts/new', state: { inboxItem: DENTIST } })
+    fireEvent.click(screen.getByText('自動分割する'))
+    fireEvent.click(screen.getByText('カードを外す'))
+    const script = await submit()
+    expect(script).not.toHaveProperty('cards')
+  })
+
+  it('keeps an existing script’s cards and thoughts when it is edited', async () => {
+    const script: Script = {
+      id: 's1',
+      title: 'Sometime',
+      shots: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B', thought: true }, { id: 'c', text: 'C' }],
+      cards: [{ id: 'k', afterShotId: 'b', text: '2 days later' }],
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderAt('/scripts/s1/edit')
+    expect(screen.getByLabelText('カードの文字')).toHaveValue('2 days later')
+    const saved = await submit()
+    expect(saved.shots.map(s => Boolean(s.thought))).toEqual([false, true, false])
+    expect(saved.cards).toEqual(script.cards)
+  })
+})

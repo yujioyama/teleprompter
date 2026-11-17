@@ -15,6 +15,7 @@ import { computeMergedText } from '../utils/mergeShots'
 import { listStoredShots } from '../utils/shotVideoStore'
 import { Shot } from '../types'
 import ShotCard from '../components/ShotCard'
+import { camShotsOf } from '../utils/insertCard'
 import styles from './ShotEditPage.module.css'
 
 function generateId() {
@@ -153,7 +154,7 @@ export default function ShotEditPage() {
     // Jump straight to the native Cinematic-capture companion app
     // (github.com/yujioyama/teleprompter-cam) instead of making the user
     // press a second "record" button on the next screen.
-    const payload = encodeURIComponent(JSON.stringify(shots))
+    const payload = encodeURIComponent(JSON.stringify(camShotsOf(safeScript, shots)))
     window.location.href = `teleprompter-cam://record?shots=${payload}`
     navigate(`/scripts/${safeScript.id}/record`)
   }

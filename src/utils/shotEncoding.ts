@@ -10,6 +10,7 @@ import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { clampCoverFrameCount, renderCoverFrame } from './coverFrames'
+import { isCardClip } from './insertCard'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -108,6 +109,8 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     // Likewise only a 相手のセリフ shot: its subtitle is tinted, with the icon beside it.
     // And only the shot with line 1 carries the 状況のラベル.
     ...(scene ? ['scene-v1', scene] : []),
+    // Only a 心の声 shot: its subtitle goes in a cloud.
+    ...((look.hook.thoughts ?? []).some(id => translated.some(c => c.id === id)) ? ['thought-v1'] : []),
     ...(speakers.length > 0 ? ['speaker-v1', speakers.map(s => [s.cueId, s.icon, ...(s.phone ? ['phone'] : []), ...(s.name ? [s.name] : [])])] : []),
   ])
   const opening = openingPlan(look.hook, look.firstShotDuration)
@@ -161,6 +164,11 @@ export function shotBurnRequests(
   let offset = 0
   return clips.map((clip, i) => {
     const duration = clip.end - clip.start
+    // A 挿入カード has nothing burned on it: no subtitle, no fairy passing, no zoom.
+    if (isCardClip(clip)) {
+      offset += duration
+      return normalizeRequest(clip)
+    }
     const look: SubtitleLook = {
       position,
       hook,

@@ -31,17 +31,62 @@ export interface BgmEnding {
   stopAt: number | null
   /** A quiet genre: lowered under the punchline rather than stopped, and faded out slowly. */
   soft: boolean
+  /**
+   * 挿入カード: where each card is up. The BGM plays on through them, the
+   * same track, only softer and muffled (see CARD_DUCK_LEVEL). Absent for none.
+   */
+  cards?: CardSpan[]
 }
+
+/** Where a card is up, in seconds on the video's timeline. */
+export interface CardSpan {
+  start: number
+  end: number
+}
+
+/** The BGM's level while a card is up, as a share of its usual level. */
+export const CARD_DUCK_LEVEL = 0.5
+/** Where the muffle cuts off the BGM's highs while a card is up. */
+export const CARD_MUFFLE_HZ = 900
+/** Seconds the BGM takes to go soft as a card comes up, and to come back after it. */
+export const CARD_RAMP_SECONDS = 0.2
+/** Unmuffled: above anything heard. */
+export const OPEN_HZ = 20_000
 
 export const PLAYS_TO_END: BgmEnding = { stopAt: null, soft: false }
 
-export function bgmEnding(genre: MusicGenre, stopAt: number | null): BgmEnding {
-  return { stopAt, soft: SOFT_GENRES.has(genre) }
+export function bgmEnding(genre: MusicGenre, stopAt: number | null, cards: CardSpan[] = []): BgmEnding {
+  return { stopAt, soft: SOFT_GENRES.has(genre), ...(cards.length > 0 ? { cards } : {}) }
 }
 
 /** `ending` on a video that starts `by` seconds later, e.g. after cover frames. */
 export function delayEnding(ending: BgmEnding, by: number): BgmEnding {
-  return ending.stopAt === null || by === 0 ? ending : { ...ending, stopAt: ending.stopAt + by }
+  if (by === 0 || (ending.stopAt === null && !ending.cards?.length)) return ending
+  return {
+    ...ending,
+    ...(ending.stopAt !== null ? { stopAt: ending.stopAt + by } : {}),
+    ...(ending.cards ? { cards: ending.cards.map(c => ({ start: c.start + by, end: c.end + by })) } : {}),
+  }
+}
+
+export function sameEnding(a: BgmEnding, b: BgmEnding): boolean {
+  const cards = (e: BgmEnding) => JSON.stringify((e.cards ?? []).map(c => [c.start.toFixed(3), c.end.toFixed(3)]))
+  return a.stopAt === b.stopAt && a.soft === b.soft && cards(a) === cards(b)
+}
+
+/**
+ * The BGM's level at `t` from the cards alone (1 away from them): down to
+ * CARD_DUCK_LEVEL over CARD_RAMP_SECONDS as a card comes up, back over as
+ * long once it's gone. The ffmpeg path's expression is this, written out.
+ */
+export function cardDuckAt(t: number, cards: CardSpan[] = []): number {
+  let level = 1
+  for (const { start, end } of cards) {
+    const down = Math.min(1, Math.max(0, (t - start) / CARD_RAMP_SECONDS))
+    const up = Math.min(1, Math.max(0, (end + CARD_RAMP_SECONDS - t) / CARD_RAMP_SECONDS))
+    level *= 1 - (1 - CARD_DUCK_LEVEL) * Math.min(down, up)
+  }
+  return level
 }
 
 /** The BGM's level changes after its fade in, each multiplying the next. */
