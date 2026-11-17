@@ -294,7 +294,7 @@ export default function SubtitleOverlayPreview({
   const speakerName = bubble ? layoutSpeakerName(cue ? speakerNameOf(hook, cue.id) : undefined, bubble, phone, measure) : null
 
   const cuePosition = cue && layout
-    ? safeSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)
+    ? safeSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages, scene: hook?.scene }), layout.height)
     : null
 
   // The cue box's top on the 1920px frame, as burned (the label's place is worked out from it).

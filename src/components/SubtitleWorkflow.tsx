@@ -33,7 +33,7 @@ import { reapplyEmphasis } from '../utils/subtitleEmphasis'
 import { raceAbort } from '../utils/cancellation'
 import { transcribeSpeech, WhisperProgress } from '../utils/transcribeSpeech'
 import type { LineImage, LineJapanese } from '../types'
-import { withLineImages, type StoredLineImage } from '../utils/lineImages'
+import { placeLineImages, withLineImages, type StoredLineImage } from '../utils/lineImages'
 import { withSpeakers } from '../utils/speakers'
 import { withScene } from '../utils/sceneLabel'
 import { letterboxHeight, openingActive } from '../utils/openingLook'
@@ -202,8 +202,9 @@ export default function SubtitleWorkflow({
     return lineImages ? withLineImages(opened, { ...lineImages, cues }) : opened
   }, [hookSettings, oneTake, cues, position, cinemaLook, lineImages, shotCueInputs, scene])
   const hasLineImages = Boolean(lineImages?.images.length)
-  // Picked but not going to show: not on this device, or no subtitle matches its line.
-  const lineImagesLeftOut = !lineImages || lineImages.loading || cues.length === 0 ? 0 : lineImages.images.length - (hook.lineImages?.length ?? 0)
+  // Picked but not going to show: not on this device, or no subtitle matches its line
+  // (line 1's giving its place to the 状況のラベル isn't that).
+  const lineImagesLeftOut = !lineImages || lineImages.loading || cues.length === 0 ? 0 : lineImages.images.length - placeLineImages({ ...lineImages, cues }).length
   // The first clip of the 結合: hook cues are the ones starting within it.
   // In a 一発撮り take that's its first line.
   const firstShotDuration = oneTake ? (cues[0]?.end ?? null) : (shotCueInputs[0]?.duration ?? null)

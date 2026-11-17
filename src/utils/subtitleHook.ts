@@ -29,9 +29,10 @@ export type StyledCue = SubtitleCue & { variant: CueVariant }
 export function subtitlePositionOf(
   cue: StyledCue,
   position: SubtitlePosition,
-  hook: Pick<HookOptions, 'position' | 'lineImages'>,
+  hook: Pick<HookOptions, 'position' | 'lineImages' | 'scene'>,
 ): SubtitlePosition {
-  if (hook.lineImages?.some(image => image.cueId === cue.id)) return SUBTITLE_POSITION_BOTTOM
+  // The 状況のラベル takes line 1's image's place, so line 1 goes on the chest as with one.
+  if (hook.lineImages?.some(image => image.cueId === cue.id) || hook.scene?.cueId === cue.id) return SUBTITLE_POSITION_BOTTOM
   return cue.variant === 'hook' ? hook.position : position
 }
 

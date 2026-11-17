@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { layoutSceneLabel, sceneLabelY, sceneUnder, SCENE_TOP_BAND_Y, SCENE_SHADOW_ROOM, sceneOf, SCENE_IMAGE_HEIGHT, SCENE_TAG_INSET, withScene } from './sceneLabel'
 import { SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
+import { LINE_IMAGE_SLOT } from './lineImages'
 import type { HookOptions } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
 
@@ -40,9 +41,15 @@ describe('状況のラベル', () => {
     expect(sceneLabelY(1850, 200, 50)).toBe(1920 - SCENE_IMAGE_HEIGHT)
   })
 
-  it('goes up into the top band for a subtitle in the lower half, off the face and the SNS caption', () => {
+  it('goes in the line image\'s place for a subtitle in the lower half, off the face and the SNS caption', () => {
     expect(sceneUnder(72.3)).toBe(false)
     expect(sceneLabelY(1100, 400, 72.3)).toBe(SCENE_TOP_BAND_Y - SCENE_SHADOW_ROOM)
     expect(SCENE_TOP_BAND_Y).toBeGreaterThan(1920 * 0.15)
+  })
+
+  it('keeps the opening bars off the label', () => {
+    const opened = { ...hook, opening: { kind: 'letterbox', at: 2, height: 0.22, grade: null } } as HookOptions
+    const withLabel = withScene(opened, [cue('a', 0)], 'a wrong number')
+    expect(withLabel.opening!.height * 1920).toBeLessThan(LINE_IMAGE_SLOT.top)
   })
 })
