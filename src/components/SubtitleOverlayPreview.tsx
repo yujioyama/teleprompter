@@ -1,9 +1,9 @@
 import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { SubtitlePosition, safeSubtitlePosition } from '../utils/subtitlePosition'
+import { SUBTITLE_VIDEO_HEIGHT, SubtitlePosition, safeSubtitlePosition, subtitleY } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SCENE_FILL, SCENE_FONT_PX, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneAbove, sceneLabelOffset, sceneOf } from '../utils/sceneLabel'
+import { SCENE_FILL, SCENE_FONT_PX, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneLabelY, sceneOf } from '../utils/sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
@@ -297,6 +297,9 @@ export default function SubtitleOverlayPreview({
     ? safeSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)
     : null
 
+  // The cue box's top on the 1920px frame, as burned (the label's place is worked out from it).
+  const cueTop = cuePosition !== null && layout ? subtitleY(cuePosition, SUBTITLE_VIDEO_HEIGHT, layout.height) : 0
+
   const cueBox = cue && layout && cuePosition !== null && (
     <div
       className={styles.wrapper}
@@ -324,7 +327,7 @@ export default function SubtitleOverlayPreview({
           className={styles.scene}
           data-testid="subtitle-scene"
           style={{
-            top: cqw(sceneLabelOffset(layout.height, sceneAbove(cuePosition)) + SCENE_SHADOW_ROOM),
+            top: cqw(sceneLabelY(cueTop, layout.height, cuePosition) - cueTop + SCENE_SHADOW_ROOM),
             width: cqw(sceneLabel.width),
             height: cqw(SCENE_PILL_HEIGHT),
             fontFamily: SUBTITLE_FONT_FAMILY,
