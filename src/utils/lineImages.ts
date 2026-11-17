@@ -100,26 +100,31 @@ function cueOfLine(cues: SubtitleCue[], lines: string[]): (line: number) => Subt
   }
 }
 
-/**
- * The hook for a script with images: no sticker, no fairies, no finale, even
- * while an image is still on its way to this device, and each image that is
- * here on its line's cue. A script without images keeps the hook as it was.
- * The sticker's emoji stays in the text, kept out of the subtitles as ever.
- */
-export function withLineImages(
-  hook: HookOptions,
-  { images, stored, cues, lines }: { images: LineImage[]; stored: Map<string, StoredLineImage>; cues: SubtitleCue[]; lines: string[] },
-): HookOptions {
-  if (images.length === 0) return hook
+type LineImageInput = { images: LineImage[]; stored: Map<string, StoredLineImage>; cues: SubtitleCue[]; lines: string[] }
+
+/** Each image that is here on its line's cue, line 1's too (see withLineImages for why it may not show). */
+export function placeLineImages({ images, stored, cues, lines }: LineImageInput): CueImage[] {
   const cueOf = cueOfLine(cues, lines)
-  const lineImages = assignToLines(images, lines).flatMap((image, i) => {
+  return assignToLines(images, lines).flatMap((image, i) => {
     const here = image && stored.get(image.imageId)
     const cue = here ? cueOf(i) : null
     if (!image || !here || !cue) return []
     const { blob, width, height } = here
     return [{ cueId: cue.id, imageId: image.imageId, blob, width, height, ...(image.credit ? { credit: image.credit } : {}) }]
   })
-  return { ...hook, sticker: 'off', fairies: false, lineImages, opening: clearOfImages(hook.opening, lineImages, cues) }
+}
+
+/**
+ * The hook for a script with images: no sticker, no fairies, no finale, even
+ * while an image is still on its way to this device, and each image that is
+ * here on its line's cue, except line 1's when it has a 状況のラベル (the
+ * label shows in the image's place). A script without images keeps the hook
+ * as it was. The sticker's emoji stays in the text, kept out of the subtitles as ever.
+ */
+export function withLineImages(hook: HookOptions, input: LineImageInput): HookOptions {
+  if (input.images.length === 0) return hook
+  const lineImages = placeLineImages(input).filter(image => image.cueId !== hook.scene?.cueId)
+  return { ...hook, sticker: 'off', fairies: false, lineImages, opening: clearOfImages(hook.opening, lineImages, input.cues) }
 }
 
 /** The bars, thin enough not to reach an image shown while they are up. */

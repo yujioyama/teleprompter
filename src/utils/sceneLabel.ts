@@ -2,15 +2,16 @@ import type { SubtitleCue } from './subtitleCues'
 import type { HookOptions } from './subtitleHook'
 import { SUBTITLE_FONT_FAMILY, SUBTITLE_PADDING_Y, SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
 import { LINE_IMAGE_SLOT } from './lineImages'
+import { letterboxBarHeight } from './openingLook'
 import { SUBTITLE_POSITION_CENTER, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from './subtitlePosition'
 
 /**
  * 状況のラベル: a few words on where a conversation happens ("a wrong
- * number", "online meeting"), shown over line 1 only, right next to line 1's
- * subtitle: a dark pill that starts with a yellow SCENE tag (so the
- * words read as the setting, not a line), then the words in white. Which
- * side depends on where the subtitle sits (see sceneUnder): never where the
- * SNS app covers it, nor on the face.
+ * number", "online meeting"), shown over line 1 only, in place of line 1's
+ * image (line 1 then has none, and its subtitle is on the chest): a dark
+ * pill that starts with a yellow SCENE tag (so the words read as the
+ * setting, not a line), then the words in white. See sceneUnder for where
+ * it goes when line 1 is up top after all.
  */
 export const SCENE_MAX_LENGTH = 40
 export const SCENE_FONT_PX = 52
@@ -60,7 +61,10 @@ export function withScene(hook: HookOptions, cues: SubtitleCue[], scene: string 
   const text = scene?.trim()
   if (!text || cues.length === 0) return hook
   const first = cues.reduce((a, b) => (b.start < a.start ? b : a))
-  return { ...hook, scene: { cueId: first.id, text } }
+  // Line 1 shows while the bars are up: keep them off the label, as off a line's image.
+  const bars = letterboxBarHeight([LINE_IMAGE_SLOT.top])
+  const opening = hook.opening && hook.opening.height > bars ? { ...hook.opening, height: bars } : hook.opening
+  return { ...hook, opening, scene: { cueId: first.id, text } }
 }
 
 /** The label's words if it goes with `cueId`. */
@@ -84,19 +88,16 @@ export function layoutSceneLabel(text: string, measure: MeasureText): SceneLabel
 /**
  * Whether the label goes right under the subtitle centered at `position`:
  * in the upper half it does (above it would be under the SNS header). Lower
- * down, under it runs into the SNS caption and above it lands on the face
- * (eyes, like a mugshot's bar), so it goes up into the top band instead.
+ * down (line 1 with a label is on the chest, see subtitlePositionOf) it goes
+ * in the line image's place instead, between the SNS header and the head:
+ * under the subtitle it would run into the SNS caption, above it onto the eyes.
  */
 export function sceneUnder(position: SubtitlePosition): boolean {
   return position <= SUBTITLE_POSITION_CENTER
 }
 
-/**
- * The pill's top when it goes up in the top band: just inside the top edge
- * of the line image's slot (the band between the SNS header and the head),
- * so with an image it sits on the image's top edge.
- */
-export const SCENE_TOP_BAND_Y = LINE_IMAGE_SLOT.top + 12
+/** The pill's top in the line image's place: centered in its slot. */
+export const SCENE_TOP_BAND_Y = Math.round(LINE_IMAGE_SLOT.top + (LINE_IMAGE_SLOT.height - SCENE_PILL_HEIGHT) / 2)
 
 /**
  * Where the label image's top goes (output px), for a subtitle image placed

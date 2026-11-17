@@ -82,6 +82,13 @@ describe('withLineImages', () => {
   const lines = ['*Toast*🍞 hurts', 'My mouth bled', 'Again']
   const cues = [cue('a', lines[0], 0, 2), cue('b', lines[1], 2, 4), cue('c', lines[2], 4, 6)]
 
+  it('drops line 1\'s image when it has a 状況のラベル, keeping the others', () => {
+    const images = [image(lines[0], 'x'), image(lines[1], 'y')]
+    const both = stored('x', 'y')
+    const hook = withLineImages({ ...HOOK, scene: { cueId: 'a', text: 'a wrong number' } }, { images, stored: both, cues, lines })
+    expect(hook.lineImages?.map(i => i.cueId)).toEqual(['b'])
+  })
+
   it('leaves a script without images as it was, stickers and all', () => {
     expect(withLineImages(HOOK, { images: [], stored: new Map(), cues, lines })).toBe(HOOK)
   })
