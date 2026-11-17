@@ -1,6 +1,7 @@
 import type { SubtitleCue } from './subtitleCues'
 import type { HookOptions } from './subtitleHook'
 import { SUBTITLE_FONT_FAMILY, SUBTITLE_PADDING_Y, SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
+import { LINE_IMAGE_SLOT } from './lineImages'
 import { SUBTITLE_POSITION_CENTER, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from './subtitlePosition'
 
 /**
@@ -8,8 +9,8 @@ import { SUBTITLE_POSITION_CENTER, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition 
  * number", "online meeting"), shown over line 1 only, right next to line 1's
  * subtitle: a dark pill that starts with a yellow SCENE tag (so the
  * words read as the setting, not a line), then the words in white. Which
- * side depends on where the subtitle sits (see sceneAbove): never toward the
- * frame edge the SNS app covers.
+ * side depends on where the subtitle sits (see sceneUnder): never where the
+ * SNS app covers it, nor on the face.
  */
 export const SCENE_MAX_LENGTH = 40
 export const SCENE_FONT_PX = 52
@@ -81,31 +82,29 @@ export function layoutSceneLabel(text: string, measure: MeasureText): SceneLabel
 }
 
 /**
- * Whether the label goes above the subtitle centered at `position`: in the
- * lower half (a line with an image sits there) under it would run into the
- * SNS caption, so it goes above; higher up, above it would be under the SNS
- * header, so it goes under.
+ * Whether the label goes right under the subtitle centered at `position`:
+ * in the upper half it does (above it would be under the SNS header). Lower
+ * down, under it runs into the SNS caption and above it lands on the face
+ * (eyes, like a mugshot's bar), so it goes up into the top band instead.
  */
-export function sceneAbove(position: SubtitlePosition): boolean {
-  return position > SUBTITLE_POSITION_CENTER
+export function sceneUnder(position: SubtitlePosition): boolean {
+  return position <= SUBTITLE_POSITION_CENTER
 }
 
 /**
- * The label image's top relative to the subtitle image's top, `cueHeight`
- * tall: SCENE_GAP from its text box (or, for a bubble, the icon), whose
- * edges are the image's padding in from it.
+ * The pill's top when it goes up in the top band: just inside the top edge
+ * of the line image's slot (the band between the SNS header and the head),
+ * so with an image it sits on the image's top edge.
  */
-export function sceneLabelOffset(cueHeight: number, above: boolean): number {
-  return above
-    ? SUBTITLE_PADDING_Y - SCENE_GAP - SCENE_PILL_HEIGHT - SCENE_SHADOW_ROOM
-    : cueHeight - SUBTITLE_PADDING_Y + SCENE_GAP - SCENE_SHADOW_ROOM
-}
+export const SCENE_TOP_BAND_Y = LINE_IMAGE_SLOT.top + 12
 
 /**
- * Where the label image's top goes (output px), beside a subtitle image
- * placed at `cueY`, `cueHeight` tall; kept on screen.
+ * Where the label image's top goes (output px), for a subtitle image placed
+ * at `cueY`, `cueHeight` tall, centered at `position`; kept on screen.
  */
-export function sceneLabelY(cueY: number, cueHeight: number, above: boolean): number {
-  const y = cueY + sceneLabelOffset(cueHeight, above)
+export function sceneLabelY(cueY: number, cueHeight: number, position: SubtitlePosition): number {
+  const y = sceneUnder(position)
+    ? cueY + cueHeight - SUBTITLE_PADDING_Y + SCENE_GAP - SCENE_SHADOW_ROOM
+    : SCENE_TOP_BAND_Y - SCENE_SHADOW_ROOM
   return Math.round(Math.max(0, Math.min(SUBTITLE_VIDEO_HEIGHT - SCENE_IMAGE_HEIGHT, y)))
 }
