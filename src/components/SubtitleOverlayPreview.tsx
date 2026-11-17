@@ -1,9 +1,9 @@
 import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { SubtitleCue } from '../utils/subtitleCues'
-import { SubtitlePosition, clampedSubtitlePosition } from '../utils/subtitlePosition'
+import { SubtitlePosition, safeSubtitlePosition } from '../utils/subtitlePosition'
 import { styleCues, subtitlePositionOf, type HookOptions } from '../utils/subtitleHook'
 import { runColor } from '../utils/subtitleEmphasis'
-import { SCENE_FILL, SCENE_FONT_PX, SCENE_GAP, SCENE_PILL_HEIGHT, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneOf } from '../utils/sceneLabel'
+import { SCENE_FILL, SCENE_FONT_PX, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT_PX, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneAbove, sceneLabelOffset, sceneOf } from '../utils/sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from '../utils/speakers'
 import {
   BUBBLE_BORDER,
@@ -288,16 +288,20 @@ export default function SubtitleOverlayPreview({
   const spokenColor = speaker ? { color: SPEAKER_TEXT_COLOR } : undefined
   const bubble = speaker ? layout?.bubble : undefined
   const phone = cue ? onPhone(hook, cue.id) : false
-  // 状況のラベル: under line 1's subtitle, as burned.
+  // 状況のラベル: beside line 1's subtitle, on the side the burn puts it.
   const sceneText = cue && cue.ja !== null ? sceneOf(hook, cue.id) : undefined
   const sceneLabel = sceneText ? layoutSceneLabel(sceneText, measure) : null
   const speakerName = bubble ? layoutSpeakerName(cue ? speakerNameOf(hook, cue.id) : undefined, bubble, phone, measure) : null
 
-  const cueBox = cue && layout && (
+  const cuePosition = cue && layout
+    ? safeSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)
+    : null
+
+  const cueBox = cue && layout && cuePosition !== null && (
     <div
       className={styles.wrapper}
       style={{
-        top: `${clampedSubtitlePosition(subtitlePositionOf(cue, position, { position: hook?.position ?? position, lineImages: hook?.lineImages }), layout.height)}%`,
+        top: `${cuePosition}%`,
         width: cqw(bubble ? SUBTITLE_REFERENCE_WIDTH : SUBTITLE_TEXT_WIDTH),
         padding: bubble
           ? `${cqw(bubble.textTop)} 0 ${cqw(layout.height - bubble.top - bubble.height + BUBBLE_BORDER + BUBBLE_PAD_Y)}`
@@ -320,7 +324,7 @@ export default function SubtitleOverlayPreview({
           className={styles.scene}
           data-testid="subtitle-scene"
           style={{
-            top: cqw(layout.height - SUBTITLE_PADDING_Y + SCENE_GAP),
+            top: cqw(sceneLabelOffset(layout.height, sceneAbove(cuePosition)) + SCENE_SHADOW_ROOM),
             width: cqw(sceneLabel.width),
             height: cqw(SCENE_PILL_HEIGHT),
             fontFamily: SUBTITLE_FONT_FAMILY,

@@ -1,7 +1,7 @@
 import type { CinemaLook } from '../../shared/cinemaLook'
 import type { SubtitleCue } from './subtitleCues'
 import { createCanvasMeasure, layoutCue, type MeasureText } from './subtitleLayout'
-import { SUBTITLE_VIDEO_HEIGHT, clampedSubtitleY, type SubtitlePosition } from './subtitlePosition'
+import { SUBTITLE_VIDEO_HEIGHT, safeSubtitleY, type SubtitlePosition } from './subtitlePosition'
 import { stripStickers } from './subtitleSticker'
 
 /**
@@ -94,7 +94,7 @@ export function openingLookFor(
   const at = clampTime(firstLineEnd(cues) ?? 0, LETTERBOX.minHold, LETTERBOX.maxHold)
   const tops = cues
     .filter(c => c.start < at + LETTERBOX.duration)
-    .map(c => clampedSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure, { speaker: spokenCueIds.has(c.id) }).height))
+    .map(c => safeSubtitleY(position, layoutCue({ en: stripStickers(c.en), ja: c.ja }, measure, { speaker: spokenCueIds.has(c.id) }).height))
   return { kind: 'letterbox', at, height: letterboxBarHeight(tops), grade }
 }
 
