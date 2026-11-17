@@ -6,6 +6,9 @@ import {
   SUBTITLE_POSITION_TOP,
   SUBTITLE_POSITION_CENTER,
   SUBTITLE_POSITION_BOTTOM,
+  SNS_SAFE_BOTTOM,
+  safeSubtitlePosition,
+  safeSubtitleY,
 } from './subtitlePosition'
 
 describe('subtitleY', () => {
@@ -70,5 +73,21 @@ describe('clampedSubtitleY', () => {
   it('keeps the whole box on screen', () => {
     expect(clampedSubtitleY(0, 220)).toBeCloseTo(0, 5)
     expect(clampedSubtitleY(100, 220)).toBeCloseTo(1700, 5)
+  })
+})
+
+describe('safeSubtitlePosition', () => {
+  it('leaves a box that ends above the SNS caption alone', () => {
+    expect(safeSubtitlePosition(50, 220)).toBe(50)
+  })
+
+  it('lifts a box so its bottom stops at SNS_SAFE_BOTTOM', () => {
+    const pos = safeSubtitlePosition(SUBTITLE_POSITION_BOTTOM, 440)
+    expect(pos + (440 / 2 / 1920) * 100).toBeCloseTo(SNS_SAFE_BOTTOM, 5)
+    expect(safeSubtitleY(100, 220) + 220).toBe(Math.round((1920 * SNS_SAFE_BOTTOM) / 100))
+  })
+
+  it('still keeps a box taller than the safe area on screen', () => {
+    expect(safeSubtitleY(100, 1800)).toBeGreaterThanOrEqual(0)
   })
 })

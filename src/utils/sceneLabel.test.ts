@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { layoutSceneLabel, sceneLabelY, sceneOf, SCENE_IMAGE_HEIGHT, SCENE_TAG_INSET, withScene } from './sceneLabel'
+import { layoutSceneLabel, sceneAbove, sceneLabelY, sceneOf, SCENE_IMAGE_HEIGHT, SCENE_TAG_INSET, withScene } from './sceneLabel'
 import { SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
 import type { HookOptions } from './subtitleHook'
 import type { SubtitleCue } from './subtitleCues'
@@ -33,9 +33,18 @@ describe('状況のラベル', () => {
     expect(label.width).toBeGreaterThan(label.textLeft)
   })
 
-  it('sits right under the subtitle, and stays on screen', () => {
-    expect(sceneLabelY(300, 200)).toBeGreaterThan(300 + 200 - 40)
-    expect(sceneLabelY(300, 200)).toBeLessThan(300 + 200)
-    expect(sceneLabelY(1850, 200)).toBe(1920 - SCENE_IMAGE_HEIGHT)
+  it('sits right under a subtitle in the upper half, and stays on screen', () => {
+    expect(sceneAbove(22.5)).toBe(false)
+    expect(sceneLabelY(300, 200, false)).toBeGreaterThan(300 + 200 - 40)
+    expect(sceneLabelY(300, 200, false)).toBeLessThan(300 + 200)
+    expect(sceneLabelY(1850, 200, false)).toBe(1920 - SCENE_IMAGE_HEIGHT)
+  })
+
+  it('sits right above a subtitle in the lower half, clear of the SNS caption', () => {
+    expect(sceneAbove(72.3)).toBe(true)
+    const y = sceneLabelY(1100, 400, true)
+    expect(y + SCENE_IMAGE_HEIGHT).toBeLessThanOrEqual(1100 + 20)
+    expect(y + SCENE_IMAGE_HEIGHT).toBeGreaterThan(1100 - 20)
+    expect(sceneLabelY(10, 200, true)).toBe(0)
   })
 })

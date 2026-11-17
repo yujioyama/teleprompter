@@ -4,7 +4,7 @@ import { execFFmpeg } from './execFFmpeg'
 import { getFFmpeg, releaseFFmpeg } from './ffmpegClient'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { SubtitleCue } from './subtitleCues'
-import { SubtitlePosition, clampedSubtitleY } from './subtitlePosition'
+import { SubtitlePosition, clampedSubtitleY, safeSubtitlePosition, subtitleY, SUBTITLE_VIDEO_HEIGHT } from './subtitlePosition'
 import { OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_WIDTH, canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { burnSubtitlesWebCodecs } from './webcodecs/burnSubtitlesWebCodecs'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
@@ -24,7 +24,7 @@ import {
 } from './subtitleHook'
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
-import { SCENE_FILL, SCENE_FONT, SCENE_IMAGE_HEIGHT, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneLabelY, sceneOf } from './sceneLabel'
+import { SCENE_FILL, SCENE_FONT, SCENE_IMAGE_HEIGHT, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneAbove, sceneLabelY, sceneOf } from './sceneLabel'
 import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
@@ -491,12 +491,13 @@ export async function renderSubtitleOverlays(
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.
     const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id), speakerNameOf(look.hook, cue.id))
-    const y = clampedSubtitleY(cuePosition(cue, look), height)
+    const position = safeSubtitlePosition(cuePosition(cue, look), height)
+    const y = subtitleY(position, SUBTITLE_VIDEO_HEIGHT, height)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })
     const scene = sceneOf(look.hook, cue.id)
     if (scene) {
       const label = await renderSceneImage(scene)
-      overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image: label.image, y: sceneLabelY(y, height) })
+      overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image: label.image, y: sceneLabelY(y, height, sceneAbove(position)) })
     }
   }
   const sticker = placeSticker(cues, look.hook, look.firstShotDuration, look.firstClipDuration)

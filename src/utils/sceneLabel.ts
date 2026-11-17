@@ -1,26 +1,25 @@
 import type { SubtitleCue } from './subtitleCues'
 import type { HookOptions } from './subtitleHook'
 import { SUBTITLE_FONT_FAMILY, SUBTITLE_PADDING_Y, SUBTITLE_TEXT_WIDTH, type MeasureText } from './subtitleLayout'
-import { SUBTITLE_VIDEO_HEIGHT } from './subtitlePosition'
+import { SUBTITLE_POSITION_CENTER, SUBTITLE_VIDEO_HEIGHT, type SubtitlePosition } from './subtitlePosition'
 
 /**
  * 状況のラベル: a few words on where a conversation happens ("a wrong
- * number", "online meeting"), shown over line 1 only, right under line 1's
+ * number", "online meeting"), shown over line 1 only, right next to line 1's
  * subtitle: a dark pill that starts with a yellow SCENE tag (so the
- * words read as the setting, not a line), then the words in white. Under it
- * rather than above: line 1's subtitle already fills the band between the
- * SNS header (top ~15%) and the head, so above it the tag would be hidden
- * under the header.
+ * words read as the setting, not a line), then the words in white. Which
+ * side depends on where the subtitle sits (see sceneAbove): never toward the
+ * frame edge the SNS app covers.
  */
 export const SCENE_MAX_LENGTH = 40
-export const SCENE_FONT_PX = 44
+export const SCENE_FONT_PX = 52
 export const SCENE_FONT = `700 ${SCENE_FONT_PX}px ${SUBTITLE_FONT_FAMILY}`
 export const SCENE_PAD_Y = 12
 export const SCENE_PILL_HEIGHT = Math.round(SCENE_FONT_PX * 1.2) + SCENE_PAD_Y * 2
 export const SCENE_FILL = 'rgba(0, 0, 0, 0.78)'
 /** The SCENE tag at the pill's start. */
 export const SCENE_TAG = 'SCENE'
-export const SCENE_TAG_FONT_PX = 28
+export const SCENE_TAG_FONT_PX = 32
 export const SCENE_TAG_FONT = `800 ${SCENE_TAG_FONT_PX}px ${SUBTITLE_FONT_FAMILY}`
 export const SCENE_TAG_FILL = '#ffd23f'
 export const SCENE_TAG_COLOR = '#111'
@@ -82,10 +81,31 @@ export function layoutSceneLabel(text: string, measure: MeasureText): SceneLabel
 }
 
 /**
- * Where the label image's top goes (output px), under a subtitle image
+ * Whether the label goes above the subtitle centered at `position`: in the
+ * lower half (a line with an image sits there) under it would run into the
+ * SNS caption, so it goes above; higher up, above it would be under the SNS
+ * header, so it goes under.
+ */
+export function sceneAbove(position: SubtitlePosition): boolean {
+  return position > SUBTITLE_POSITION_CENTER
+}
+
+/**
+ * The label image's top relative to the subtitle image's top, `cueHeight`
+ * tall: SCENE_GAP from its text box (or, for a bubble, the icon), whose
+ * edges are the image's padding in from it.
+ */
+export function sceneLabelOffset(cueHeight: number, above: boolean): number {
+  return above
+    ? SUBTITLE_PADDING_Y - SCENE_GAP - SCENE_PILL_HEIGHT - SCENE_SHADOW_ROOM
+    : cueHeight - SUBTITLE_PADDING_Y + SCENE_GAP - SCENE_SHADOW_ROOM
+}
+
+/**
+ * Where the label image's top goes (output px), beside a subtitle image
  * placed at `cueY`, `cueHeight` tall; kept on screen.
  */
-export function sceneLabelY(cueY: number, cueHeight: number): number {
-  const under = cueY + cueHeight - SUBTITLE_PADDING_Y + SCENE_GAP - SCENE_SHADOW_ROOM
-  return Math.round(Math.max(0, Math.min(SUBTITLE_VIDEO_HEIGHT - SCENE_IMAGE_HEIGHT, under)))
+export function sceneLabelY(cueY: number, cueHeight: number, above: boolean): number {
+  const y = cueY + sceneLabelOffset(cueHeight, above)
+  return Math.round(Math.max(0, Math.min(SUBTITLE_VIDEO_HEIGHT - SCENE_IMAGE_HEIGHT, y)))
 }

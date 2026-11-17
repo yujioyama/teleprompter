@@ -49,6 +49,36 @@ export function clampedSubtitleY(
   return subtitleY(clampedSubtitlePosition(position, overlayHeight, videoHeight), videoHeight, overlayHeight)
 }
 
+/**
+ * How far down (percent of the video's height) a subtitle may reach: below
+ * it TikTok/Reels lay the account name, caption and sound over the video
+ * (the bottom ~20%, more with a long caption).
+ */
+export const SNS_SAFE_BOTTOM = 78
+
+/**
+ * clampedSubtitlePosition, and also kept above SNS_SAFE_BOTTOM so the
+ * caption can't cover it: a box taller than the plain two-line cue (a
+ * speech bubble, its icon) grows upward instead of into the caption.
+ */
+export function safeSubtitlePosition(
+  position: SubtitlePosition,
+  overlayHeight: number,
+  videoHeight = SUBTITLE_VIDEO_HEIGHT,
+): SubtitlePosition {
+  const half = (overlayHeight / 2 / videoHeight) * 100
+  return clampedSubtitlePosition(Math.min(position, SNS_SAFE_BOTTOM - half), overlayHeight, videoHeight)
+}
+
+/** Top of a subtitle overlay on the output video: on screen and above the SNS caption. */
+export function safeSubtitleY(
+  position: SubtitlePosition,
+  overlayHeight: number,
+  videoHeight = SUBTITLE_VIDEO_HEIGHT,
+): number {
+  return subtitleY(safeSubtitlePosition(position, overlayHeight, videoHeight), videoHeight, overlayHeight)
+}
+
 /** The one-tap positions offered next to the fine-tune slider. */
 export const SUBTITLE_POSITION_PRESETS: { label: string; value: SubtitlePosition }[] = [
   { label: '上部', value: SUBTITLE_POSITION_TOP },
