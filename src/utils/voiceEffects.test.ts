@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { darken, HEARD_VOICES, isHeardVoice, isPhoneVoice, levelVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
+import { darken, HEARD_VOICES, isHeardVoice, isPhoneVoice, levelVoice, narratorVoice, resample, rms, shapeVoice, telephone, timeStretch, voiceSpeed } from './voiceEffects'
 import { measureIntegratedLoudness, TARGET_LUFS } from './loudness'
 
 const RATE = 16000
@@ -208,5 +208,29 @@ describe('darken', () => {
     const brightness = (out: Float32Array) => rms(out.subarray(1).map((v, i) => v - out[i])) / rms(out)
     expect(brightness(shapeVoice(tone(1200), RATE, 'olderMan'))).toBeLessThan(brightness(shapeVoice(tone(1200), RATE, 'low')))
     expect(voiceSpeed('olderMan')).toBeLessThan(voiceSpeed('low'))
+  })
+})
+
+describe('narratorVoice', () => {
+  const input = sine(200)
+  const crossings = (x: Float32Array) => {
+    let n = 0
+    for (let i = 1; i < x.length; i++) if (x[i - 1] <= 0 && x[i] > 0) n++
+    return n
+  }
+
+  it('rings on past the end of the voice', () => {
+    expect(narratorVoice(input, RATE).length).toBeGreaterThanOrEqual(input.length)
+  })
+
+  it('stays within full scale', () => {
+    const peak = narratorVoice(input, RATE).reduce((m, v) => Math.max(m, Math.abs(v)), 0)
+    expect(peak).toBeLessThanOrEqual(1)
+  })
+
+  it('is lower than the voice it was given', () => {
+    const out = narratorVoice(input, RATE)
+    expect(pitchOf(out)).toBeLessThan(200)
+    expect(crossings(out.subarray(0, input.length))).toBeLessThan(crossings(input))
   })
 })

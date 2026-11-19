@@ -71,17 +71,19 @@ interface InsertCardEditorProps {
   card: EditorCard
   onChange: (card: EditorCard) => void
   onRemove: () => void
+  /** The card has a recorded narrator voice on this device. */
+  hasVoice?: boolean
 }
 
 /** One card between two lines: its words, its background, and how it looks. */
-export default function InsertCardEditor({ card, onChange, onRemove }: InsertCardEditorProps) {
+export default function InsertCardEditor({ card, onChange, onRemove, hasVoice }: InsertCardEditorProps) {
   const isImage = cardBackgroundOf(card.background).kind === 'image'
   const [urlDraft, setUrlDraft] = useState(isImage ? (card.background ?? '') : '')
   const choice = isImage || (card.background !== undefined && !isCardBackgroundName(card.background) && card.background !== '') ? 'image' : (card.background ?? DEFAULT_CARD_BACKGROUND)
   return (
     <div className={styles.card} data-testid="insert-card">
       <div className={styles.fields}>
-        <span className={styles.badge}>🎬 カード（{CARD_SECONDS}秒）</span>
+        <span className={styles.badge}>{hasVoice ? '🎬 カード（声の長さ）🎙️ 声あり' : `🎬 カード（${CARD_SECONDS}秒）`}</span>
         <input
           className={styles.input}
           type="text"

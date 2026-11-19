@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType, type ProcessedVideo } from '../utils/processRecordedVideo'
-import { isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
+import { isCardVoiceFile, extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
 import { DEVICE_RESTART_HINT, heardShotFailureText, makeHeardShot, makeHeardShotFromVoice, needsDeviceRestart } from '../utils/heardShot'
@@ -17,8 +17,11 @@ import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
-import { camShotsOf, cardAfterShot } from '../utils/insertCard'
+import { saveCardVoice } from '../utils/cardVoiceStore'
+import { camShotsOf, cardAfterShot, cardsInOrder } from '../utils/insertCard'
 import styles from './RecordPage.module.css'
+
+const CARD_VOICE_FAILED = 'カードの声を保存できませんでした。'
 
 export default function RecordPage() {
   const navigate = useNavigate()
@@ -34,6 +37,7 @@ export default function RecordPage() {
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
   const [bulkImportError, setBulkImportError] = useState<string | null>(null)
+  const [bulkImportNotice, setBulkImportNotice] = useState<string | null>(null)
   const [bulkImportProgress, setBulkImportProgress] = useState<{ done: number; total: number } | null>(null)
 
   // Scroll the prompt text back to the top whenever another shot comes up —
@@ -77,19 +81,56 @@ export default function RecordPage() {
     window.location.href = `teleprompter-cam://record?shots=${payload}`
   }
 
-  function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? [])
     e.target.value = '' // allow re-selecting the same file(s)
     if (picked.length === 0) return
     if (bulkImportProgress) return // a bulk import is already running
 
-    // 相手のセリフ voices recorded ahead in the camera app come picked with the takes.
-    const voices = voicesByShotId(picked.filter(isVoiceFile))
-    const files = picked.filter(file => !isVoiceFile(file))
+    setBulkImportNotice(null)
+    // 挿入カード voices come picked with the takes too: each goes to the card after the shot named in its file.
+    const cardVoices = picked.filter(isCardVoiceFile)
+    const rest = picked.filter(file => !isCardVoiceFile(file))
+    // 相手のセリフ voices recorded ahead in the camera app likewise.
+    const voices = voicesByShotId(rest.filter(isVoiceFile))
+    const files = rest.filter(file => !isVoiceFile(file))
+    let cardVoiceFailed = false
+    let savedCardVoices = 0
+    let unmatchedCardVoices = 0
+    if (cardVoices.length > 0) {
+      const cardOfShot = new Map(cardsInOrder(safeScript).map(({ card }) => [card.afterShotId, card.id]))
+      try {
+        await Promise.all(cardVoices.map(async file => {
+          const shotId = extractShotId(file.name)
+          const cardId = shotId ? cardOfShot.get(shotId) : undefined
+          if (!cardId) {
+            unmatchedCardVoices++
+            return
+          }
+          await saveCardVoice(safeScript.id, cardId, file)
+          savedCardVoices++
+        }))
+      } catch (err) {
+        console.error('Saving card voices failed', err)
+        cardVoiceFailed = true
+      }
+    }
+    const unmatchedNotice = unmatchedCardVoices > 0 ? `合うカードがない声のファイルがありました（${unmatchedCardVoices}件）` : null
     if (files.length === 0) {
-      setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
+      if (cardVoices.length === 0) {
+        setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
+        return
+      }
+      // Card voices need no take; line voices do, so they wait for theirs.
+      setBulkImportError(cardVoiceFailed ? CARD_VOICE_FAILED : null)
+      const notices: string[] = []
+      if (!cardVoiceFailed && savedCardVoices > 0) notices.push(`カードの声を保存しました（${savedCardVoices}枚）`)
+      if (unmatchedNotice) notices.push(unmatchedNotice)
+      if (rest.some(isVoiceFile)) notices.push('相手の声・心の声のファイルは、動画と一緒に選ぶと使われます。')
+      setBulkImportNotice(notices.length > 0 ? notices.join(' / ') : null)
       return
     }
+    if (unmatchedNotice) setBulkImportNotice(unmatchedNotice)
 
     const resolution = resolveImportTargets(files, safeScript.shots)
 
@@ -101,8 +142,8 @@ export default function RecordPage() {
     // A take whose name doesn't say its shot (one renamed by the camera
     // roll, say) is the one on screen, and the next shot comes up after it.
     const run = resolution.kind === 'legacy'
-      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1, voices)
-      : runBulkImport(resolution.targets, undefined, voices)
+      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1, voices, cardVoiceFailed)
+      : runBulkImport(resolution.targets, undefined, voices, cardVoiceFailed)
     run?.catch(err => {
       console.error('Bulk import failed unexpectedly', err)
       setBulkImportProgress(null)
@@ -115,6 +156,7 @@ export default function RecordPage() {
     targets: { shot: Shot; file: File }[],
     nextIndex?: number,
     voices: Map<string, File> = new Map(),
+    cardVoiceFailed = false,
   ) {
     setBulkImportError(null)
     setBulkImportProgress({ done: 0, total: targets.length })
@@ -190,6 +232,7 @@ export default function RecordPage() {
     setBulkImportProgress(null)
 
     const messages: string[] = []
+    if (cardVoiceFailed) messages.push(CARD_VOICE_FAILED)
     if (failedShotTexts.length > 0) {
       messages.push(`保存できなかったショットがあります: ${failedShotTexts.join(', ')}`)
     }
@@ -294,6 +337,9 @@ export default function RecordPage() {
         </p>
         {bulkImportError && (
           <p className={styles.persistError}>{bulkImportError}</p>
+        )}
+        {bulkImportNotice && (
+          <p className={styles.importNotice}>{bulkImportNotice}</p>
         )}
         <button
           className={styles.finalizeBtn}
@@ -526,6 +572,10 @@ export default function RecordPage() {
 
           {!bulkImportProgress && bulkImportError && (
             <p className={styles.persistError}>{bulkImportError}</p>
+          )}
+
+          {!bulkImportProgress && bulkImportNotice && (
+            <p className={styles.importNotice}>{bulkImportNotice}</p>
           )}
         </div>
       </div>

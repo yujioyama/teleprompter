@@ -45,7 +45,7 @@ export async function buildHeardShotWebCodecs(
     if (!audioTrack || !videoTrack) throw new Error('take has no video or audio track')
     // Built to the picture's length, as prepareFinalAudio does, so the two end together.
     const seconds = await videoTrack.computeDuration()
-    const spoken = lineOf(await decodeAudioTrack(audioTrack), plan.voice.start, plan.voice.end)
+    const spoken = spokenPart(await decodeAudioTrack(audioTrack), plan.voice.start, plan.voice.end)
     // Whatever the effect did to its level, and however softly it was said, as loud as our own lines.
     // 心の声: our own voice, with the echo of a thought; else the other person's voice.
     const voiced = thought ? thinkingVoice(spoken.samples, spoken.sampleRate, thought) : shapeVoice(spoken.samples, spoken.sampleRate, voice)
@@ -63,7 +63,7 @@ export async function buildHeardShotWebCodecs(
  * is learned from the whole recording, which has more quiet in it than the
  * line's own padding.
  */
-function lineOf(whole: AudioBuffer, start: number, end: number): { samples: Float32Array; sampleRate: number } {
+export function spokenPart(whole: AudioBuffer, start: number, end: number): { samples: Float32Array; sampleRate: number } {
   const mono = new Float32Array(whole.length)
   for (let channel = 0; channel < whole.numberOfChannels; channel++) {
     const data = whole.getChannelData(channel)

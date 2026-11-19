@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
@@ -17,6 +17,7 @@ import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type Vid
 import InsertCardEditor, { type EditorCard } from '../components/InsertCardEditor'
 import { DEFAULT_CARD_TEXT, cardAudioOf } from '../utils/insertCard'
 import { DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
+import { getCardVoice } from '../utils/cardVoiceStore'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import styles from './ScriptEditPage.module.css'
 
@@ -174,6 +175,22 @@ export default function ScriptEditPage() {
   const [roleOverrides, setRoleOverrides] = useState<Map<string, LineRole>>(() => new Map())
   // 挿入カード between lines, and what they do to the sound.
   const [cards, setCards] = useState<EditorCard[]>(() => initialCards(existingScript, inboxItem))
+  // Which of an existing script's cards have a recorded voice (an inbox item has none yet).
+  const [voiceCardIds, setVoiceCardIds] = useState<Set<string>>(() => new Set())
+  const existingId = existingScript?.id
+  useEffect(() => {
+    if (!existingId) return
+    let cancelled = false
+    const ids = (existingScript?.cards ?? []).map(c => c.id)
+    Promise.all(ids.map(cardId => getCardVoice(existingId, cardId).then(v => (v ? cardId : null), () => null))).then(found => {
+      if (!cancelled) setVoiceCardIds(new Set(found.filter((x): x is string => x !== null)))
+    })
+    return () => {
+      cancelled = true
+    }
+    // The cards are read once, as the editor starts with them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingId])
   const [cardAudio, setCardAudio] = useState<CardAudio>(() => cardAudioOf(existingScript))
 
   // Grow the textarea to fit its content so a long pasted script is visible
@@ -463,6 +480,7 @@ export default function ScriptEditPage() {
                 <InsertCardEditor
                   key={card.id}
                   card={card}
+                  hasVoice={voiceCardIds.has(card.id)}
                   onChange={next => setCards(all => all.map(c => (c.id === card.id ? next : c)))}
                   onRemove={() => setCards(all => all.filter(c => c.id !== card.id))}
                 />
