@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CARD_BACKGROUNDS, CARD_TEXT_MAX_LENGTH, DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
+import { CARD_BACKGROUNDS, CARD_JA_MAX_LENGTH, CARD_TEXT_MAX_LENGTH, DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
 import { CARD_BACKGROUND_LABELS, CARD_SECONDS, cardBackgroundOf, wobblesOf } from '../utils/insertCard'
 import { drawCardFrame, layoutCardText } from '../utils/drawInsertCard'
 import styles from './InsertCardEditor.module.css'
@@ -10,6 +10,8 @@ export interface EditorCard {
   afterText: string
   text: string
   background?: string
+  /** The text in Japanese, small under it. */
+  ja?: string
 }
 
 const PREVIEW_WIDTH = 1080
@@ -21,7 +23,7 @@ const LOOP_SECONDS = CARD_SECONDS + 0.5
  * The card as it will be burned, drawn with the burn's own drawing and
  * timing (drawCardFrame), playing on a loop.
  */
-export function InsertCardPreview({ text, background }: { text: string; background?: string }) {
+export function InsertCardPreview({ text, background, ja }: { text: string; background?: string; ja?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const parsed = cardBackgroundOf(background)
@@ -47,7 +49,7 @@ export function InsertCardPreview({ text, background }: { text: string; backgrou
     const layout = layoutCardText(text, PREVIEW_WIDTH, (t, font) => {
       ctx.font = font
       return ctx.measureText(t).width
-    })
+    }, undefined, ja)
     const wobbles = wobblesOf(layout.letters.map(l => l.ch).join(''))
     const shownBackground = parsed.kind === 'image' && !image ? { kind: 'named' as const, name: DEFAULT_CARD_BACKGROUND } : parsed
     const started = performance.now()
@@ -62,7 +64,7 @@ export function InsertCardPreview({ text, background }: { text: string; backgrou
     return () => cancelAnimationFrame(frame)
     // `parsed` is read through `background`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, background, image])
+  }, [text, background, ja, image])
 
   return <canvas ref={canvasRef} className={styles.preview} width={216} height={384} aria-label={`カードのプレビュー: ${text}`} />
 }
@@ -93,6 +95,15 @@ export default function InsertCardEditor({ card, onChange, onRemove, hasVoice }:
           placeholder="2 days later"
           onChange={e => onChange({ ...card, text: e.target.value })}
         />
+        <input
+          className={styles.input}
+          type="text"
+          aria-label="カードの日本語"
+          maxLength={CARD_JA_MAX_LENGTH}
+          value={card.ja ?? ''}
+          placeholder="日本語（英語の下に小さく。例: 2日後）"
+          onChange={e => onChange({ ...card, ja: e.target.value })}
+        />
         <select
           aria-label="カードの背景"
           value={choice}
@@ -122,7 +133,7 @@ export default function InsertCardEditor({ card, onChange, onRemove, hasVoice }:
         )}
         <button type="button" className={styles.remove} onClick={onRemove}>カードを外す</button>
       </div>
-      <InsertCardPreview text={card.text || ' '} background={card.background} />
+      <InsertCardPreview text={card.text || ' '} background={card.background} ja={card.ja} />
     </div>
   )
 }

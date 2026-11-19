@@ -6,7 +6,7 @@ import type { InboxStore } from './inboxStore.js'
 import type { SubtitleStore } from './subtitleStore.js'
 import type { RecordStore } from './recordStore.js'
 import { JAPANESE_SUBTITLE_RULES } from '../shared/japaneseSubtitles.js'
-import { CARD_BACKGROUNDS, CARD_TEXT_MAX_LENGTH, DEFAULT_CARD_BACKGROUND, captionWithCredits, isCardBackgroundName } from '../shared/inbox.js'
+import { CARD_BACKGROUNDS, CARD_JA_MAX_LENGTH, CARD_TEXT_MAX_LENGTH, DEFAULT_CARD_BACKGROUND, captionWithCredits, isCardBackgroundName } from '../shared/inbox.js'
 
 /** `value` as line numbers when it came as text ("[1,3]" or "1, 3"); anything else as it is. */
 function lineNumbersFromText(value: unknown): unknown {
@@ -50,7 +50,7 @@ const DESCRIPTION = [
   'heard には、会話を再現する台本で「相手のセリフ」の行番号を入れます（任意。例: 1行目と3行目が相手なら [1, 3]。script の何行目か、1から数える）。その行は、ユーザーが自分でセリフを声に出したあと黙って聞く顔を撮り、動画では聞いている顔に声だけがのります（画面の外から話しかけられている形）。heard を付けた台本は1行ずつ撮ります。相手のセリフの行は script にそのまま書き（引用符や話者名は付けない）、絵文字は入れません。語り手ひとりの台本では省略します。相手のセリフの字幕は水色の文字で吹き出しに入り、吹き出しの左上に相手のアイコン（白い丸に絵文字）が付きます。heardIcon に相手を表す絵文字を1つ入れてください。性別や役が見て分かるものにします（例: 男の人なら 👨、女の人なら 👩、子どもなら 🧒、店員なら 🧑‍🍳。性別のない 🧑 は使わない。省略すると 🗣️）。声とそろえます（low・olderMan・youngMan と電話版なら男の人、high・olderWoman・youngWoman と電話版なら女の人）。heardVoice で相手の声を選べます（ユーザーが自分の声で言ったセリフにかかる）: kid=子ども、high=高い声（女の人）、low=低い声（男の人）、fast=早回し（高く速く）、slow=スロー（低くゆっくり）、phone=電話、phoneKid=電話の子ども、phoneHigh=電話の女の人、phoneLow=電話の男の人、olderWoman=年上の女の人（母・年上の先輩など。high より少し低く、少しゆっくり落ち着いた声）、youngWoman=若い女の人（店員・美容師など。high より明るく少し速い）、olderMan=年上の男の人（上司・父・おじいちゃんなど。low より低く少しゆっくり）、youngMan=若い男の人（同僚・友達など。low ほど低くなく少し速い）、phoneOlderWoman / phoneYoungWoman / phoneOlderMan / phoneYoungMan=それぞれの電話の声、natural=そのまま（省略時）。相手が2人以上いる会話（例: 子どもとその母）では、heardCast に1人ずつ { lines: その人のセリフの行番号, icon: 絵文字, voice: 声 } を入れます（heard と heardIcon / heardVoice は省略してよく、heardCast の行が相手のセリフになります）。声は人ごとに聞き分けられるものを選んでください（例: 子ども kid、母 high。女の人が2人なら美容師 youngWoman と母 olderWoman、男の人が2人なら同僚 youngMan と上司 olderMan のように、若い・年上で分けます）。heardName には相手の役名を英語で短く入れます（任意。例: Hairdresser / Mom / Boss / Aunt Linda）。アイコンの右に小さく出て、誰のセリフかが分かります。相手が2人以上なら heardCast の各人に name で入れます。省略するとアイコンだけになります。',
   'scene には、会話の状況を表す短い英語のラベルを入れます（任意。例: "a wrong number" / "online meeting"）。1行目の字幕が出ているあいだだけ、画面上部の1行目の字幕のすぐ下に「SCENE」タグ付きのラベルで出ます（上の端はSNSの表示に隠れるため）。2〜4語程度にし、オチは書きません。無ければ省略します。',
   'cover には、プロフィールの一覧に出るサムネ（カバー画像）の文字を入れます（任意。例: { en: "on mute", ja: "myuuto ミュート" }）。en は大きな黄色の行、ja はその下のミント色の行（ローマ字のあとに日本語）。省略すると、script の最初の *…* と {…} から作ります。会話の台本など *…* や {…} の無い台本では、送らないとサムネが顔だけになるので、必ず入れてください。en だけ・ja だけでもかまいません。',
-  'cards には、時間が飛ぶところや場面が変わるところにはさむ短いカードを入れます（任意。例: [{ afterLine: 6, text: "2 days later" }]）。afterLine は「この行のあとにはさむ」行番号（script の何行目か、1から数える。最後の行のあとには置けません）、text は短い英語です（時間: 2 days later / That night / The next morning / 3 hours later、場面: Meanwhile / Back at home / At the dentist / Later that day など）。カードは約1.8秒、撮った動画の代わりに全画面で出て、太くて縦長の、1文字ずつ傾きや大きさがバラバラなコミカルな大文字が画面の中央に出て（長ければ2行）、1文字ずつかわいく揺れます。BGMはそのまま流れ、カードの間だけ少し小さくこもった音になり、出る瞬間に短い効果音が鳴ります。声は入りません。background には既定の背景の名前（grape=ぶどう色のまだら模様（省略時）、night=夜の紺のまだら模様、paper=紙っぽい無地、peach=やさしいピンクのグラデーション、mint=やさしいミントのグラデーション）か、背景にする画像そのものの https の URL（images と同じ）を入れます。カードは行ではなく行と行の間に入るものなので、heard / heardCast / thought / images の行番号はカードを数えずに書きます。時間が飛ぶところだけでなく、場所や場面が変わるところ、別の人の側に話が移るところ（Meanwhile）にも積極的に使ってください。話が場面ごとに進む台本なら1本に何枚入れてもよく（最大6枚）、つながっている会話の途中や、続けて2行ごとに入れるような使い方は避けます。',
+  'cards には、時間が飛ぶところや場面が変わるところにはさむ短いカードを入れます（任意。例: [{ afterLine: 6, text: "2 days later" }]）。afterLine は「この行のあとにはさむ」行番号（script の何行目か、1から数える。最後の行のあとには置けません）、text は短い英語です（時間: 2 days later / That night / The next morning / 3 hours later、場面: Meanwhile / Back at home / At the dentist / Later that day など）。カードは約1.8秒、撮った動画の代わりに全画面で出て、太くて縦長の、1文字ずつ傾きや大きさがバラバラなコミカルな大文字が画面の中央に出て（長ければ2行）、1文字ずつかわいく揺れます。BGMはそのまま流れ、カードの間だけ少し小さくこもった音になり、出る瞬間に短い効果音が鳴ります（声はユーザーがカメラアプリで録ると、低いナレーター声で入ります。ここでは送れません）。ja には text の短い日本語訳を入れます（例: 2日後 / その夜 / 次の朝 / その頃… / 家に戻って / 歯医者で）。英語の下に小さく1行で出ます。japanese を送るときは、各カードにも ja を入れてください。background には既定の背景の名前（grape=ぶどう色のまだら模様（省略時）、night=夜の紺のまだら模様、paper=紙っぽい無地、peach=やさしいピンクのグラデーション、mint=やさしいミントのグラデーション）か、背景にする画像そのものの https の URL（images と同じ）を入れます。カードは行ではなく行と行の間に入るものなので、heard / heardCast / thought / images の行番号はカードを数えずに書きます。時間が飛ぶところだけでなく、場所や場面が変わるところ、別の人の側に話が移るところ（Meanwhile）にも積極的に使ってください。話が場面ごとに進む台本なら1本に何枚入れてもよく（最大6枚）、つながっている会話の途中や、続けて2行ごとに入れるような使い方は避けます。',
   'thought には、口を動かさず心の中で思っている「心の声」の行番号を入れます（任意。例: [2, 5]。script の何行目か、1から数える）。その行は、撮影の前に声だけ録っておき、撮影中はその声を流しながら口を閉じて考える顔を撮ります。動画では考えている顔に、少しエコーのかかった自分の声がのります。字幕は雲形の吹き出しに入り、少し斜体の薄い色の文字になります（アイコンや役名は付きません）。心の声の行は script にそのまま書き（引用符や「（心の声）」などは付けない）、絵文字は入れません。1つの行を heard / heardCast と thought の両方に入れることはできません。',
   '送ったあとに直した版を送り直すときは、前と同じ title で送ってください。受け取り箱でまだ開かれていない同じタイトルの前の版が、新しい版に置き換わります。',
   'japanese には、script の各行の日本語字幕を、番号なしで1行ずつ、script と同じ順番・同じ行数で入れます。アプリの字幕画面に最初から入ります。*…* と絵文字は日本語には入れません（{…} は下のルールどおりに付けます）。日本語字幕は次のルールで作ります。',
@@ -169,6 +169,7 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
                 .union([z.enum(CARD_BACKGROUNDS), z.string().url().max(2_000).startsWith('https://')])
                 .optional()
                 .describe('grape（省略時）/ night / paper / peach / mint か、背景にする画像の https の URL'),
+              ja: z.string().trim().max(CARD_JA_MAX_LENGTH).optional().describe('text の短い日本語訳（例: 2日後）。英語の下に小さく出る'),
             }),
           )
           .max(6)
@@ -221,6 +222,7 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
         afterLine: card.afterLine,
         text: card.text,
         ...(card.background && card.background !== DEFAULT_CARD_BACKGROUND ? { background: card.background } : {}),
+        ...(card.ja ? { ja: card.ja } : {}),
       }))
       for (const [i, card] of cardList.entries()) {
         if (card.afterLine >= lines) {

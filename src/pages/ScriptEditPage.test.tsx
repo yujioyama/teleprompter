@@ -384,7 +384,7 @@ describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
     heard: [1, 2, 4],
     heardIcon: '🧑‍⚕️',
     thought: [3, 5],
-    cards: [{ afterLine: 2, text: '2 days later', background: 'peach' }],
+    cards: [{ afterLine: 2, text: '2 days later', background: 'peach', ja: '2日後' }],
   }
 
   async function submit() {
@@ -398,9 +398,10 @@ describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
     fireEvent.click(screen.getByText('自動分割する'))
     expect(within(screen.getByRole('radiogroup', { name: '3行目は誰の' })).getByRole('radio', { name: '心の声' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByLabelText('カードの文字')).toHaveValue('2 days later')
+    expect(screen.getByLabelText('カードの日本語')).toHaveValue('2日後')
     const script = await submit()
     expect(script.shots.map(s => (s.thought ? 'thought' : s.heard ? 'heard' : 'self'))).toEqual(['heard', 'heard', 'thought', 'heard', 'thought'])
-    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: '2 days later', background: 'peach' }])
+    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: '2 days later', background: 'peach', ja: '2日後' }])
     expect(script).not.toHaveProperty('cardAudio')
   })
 
@@ -423,10 +424,11 @@ describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
     fireEvent.click(screen.getAllByText(/ここにカードを入れる/)[1])
     fireEvent.change(screen.getByLabelText('カードの文字'), { target: { value: 'That night' } })
     fireEvent.change(screen.getByLabelText('カードの背景'), { target: { value: 'mint' } })
+    fireEvent.change(screen.getByLabelText('カードの日本語'), { target: { value: ' その夜 ' } })
     fireEvent.click(screen.getByLabelText(/効果音を鳴らす/))
     expect(screen.getByLabelText('カードのプレビュー: That night')).toBeInTheDocument()
     const script = await submit()
-    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: 'That night', background: 'mint' }])
+    expect(script.cards).toEqual([{ id: expect.any(String), afterShotId: script.shots[1].id, text: 'That night', background: 'mint', ja: 'その夜' }])
     expect(script.cardAudio).toEqual({ muffle: true, sound: false })
   })
 
@@ -443,7 +445,7 @@ describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
       id: 's1',
       title: 'Sometime',
       shots: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B', thought: true }, { id: 'c', text: 'C' }],
-      cards: [{ id: 'k', afterShotId: 'b', text: '2 days later' }],
+      cards: [{ id: 'k', afterShotId: 'b', text: '2 days later', ja: '2日後' }],
       createdAt: '2026-11-01T00:00:00.000Z',
       updatedAt: '2026-11-01T00:00:00.000Z',
     }

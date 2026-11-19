@@ -102,6 +102,8 @@ export interface InboxCard {
   text: string
   /** One of CARD_BACKGROUNDS, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
   background?: string
+  /** The text in Japanese, small under it (e.g. "2日後"); absent for none. */
+  ja?: string
 }
 
 /** The backgrounds the app has for a card, when no image is given. */
@@ -116,3 +118,5 @@ export function isCardBackgroundName(value: unknown): value is CardBackgroundNam
 
 /** The longest card text the burn has room for on one line. */
 export const CARD_TEXT_MAX_LENGTH = 28
+/** The longest Japanese under a card. */
+export const CARD_JA_MAX_LENGTH = 16
