@@ -538,14 +538,36 @@ describe('RecordPage card voices from teleprompter-cam', () => {
     expect(await getCardVoice('script-1', 'card-1')).not.toBeNull()
   })
 
-  it('ignores a card voice for a shot no card follows', async () => {
+  it('saves card voices picked with line voices but no takes, and says the line voices wait for their takes', async () => {
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      cardVoice(SHOT_1),
+      new File(['v'], `TeleprompterCam-abc-voice-shot2of3-${SHOT_2}.m4a`, { type: 'audio/x-m4a' }),
+    ])
+    expect(await screen.findByText(
+      'カードの声を保存しました（1枚） / 相手の声・心の声のファイルは、動画と一緒に選ぶと使われます。',
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/動画も一緒に選んでください/)).not.toBeInTheDocument()
+    expect(await getCardVoice('script-1', 'card-1')).not.toBeNull()
+  })
+
+  it('ignores a card voice for a shot no card follows, and says so', async () => {
     renderRecordPage(seedCards().id)
     selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
       videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
       cardVoice(SHOT_2),
     ])
     await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+    expect(await screen.findByText('合うカードがない声のファイルがありました（1件）')).toBeInTheDocument()
     expect(await getCardVoice('script-1', 'card-1')).toBeNull()
+  })
+
+  it('says how many card voices matched no card when picked alone', async () => {
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [cardVoice(SHOT_1), cardVoice(SHOT_2)])
+    expect(await screen.findByText(
+      'カードの声を保存しました（1枚） / 合うカードがない声のファイルがありました（1件）',
+    )).toBeInTheDocument()
   })
 
   it('says so when a card voice could not be saved, and still imports the take', async () => {

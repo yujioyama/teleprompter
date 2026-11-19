@@ -83,7 +83,7 @@ export default function InsertCardEditor({ card, onChange, onRemove, hasVoice }:
   return (
     <div className={styles.card} data-testid="insert-card">
       <div className={styles.fields}>
-        <span className={styles.badge}>🎬 カード（{CARD_SECONDS}秒）{hasVoice ? '🎙️ 声あり' : ''}</span>
+        <span className={styles.badge}>{hasVoice ? '🎬 カード（声の長さ）🎙️ 声あり' : `🎬 カード（${CARD_SECONDS}秒）`}</span>
         <input
           className={styles.input}
           type="text"

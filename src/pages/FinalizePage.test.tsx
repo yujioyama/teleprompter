@@ -31,7 +31,7 @@ vi.mock('../utils/videoRecord', async importOriginal => {
 })
 vi.mock('../utils/cardClips', async importOriginal => {
   const actual = await importOriginal<typeof import('../utils/cardClips')>()
-  return { ...actual, cardClipsOf: vi.fn(async () => []) }
+  return { ...actual, cardClipsOf: vi.fn(async () => ({ clips: [], unreadVoices: [] })) }
 })
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -292,9 +292,10 @@ describe('FinalizePage 挿入カード', () => {
     script.cards = [{ id: 'k', afterShotId: SHOT_1, text: '2 days later' }]
     localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
     await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
-    vi.mocked(cardClipsOf).mockResolvedValueOnce([
-      { afterShotId: SHOT_1, clip: { shotId: 'card-k', blob: CARD, start: 0, end: 1.8 }, signature: 'card:x' },
-    ])
+    vi.mocked(cardClipsOf).mockResolvedValueOnce({
+      clips: [{ afterShotId: SHOT_1, clip: { shotId: 'card-k', blob: CARD, start: 0, end: 1.8 }, signature: 'card:x' }],
+      unreadVoices: [],
+    })
     vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(4)
     renderFinalizePage('script-1')
 
@@ -325,6 +326,29 @@ describe('FinalizePage 挿入カード', () => {
     expect(await screen.findByText(/カードを作れなかったので、カードなしで結合しました/)).toBeInTheDocument()
     const joined = vi.mocked(concatVideos).mock.calls.at(-1)![0] as Blob[]
     expect(joined).toHaveLength(2)
+  })
+
+  it('says which cards went without their voice when it could not be read', async () => {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1', trimEnabled: false },
+      { id: SHOT_2, text: 'ショット2', trimEnabled: false },
+    ]
+    script.cards = [{ id: 'k', afterShotId: SHOT_1, text: '2 days later' }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(cardClipsOf).mockResolvedValueOnce({
+      clips: [{ afterShotId: SHOT_1, clip: { shotId: 'card-k', blob: CARD, start: 0, end: 1.8 }, signature: 'card:x' }],
+      unreadVoices: ['2 days later'],
+    })
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(4)
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    fireEvent.click(screen.getByText('結合する'))
+    expect(await screen.findByText('カードの声を読めなかったので、声なしで作りました（2 days later）')).toBeInTheDocument()
+    const joined = vi.mocked(concatVideos).mock.calls.at(-1)![0] as Blob[]
+    expect(joined).toHaveLength(3)
   })
 })
 

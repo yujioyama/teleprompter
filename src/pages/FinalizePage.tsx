@@ -162,6 +162,12 @@ function subtitlesSignatureOf(subtitles: SavedSubtitles): string {
   return JSON.stringify(subtitles)
 }
 
+/** Said when some cards' voices couldn't be read and they were drawn without them. */
+function unreadVoicesNotice(texts: string[]): string {
+  const short = texts.map(text => (text.length > 20 ? `${text.slice(0, 20)}…` : text))
+  return `カードの声を読めなかったので、声なしで作りました（${short.join('、')}）`
+}
+
 // The clips of a 結合 tied to the takes they were cut from, for saving.
 // A card has no take: it's tied to how it looks and sounds instead.
 function savedClipsOf(clips: ShotClip[], takes: Map<string, string>, cards: CardClip[] = []): SavedCombinedClip[] {
@@ -203,7 +209,8 @@ export default function FinalizePage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const { status: combineStatus, combined, show: showCombined, combine, cancel: cancelCombine } = useCombine()
-  // Said when the cards couldn't be made and the 結合 went ahead without them.
+  // Said when the cards couldn't be made and the 結合 went ahead without them,
+  // or when some cards' voices couldn't be read.
   const [cardNotice, setCardNotice] = useState<string | null>(null)
   const combinedBlob = combined?.blob ?? null
   const combinedUrl = combined?.url ?? null
@@ -341,7 +348,7 @@ export default function FinalizePage() {
       })
       // The cards are drawn again (once each) to restore a saved 結合 with them in it.
       const cards = progress.combined?.clips.some(isCardClip)
-        ? await cardClipsOf(script, settings.inboxKey).catch((err): CardClip[] => {
+        ? await cardClipsOf(script, settings.inboxKey).then(made => made.clips, (err): CardClip[] => {
           console.warn('[FinalizePage] could not draw the cards again:', err)
           return []
         })
@@ -989,7 +996,9 @@ export default function FinalizePage() {
     setCardNotice(null)
     if (script && cardsInOrder(script).length > 0) {
       try {
-        cards = await cardClipsOf(script, settings.inboxKey)
+        const made = await cardClipsOf(script, settings.inboxKey)
+        cards = made.clips
+        if (made.unreadVoices.length > 0) setCardNotice(unreadVoicesNotice(made.unreadVoices))
       } catch (err) {
         console.warn('[FinalizePage] could not make the cards:', err)
         setCardNotice(`カードを作れなかったので、カードなしで結合しました${err instanceof Error ? `（${err.message}）` : ''}`)

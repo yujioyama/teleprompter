@@ -95,31 +95,42 @@ export default function RecordPage() {
     const voices = voicesByShotId(rest.filter(isVoiceFile))
     const files = rest.filter(file => !isVoiceFile(file))
     let cardVoiceFailed = false
+    let savedCardVoices = 0
+    let unmatchedCardVoices = 0
     if (cardVoices.length > 0) {
       const cardOfShot = new Map(cardsInOrder(safeScript).map(({ card }) => [card.afterShotId, card.id]))
-      let count = 0
       try {
         await Promise.all(cardVoices.map(async file => {
           const shotId = extractShotId(file.name)
           const cardId = shotId ? cardOfShot.get(shotId) : undefined
-          if (!cardId) return
+          if (!cardId) {
+            unmatchedCardVoices++
+            return
+          }
           await saveCardVoice(safeScript.id, cardId, file)
-          count++
+          savedCardVoices++
         }))
       } catch (err) {
         console.error('Saving card voices failed', err)
         cardVoiceFailed = true
       }
-      if (files.length === 0 && voices.size === 0) {
-        setBulkImportError(cardVoiceFailed ? CARD_VOICE_FAILED : null)
-        if (!cardVoiceFailed && count > 0) setBulkImportNotice(`カードの声を保存しました（${count}枚）`)
+    }
+    const unmatchedNotice = unmatchedCardVoices > 0 ? `合うカードがない声のファイルがありました（${unmatchedCardVoices}件）` : null
+    if (files.length === 0) {
+      if (cardVoices.length === 0) {
+        setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
         return
       }
-    }
-    if (files.length === 0) {
-      setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
+      // Card voices need no take; line voices do, so they wait for theirs.
+      setBulkImportError(cardVoiceFailed ? CARD_VOICE_FAILED : null)
+      const notices: string[] = []
+      if (!cardVoiceFailed && savedCardVoices > 0) notices.push(`カードの声を保存しました（${savedCardVoices}枚）`)
+      if (unmatchedNotice) notices.push(unmatchedNotice)
+      if (rest.some(isVoiceFile)) notices.push('相手の声・心の声のファイルは、動画と一緒に選ぶと使われます。')
+      setBulkImportNotice(notices.length > 0 ? notices.join(' / ') : null)
       return
     }
+    if (unmatchedNotice) setBulkImportNotice(unmatchedNotice)
 
     const resolution = resolveImportTargets(files, safeScript.shots)
 
