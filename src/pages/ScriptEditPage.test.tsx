@@ -11,6 +11,9 @@ vi.mock('../utils/lineImageDownload', () => ({
   ensureLineImages: vi.fn(async () => []),
   saveChosenImage: vi.fn(async () => 'chosen-id'),
 }))
+vi.mock('../utils/cardVoiceStore', () => ({
+  getCardVoice: vi.fn(async (_scriptId: string, cardId: string) => (cardId === 'k' ? { blob: new Blob(['v']), savedAt: '2026-11-19T00:00:00.000Z' } : null)),
+}))
 vi.mock('../utils/lineImageStore', () => ({
   getLineImages: vi.fn(async () => new Map()),
   pruneLineImages: vi.fn(async () => {}),
@@ -450,5 +453,19 @@ describe('ScriptEditPage 自分 / 相手 / 心の声 and cards', () => {
     const saved = await submit()
     expect(saved.shots.map(s => Boolean(s.thought))).toEqual([false, true, false])
     expect(saved.cards).toEqual(script.cards)
+  })
+
+  it('marks a card that has a recorded voice', async () => {
+    const script: Script = {
+      id: 's2',
+      title: 'Voiced',
+      shots: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }],
+      cards: [{ id: 'k', afterShotId: 'a', text: '2 days later' }, { id: 'm', afterShotId: 'b', text: 'later' }],
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-01T00:00:00.000Z',
+    }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderAt('/scripts/s2/edit')
+    expect(await screen.findAllByText(/声あり/)).toHaveLength(1)
   })
 })
