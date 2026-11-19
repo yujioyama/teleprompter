@@ -59,6 +59,7 @@ import { coverStickerSpot, coverWordsOf } from '../utils/coverImage'
 import { makeCover } from '../utils/autoCover'
 import { clampCoverFrameCount, insertCoverFrames } from '../utils/coverFrames'
 import { swapBurnedCover } from '../utils/burnedCover'
+import { FinalizeTimings } from '../components/FinalizeTimings'
 import { coverLeadSeconds } from '../utils/webcodecs/coverLead'
 import WizardSteps, { WizardStepId } from '../components/WizardSteps'
 import type { TrimRecord } from '../../shared/videoRecord'
@@ -1527,6 +1528,7 @@ export default function FinalizePage() {
           )}
         </>
       )}
+      <FinalizeTimings />
     </div>
   )
 }

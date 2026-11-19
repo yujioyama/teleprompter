@@ -11,6 +11,7 @@ import { concatClipsWebCodecs } from './webcodecs/concatClips'
 import { onAbort, throwIfCancelled } from './cancellation'
 import { clampCoverFrameCount, renderCoverFrame } from './coverFrames'
 import { isCardClip } from './insertCard'
+import { timeStep } from './finalizeTimings'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -44,6 +45,7 @@ export function normalizeRequest(clip: ShotClip): EncodeRequest {
   return {
     slot: `normalize:${clip.shotId}`,
     key: `normalize|${clipKey(clip)}`,
+    seconds: clip.end - clip.start,
     run: (onProgress, signal) => trimAndNormalizeShot(clip.blob, clip.start, clip.end, onProgress, signal),
   }
 }
@@ -120,6 +122,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
     return {
       slot: `burn:${clip.shotId}`,
       key: `burn|${clipKey(clip)}|${placement}|${firstShot}|${text}`,
+      seconds: clip.end - clip.start,
       run: (onProgress, signal) =>
         burnShotSubtitles(clip.blob, clip.start, clip.end, translated, look, onProgress, signal),
     }
@@ -128,6 +131,7 @@ export function burnRequest(clip: ShotClip, cues: StyledCue[], look: SubtitleLoo
   return {
     slot: `burn-cover:${clip.shotId}`,
     key: `burn-cover|${clipKey(clip)}|${placement}|${firstShot}|${text}|${blobId(cover.image)}x${count}`,
+    seconds: clip.end - clip.start,
     run: async (onProgress, signal) => {
       const frame = await renderCoverFrame(cover.image)
       try {
@@ -192,8 +196,15 @@ export async function encodeAll(
   requests: EncodeRequest[],
   onProgress?: (ratio: number) => void,
   signal?: AbortSignal,
+  /** Records how long this was waited on under that name (see finalizeTimings). */
+  label?: string,
 ): Promise<Blob[]> {
   throwIfCancelled(signal)
+  if (label) {
+    const ready = new Set(requests.filter(r => cache.isDone(r.key)).map(r => r.key)).size
+    const total = new Set(requests.map(r => r.key)).size
+    return timeStep(label, () => encodeAll(cache, requests, onProgress, signal), `${total}本中${ready}本は先回り済み`)
+  }
   const ratios = new Map(requests.map(r => [r.key, 0]))
   // Once this settles (e.g. rejected by one clip's failure), clips still
   // finishing must not report into a caller that has moved on.
@@ -261,7 +272,7 @@ export async function burnSubtitlesByShot(
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd, cover), onProgress, signal)
+      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd, cover), onProgress, signal, '焼き込み: エンコード待ち')
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -269,7 +280,9 @@ export async function burnSubtitlesByShot(
     }
     if (burned) {
       try {
-        return { blob: await concatClipsWebCodecs(burned, signal), cover: cover !== undefined }
+        const clips = burned
+        const joined = await timeStep('焼き込み: つなぐ', () => concatClipsWebCodecs(clips, signal))
+        return { blob: joined, cover: cover !== undefined }
       } catch (err) {
         throwIfCancelled(signal)
         console.warn('[burnSubtitlesByShot] joining burned shots failed, burning the joined video instead:', err)
@@ -277,12 +290,12 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
-  const blob = await burnSubtitles(
+  const blob = await timeStep('焼き込み: 全体を再エンコード(フォールバック)', () => burnSubtitles(
     combinedBlob,
     cues,
     { position, hook, firstShotDuration: hookSpan, firstClipDuration: firstShotDurationOf(clips), fairies: plan, midZoom: zoomPlan },
     onProgress,
     signal,
-  )
+  ))
   return { blob, cover: false }
 }
