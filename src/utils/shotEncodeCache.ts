@@ -1,4 +1,6 @@
 import { raceAbort, throwIfCancelled } from './cancellation'
+import { recordEncode } from './finalizeTimings'
+import { heldMsSoFar } from './webcodecs/encodeHold'
 
 export type EncodeJob = (onProgress: (ratio: number) => void, signal: AbortSignal) => Promise<Blob>
 
@@ -13,6 +15,8 @@ export interface EncodeRequest {
   slot: string
   key: string
   run: EncodeJob
+  /** The clip's length in seconds, for the timings (see finalizeTimings). */
+  seconds?: number
 }
 
 class SkippedError extends Error {}
@@ -110,7 +114,12 @@ export class ShotEncodeCache {
     this.results.clear()
   }
 
-  private lookup({ slot, key, run }: EncodeRequest): Promise<Blob> {
+  /** Whether this request's clip is already made (not just queued or running). */
+  isDone(key: string): boolean {
+    return this.results.has(key) && !this.unfinished.has(key)
+  }
+
+  private lookup({ slot, key, run, seconds }: EncodeRequest): Promise<Blob> {
     const previousKey = this.latestKeyBySlot.get(slot)
     if (previousKey !== undefined && previousKey !== key) {
       // Only the latest request per slot is worth holding onto.
@@ -136,8 +145,26 @@ export class ShotEncodeCache {
         }
       }
       throwIfCancelled(signal)
-      // Raced so a hung encode can't hold up the queue once cancelled.
-      return raceAbort(run(ratio => this.onProgress?.(key, ratio), signal), signal)
+      const background = !this.demanded.has(key)
+      const start = performance.now()
+      const heldAtStart = heldMsSoFar()
+      let ok = false
+      try {
+        // Raced so a hung encode can't hold up the queue once cancelled.
+        const blob = await raceAbort(run(ratio => this.onProgress?.(key, ratio), signal), signal)
+        ok = true
+        return blob
+      } finally {
+        recordEncode({
+          kind: key.split('|')[0],
+          shotId: slot.slice(slot.indexOf(':') + 1),
+          background,
+          ms: performance.now() - start,
+          heldMs: heldMsSoFar() - heldAtStart,
+          seconds: seconds ?? null,
+          ok,
+        })
+      }
     })
     this.chain = job.catch(() => undefined)
     this.results.set(key, job)

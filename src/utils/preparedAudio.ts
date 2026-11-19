@@ -3,6 +3,7 @@ import { mixMusic } from './mixMusic'
 import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
 import type { VoicePreset } from './voicePreset'
+import { timeStep } from './finalizeTimings'
 
 /** Everything the finished audio depends on besides the video's own sound. */
 export interface FinalAudioKey {
@@ -78,7 +79,7 @@ export async function mixForExport(
   if (audio) {
     try {
       const start = performance.now()
-      const joined = await joinVideoAndAudio(video, await audio)
+      const joined = await timeStep('BGM: 用意した音声とつなぐ', async () => joinVideoAndAudio(video, await audio))
       if (key.normalize) markLoudnessNormalized(joined)
       // Seen in the console when testing on a device: a silent fallback
       // would otherwise look the same as the fast path, only slower.
@@ -90,5 +91,7 @@ export async function mixForExport(
   } else {
     console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
-  return mixMusic(video, trackBlob, key.volume, key.voice, delayEnding(key.ending, key.lead))
+  return timeStep('BGM: その場でミックス(遅い道)', () =>
+    mixMusic(video, trackBlob, key.volume, key.voice, delayEnding(key.ending, key.lead)),
+  )
 }

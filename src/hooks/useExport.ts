@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { finishAudio } from '../utils/normalizeLoudness'
 import { isNoFinish, type AudioFinish } from '../utils/audioFinish'
 import { useObjectUrl } from './useObjectUrl'
+import { timeStep } from '../utils/finalizeTimings'
 
 export type LoudnessState = 'idle' | 'normalizing' | 'failed'
 
@@ -35,7 +36,7 @@ export function useExport(finalBlob: Blob | null, finish: AudioFinish) {
     }
     let cancelled = false
     setFinished({ blob: null, loudness: 'normalizing' })
-    finishAudio(finalBlob, wanted).then(
+    timeStep('書き出し: 音声の仕上げ', () => finishAudio(finalBlob, wanted)).then(
       normalized => {
         if (!cancelled) setFinished({ blob: normalized, loudness: 'idle' })
       },

@@ -4,6 +4,7 @@ import { concatVideos } from '../utils/concatVideos'
 import type { ShotEncodeCache } from '../utils/shotEncodeCache'
 import { encodeAll, normalizeRequest, type ShotClip } from '../utils/shotEncoding'
 import { raceAbort } from '../utils/cancellation'
+import { timeStep } from '../utils/finalizeTimings'
 import type { ShotCueInput } from '../utils/subtitleCues'
 import type { TrimRecord } from '../../shared/videoRecord'
 
@@ -103,6 +104,7 @@ export function useCombine() {
             clips.map(normalizeRequest),
             ratio => report('encoding', ratio),
             signal,
+            '結合: エンコード待ち',
           )
           // If WebCodecs broke down partway (see trimAndNormalizeShot), some
           // clips came from the hardware encoder and some from ffmpeg; their
@@ -110,7 +112,7 @@ export function useCombine() {
           // have to be re-encoded onto the other's profile.
           const normalized = await unifyNormalizeBackends(clips, encoded, ratio => report('unifying', ratio), signal)
           report('joining')
-          return concatVideos(normalized, signal)
+          return timeStep('結合: つなぐ', () => concatVideos(normalized, signal))
         })(),
         signal,
       )

@@ -8,15 +8,28 @@
 
 let holds = 0
 const waiting = new Set<() => void>()
+// For the timings (see finalizeTimings): how long the encodes have been held in all.
+let heldTotalMs = 0
+let heldSince: number | null = null
+
+/** Milliseconds the encodes have been held so far this session, the current hold included. */
+export function heldMsSoFar(): number {
+  return heldTotalMs + (heldSince === null ? 0 : performance.now() - heldSince)
+}
 
 /** Hold the encodes back; call what it returns to let them go. */
 export function holdEncodes(): () => void {
+  if (holds === 0) heldSince = performance.now()
   holds++
   let released = false
   return () => {
     if (released) return
     released = true
     holds--
+    if (holds === 0 && heldSince !== null) {
+      heldTotalMs += performance.now() - heldSince
+      heldSince = null
+    }
     if (holds === 0) [...waiting].forEach(resume => resume())
   }
 }
