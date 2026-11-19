@@ -100,13 +100,13 @@ function initialCards(existing: Script | undefined, item: InboxItem | undefined)
     if (existing.oneTake) return []
     return (existing.cards ?? []).flatMap(card => {
       const shot = existing.shots.find(s => s.id === card.afterShotId)
-      return shot ? [{ id: card.id, afterText: shot.text, text: card.text, ...(card.background ? { background: card.background } : {}) }] : []
+      return shot ? [{ id: card.id, afterText: shot.text, text: card.text, ...(card.background ? { background: card.background } : {}), ...(card.ja ? { ja: card.ja } : {}) }] : []
     })
   }
   const lines = item ? takeLinesOf(item.body) : []
   return (item?.cards ?? []).flatMap(card => {
     const line = lines[card.afterLine - 1]
-    return line ? [{ id: generateId(), afterText: line, text: card.text, ...(card.background ? { background: card.background } : {}) }] : []
+    return line ? [{ id: generateId(), afterText: line, text: card.text, ...(card.background ? { background: card.background } : {}), ...(card.ja ? { ja: card.ja } : {}) }] : []
   })
 }
 
@@ -322,7 +322,8 @@ export default function ScriptEditPage() {
       const text = card.text.trim()
       if (!shot || !text) return []
       const background = card.background && (isCardBackgroundName(card.background) || card.background.startsWith('https://')) && card.background !== DEFAULT_CARD_BACKGROUND ? card.background : undefined
-      return [{ id: card.id, afterShotId: shot.id, text, ...(background ? { background } : {}) }]
+      const ja = card.ja?.trim()
+      return [{ id: card.id, afterShotId: shot.id, text, ...(background ? { background } : {}), ...(ja ? { ja } : {}) }]
     })
   }
 

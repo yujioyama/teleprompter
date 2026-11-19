@@ -121,6 +121,27 @@ describe('the card text', () => {
   })
 })
 
+describe('the Japanese under a card', () => {
+  const measure = (text: string, font: string) => [...text].length * Number(/(\d+)px/.exec(font)![1]) * 0.6
+
+  it('sits small under the English, in the middle, and leaves the English where it was', () => {
+    const plain = layoutCardText('2 days later', 1080, measure)
+    const layout = layoutCardText('2 days later', 1080, measure, undefined, ' 2日後 ')
+    expect(layout.letters).toEqual(plain.letters)
+    expect(layout.ja?.text).toBe('2日後')
+    expect(layout.ja!.fontPx).toBeLessThan(layout.fontPx / 2)
+    const lowest = Math.max(...layout.letters.map(l => l.y))
+    expect(layout.ja!.y - layout.ja!.fontPx / 2).toBeGreaterThan(lowest + layout.fontPx / 2)
+  })
+
+  it('shrinks a long one to fit, and has none when empty', () => {
+    const layout = layoutCardText('Later', 1080, measure, undefined, 'とても長い日本語のカードの文字です')
+    expect(measure(layout.ja!.text, `${layout.ja!.fontPx}px x`)).toBeLessThanOrEqual(1080 * 0.84)
+    expect(layoutCardText('Later', 1080, measure, undefined, '  ').ja).toBeUndefined()
+    expect(layoutCardText('Later', 1080, measure).ja).toBeUndefined()
+  })
+})
+
 describe('cardPopSamples', () => {
   it('is a short pop that starts and ends quietly', () => {
     const pop = cardPopSamples(48000)
@@ -173,6 +194,15 @@ describe('cardsOfInbox', () => {
       () => `id-${++n}`,
     )
     expect(cards).toEqual([{ id: 'id-1', afterShotId: 'b', text: '2 days later', background: 'mint' }])
+  })
+
+  it('keeps the Japanese under the card, and leaves an empty one off', () => {
+    let n = 0
+    const cards = cardsOfInbox([{ afterLine: 1, text: '2 days later', ja: ' 2日後 ' }, { afterLine: 2, text: 'Later', ja: ' ' }], shots, () => `id-${++n}`)
+    expect(cards).toEqual([
+      { id: 'id-1', afterShotId: 'a', text: '2 days later', ja: '2日後' },
+      { id: 'id-2', afterShotId: 'b', text: 'Later' },
+    ])
   })
 })
 

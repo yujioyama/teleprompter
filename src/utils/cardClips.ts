@@ -50,19 +50,21 @@ export async function cardClipsOf(script: Pick<Script, 'id' | 'cards' | 'cardAud
   const unreadVoices: string[] = []
   for (const { card } of cards) {
     const text = cardTextOf(card.text)
-    const plainKey = JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound])
+    // Only a card with Japanese has it in its key, so the cards made before keep theirs.
+    const ja = card.ja ? [card.ja] : []
+    const plainKey = JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja])
     const stored = await getCardVoice(script.id, card.id).catch(err => {
       console.warn('[cardClips] could not read the card voice, drawing the card without it:', err)
       unreadVoices.push(text)
       return null
     })
-    const key = stored ? JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, stored.savedAt]) : plainKey
+    const key = stored ? JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja, stored.savedAt]) : plainKey
     let drawn = made.get(key)
     if (!drawn) {
       drawn = (async () => {
         const { voice, failed } = stored ? await voiceOf(stored.blob) : { voice: undefined, failed: false }
         const seconds = cardSecondsFor(voice ? voice.samples.length / voice.sampleRate : undefined)
-        return { blob: await drawCard(text, card.background, sound, voice, inboxKey), seconds, voiced: voice !== undefined, voiceFailed: failed }
+        return { blob: await drawCard(text, card.background, sound, voice, inboxKey, card.ja), seconds, voiced: voice !== undefined, voiceFailed: failed }
       })()
       made.set(key, drawn)
       drawn.catch(() => made.delete(key))
@@ -94,7 +96,7 @@ async function voiceOf(blob: Blob): Promise<{ voice: CardVoice | undefined; fail
   }
 }
 
-async function drawCard(text: string, backgroundText: string | undefined, sound: boolean, voice: CardVoice | undefined, inboxKey?: string): Promise<Blob> {
+async function drawCard(text: string, backgroundText: string | undefined, sound: boolean, voice: CardVoice | undefined, inboxKey?: string, ja?: string): Promise<Blob> {
   let background = cardBackgroundOf(backgroundText)
   let image: ImageBitmap | undefined
   if (background.kind === 'image') {
@@ -113,7 +115,7 @@ async function drawCard(text: string, backgroundText: string | undefined, sound:
     }
   }
   try {
-    return await rawCardClipWebCodecs(text, background, image, sound, voice)
+    return await rawCardClipWebCodecs(text, background, image, sound, voice, ja)
   } finally {
     image?.close()
   }

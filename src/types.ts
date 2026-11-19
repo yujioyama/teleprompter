@@ -42,6 +42,8 @@ export interface ScriptCard {
   text: string
   /** A CARD_BACKGROUNDS name, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
   background?: string
+  /** The text in Japanese, small under it; absent for none. */
+  ja?: string
 }
 
 /** What a card does to the sound; both on when absent. */

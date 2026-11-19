@@ -123,6 +123,11 @@ describe('handleMcpRequest', () => {
       expect((await store.list())[0].cards).toEqual([{ afterLine: 1, text: 'Later', background: 'https://img.test/sky.jpg' }])
     })
 
+    it('keeps the Japanese under a card', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A\nB\nC', cards: [{ afterLine: 1, text: '2 days later', ja: '2日後' }, { afterLine: 2, text: 'Later' }] }), deps)
+      expect((await store.list())[0].cards).toEqual([{ afterLine: 1, text: '2 days later', ja: '2日後' }, { afterLine: 2, text: 'Later' }])
+    })
+
     it('leaves both off a script with none', async () => {
       await handleMcpRequest(callTool({ title: 'a', script: 'A\nB', cards: [], thought: [] }), deps)
       expect((await store.list())[0]).not.toHaveProperty('cards')
@@ -149,6 +154,8 @@ describe('handleMcpRequest', () => {
       expect(description).toContain('cards には')
       expect(description).toContain('場面が変わるところ')
       expect(description).toContain('最大6枚')
+      expect(description).toContain('ja には')
+      expect(description).not.toContain('声は入りません')
       expect(description).toContain('thought には')
       expect(result.tools.find((t: { name: string }) => t.name === RECORDS_TOOL_NAME).description).toContain('thought（心の声')
     })

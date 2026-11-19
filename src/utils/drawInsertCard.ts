@@ -17,14 +17,35 @@ const LETTER_GAP = 0.03
 /** From one line's middle to the next, as a share of the font size. */
 const LINE_STEP = 1.32
 
-/** Where each letter of a card goes. */
+/** The Japanese under a card: plain, bold and small, so the English stays the star. */
+export const CARD_JA_FONT_FAMILY = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif'
+export const cardJaFont = (px: number) => `700 ${px}px ${CARD_JA_FONT_FAMILY}`
+/** The Japanese's size, as a share of the card's width. */
+const JA_SIZE_SHARE = 0.06
+/** From the middle of the English's last line to the top of the Japanese, as a share of the English's size. */
+const JA_GAP = 0.72
+
+/** Where each letter of a card goes, and its Japanese line when it has one. */
 export interface CardLetterLayout {
   fontPx: number
   /** Every letter of every line, in order (no space between the lines). */
   letters: { ch: string; x: number; y: number; width: number; cut: LetterCut }[]
+  /** The Japanese, centered at (width / 2, y). */
+  ja?: { text: string; fontPx: number; y: number }
 }
 
-export function layoutCardText(text: string, width: number, measure: (text: string, font: string) => number, height = (width * 16) / 9): CardLetterLayout {
+/**
+ * The English laid out as before, and `ja` (when there is any) on one small
+ * line under it. The English doesn't move for it, so a card without one looks
+ * just as it did.
+ */
+export function layoutCardText(
+  text: string,
+  width: number,
+  measure: (text: string, font: string) => number,
+  height = (width * 16) / 9,
+  ja?: string,
+): CardLetterLayout {
   const lines = cardLinesOf(text)
   const cuts = letterCutsOf(lines.join(''))
   const lineWidth = (line: string, px: number, from: number) =>
@@ -46,7 +67,13 @@ export function layoutCardText(text: string, width: number, measure: (text: stri
       x += w + fontPx * LETTER_GAP
     })
   })
-  return { fontPx, letters }
+  const jaText = ja?.trim()
+  if (!jaText) return { fontPx, letters }
+  let jaPx = Math.round(width * JA_SIZE_SHARE)
+  const jaWidth = measure(jaText, cardJaFont(jaPx))
+  if (jaWidth > room) jaPx = Math.floor((jaPx * room) / jaWidth)
+  const lowest = Math.max(height / 2, ...letters.map(l => l.y))
+  return { fontPx, letters, ja: { text: jaText, fontPx: jaPx, y: lowest + fontPx * JA_GAP + jaPx / 2 } }
 }
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -188,6 +215,21 @@ export function drawCardFrame(
     ctx.fillText(letter.ch, 0, 0)
     ctx.restore()
   })
+  if (layout.ja) {
+    // Comes in with the English's last letter, and stays still.
+    const shown = Math.min(1, Math.max(0, letterScale(layout.letters.length - 1, t)))
+    if (shown <= 0) return
+    ctx.save()
+    ctx.globalAlpha = shown
+    ctx.font = cardJaFont(layout.ja.fontPx)
+    if (dark) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
+      ctx.shadowBlur = layout.ja.fontPx * 0.12
+      ctx.shadowOffsetY = layout.ja.fontPx * 0.06
+    }
+    ctx.fillText(layout.ja.text, width / 2, layout.ja.y)
+    ctx.restore()
+  }
 }
 
 /** Seconds of the pop played as a card comes up. */

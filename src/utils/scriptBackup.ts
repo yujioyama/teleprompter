@@ -45,7 +45,7 @@ function isShot(value: unknown): value is Shot {
 function isCard(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
   const card = value as Record<string, unknown>
-  return typeof card.id === 'string' && typeof card.afterShotId === 'string' && typeof card.text === 'string' && isOptional(card.background, 'string')
+  return typeof card.id === 'string' && typeof card.afterShotId === 'string' && typeof card.text === 'string' && isOptional(card.background, 'string') && isOptional(card.ja, 'string')
 }
 
 function isScript(value: unknown): value is Script {

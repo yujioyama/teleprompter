@@ -19,6 +19,7 @@ export async function rawCardClipWebCodecs(
   image: (CanvasImageSource & { width: number; height: number }) | undefined,
   sound: boolean,
   voice?: { samples: Float32Array; sampleRate: number },
+  ja?: string,
 ): Promise<Blob> {
   const seconds = cardSecondsFor(voice ? voice.samples.length / voice.sampleRate : undefined)
   const canvas = new OffscreenCanvas(OUTPUT_WIDTH, OUTPUT_HEIGHT)
@@ -27,7 +28,7 @@ export async function rawCardClipWebCodecs(
   const layout = layoutCardText(text, OUTPUT_WIDTH, (t, font) => {
     ctx.font = font
     return ctx.measureText(t).width
-  })
+  }, undefined, ja)
   const wobbles = wobblesOf(layout.letters.map(l => l.ch).join(''), seconds)
   const frames = Math.round(seconds * OUTPUT_FRAME_RATE)
   const frameSeconds = 1 / OUTPUT_FRAME_RATE

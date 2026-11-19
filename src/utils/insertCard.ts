@@ -167,7 +167,8 @@ export function cardsOfInbox(cards: InboxCard[] | undefined, shots: Shot[], newI
   return (cards ?? []).flatMap(card => {
     const shot = shots[card.afterLine - 1]
     if (!shot || card.afterLine >= shots.length) return []
-    return [{ id: newId(), afterShotId: shot.id, text: card.text, ...(card.background ? { background: card.background } : {}) }]
+    const ja = card.ja?.trim()
+    return [{ id: newId(), afterShotId: shot.id, text: card.text, ...(card.background ? { background: card.background } : {}), ...(ja ? { ja } : {}) }]
   })
 }
 
