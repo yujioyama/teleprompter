@@ -147,7 +147,8 @@ describe('handleMcpRequest', () => {
       const { result } = await res.json()
       const description = result.tools[0].description
       expect(description).toContain('cards には')
-      expect(description).toContain('1本に0〜2枚')
+      expect(description).toContain('場面が変わるところ')
+      expect(description).toContain('最大6枚')
       expect(description).toContain('thought には')
       expect(result.tools.find((t: { name: string }) => t.name === RECORDS_TOOL_NAME).description).toContain('thought（心の声')
     })
