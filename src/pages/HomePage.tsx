@@ -4,6 +4,7 @@ import { useScripts } from '../hooks/useScripts'
 import { useSettings } from '../hooks/useSettings'
 import ClaudeInbox from '../components/ClaudeInbox'
 import { listStoredShots, pruneRemovedShotVideos } from '../utils/shotVideoStore'
+import { pruneCardVoices } from '../utils/cardVoiceStore'
 import type { Script } from '../types'
 import styles from './HomePage.module.css'
 
@@ -61,6 +62,7 @@ export default function HomePage() {
   // any video.
   useEffect(() => {
     let cancelled = false
+    pruneCardVoices(scripts).catch(err => console.error('Failed to delete voices of removed cards', err))
     pruneRemovedShotVideos(scripts)
       .catch(err => console.error('Failed to delete videos of removed shots', err))
       .then(() => listStoredShots())

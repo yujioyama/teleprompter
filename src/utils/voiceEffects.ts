@@ -119,7 +119,10 @@ export function voiceSpeed(voice: HeardVoice | undefined): number {
 
 /** `samples` (mono) in the given voice. Its length is the input's divided by voiceSpeed. */
 export function shapeVoice(samples: Float32Array, sampleRate: number, voice: HeardVoice | undefined): Float32Array {
-  const shape = SHAPES[voice ?? 'natural']
+  return applyShape(samples, sampleRate, SHAPES[voice ?? 'natural'])
+}
+
+function applyShape(samples: Float32Array, sampleRate: number, shape: VoiceShape): Float32Array {
   let out = samples
   // Higher without quicker: made longer at the same pitch, then played that much faster.
   // A tempo of its own is the same stretch, by that much less, before the same resample.
@@ -311,7 +314,10 @@ export const THOUGHT_TAIL_S = 0.6
  * the echo to ring out.
  */
 export function thinkingVoice(samples: Float32Array, sampleRate: number, echo: ThoughtEcho = 'medium'): Float32Array {
-  const { wet, feedback } = ECHO_SHAPES[echo]
+  return echoVoice(samples, sampleRate, ECHO_SHAPES[echo])
+}
+
+function echoVoice(samples: Float32Array, sampleRate: number, { wet, feedback }: { wet: number; feedback: number }): Float32Array {
   const length = samples.length + Math.round(THOUGHT_TAIL_S * sampleRate)
   const dry = new Float32Array(length)
   dry.set(samples)
@@ -343,5 +349,23 @@ export function thinkingVoice(samples: Float32Array, sampleRate: number, echo: T
   }
   const out = new Float32Array(length)
   for (let i = 0; i < length; i++) out[i] = (1 - wet) * dry[i] + wet * echoed[i] * 2
+  return out
+}
+
+// 挿入カードのナレーション: a voice of its own, lower and bigger than ours,
+// a little darker, with a faint room around it.
+const NARRATOR: VoiceShape = { pitch: semitones(-7), formant: 0.8, dark: 0.6 }
+const NARRATOR_ECHO = { wet: 0.25, feedback: 0.3 }
+const NARRATOR_CLIP_DRIVE = 1.8
+
+/**
+ * `samples` (mono) as a card's narrator: lower, bigger and darker than our
+ * voice, with a light echo, softly clipped so it never passes full scale.
+ * The result runs THOUGHT_TAIL_S longer, for the echo to ring out.
+ */
+export function narratorVoice(samples: Float32Array, sampleRate: number): Float32Array {
+  const out = echoVoice(applyShape(samples, sampleRate, NARRATOR), sampleRate, NARRATOR_ECHO)
+  const full = Math.tanh(NARRATOR_CLIP_DRIVE)
+  for (let i = 0; i < out.length; i++) out[i] = Math.tanh(out[i] * NARRATOR_CLIP_DRIVE) / full
   return out
 }
