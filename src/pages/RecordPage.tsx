@@ -21,6 +21,8 @@ import { saveCardVoice } from '../utils/cardVoiceStore'
 import { camShotsOf, cardAfterShot, cardsInOrder } from '../utils/insertCard'
 import styles from './RecordPage.module.css'
 
+const CARD_VOICE_FAILED = 'カードの声を保存できませんでした。'
+
 export default function RecordPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -79,7 +81,7 @@ export default function RecordPage() {
     window.location.href = `teleprompter-cam://record?shots=${payload}`
   }
 
-  function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportVideos(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? [])
     e.target.value = '' // allow re-selecting the same file(s)
     if (picked.length === 0) return
@@ -92,29 +94,27 @@ export default function RecordPage() {
     // 相手のセリフ voices recorded ahead in the camera app likewise.
     const voices = voicesByShotId(rest.filter(isVoiceFile))
     const files = rest.filter(file => !isVoiceFile(file))
+    let cardVoiceFailed = false
     if (cardVoices.length > 0) {
       const cardOfShot = new Map(cardsInOrder(safeScript).map(({ card }) => [card.afterShotId, card.id]))
-      const saving = Promise.all(cardVoices.map(async file => {
-        const shotId = extractShotId(file.name)
-        const cardId = shotId ? cardOfShot.get(shotId) : undefined
-        if (!cardId) return false
-        await saveCardVoice(safeScript.id, cardId, file)
-        return true
-      }))
+      let count = 0
+      try {
+        await Promise.all(cardVoices.map(async file => {
+          const shotId = extractShotId(file.name)
+          const cardId = shotId ? cardOfShot.get(shotId) : undefined
+          if (!cardId) return
+          await saveCardVoice(safeScript.id, cardId, file)
+          count++
+        }))
+      } catch (err) {
+        console.error('Saving card voices failed', err)
+        cardVoiceFailed = true
+      }
       if (files.length === 0 && voices.size === 0) {
-        setBulkImportError(null)
-        saving
-          .then(saved => {
-            const count = saved.filter(Boolean).length
-            if (count > 0) setBulkImportNotice(`カードの声を保存しました（${count}枚）`)
-          })
-          .catch(err => {
-            console.error('Saving card voices failed', err)
-            setBulkImportError('カードの声を保存できませんでした。')
-          })
+        setBulkImportError(cardVoiceFailed ? CARD_VOICE_FAILED : null)
+        if (!cardVoiceFailed && count > 0) setBulkImportNotice(`カードの声を保存しました（${count}枚）`)
         return
       }
-      saving.catch(err => console.error('Saving card voices failed', err))
     }
     if (files.length === 0) {
       setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
@@ -131,8 +131,8 @@ export default function RecordPage() {
     // A take whose name doesn't say its shot (one renamed by the camera
     // roll, say) is the one on screen, and the next shot comes up after it.
     const run = resolution.kind === 'legacy'
-      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1, voices)
-      : runBulkImport(resolution.targets, undefined, voices)
+      ? currentShot && runBulkImport([{ shot: currentShot, file: resolution.file }], shotIndex + 1, voices, cardVoiceFailed)
+      : runBulkImport(resolution.targets, undefined, voices, cardVoiceFailed)
     run?.catch(err => {
       console.error('Bulk import failed unexpectedly', err)
       setBulkImportProgress(null)
@@ -145,6 +145,7 @@ export default function RecordPage() {
     targets: { shot: Shot; file: File }[],
     nextIndex?: number,
     voices: Map<string, File> = new Map(),
+    cardVoiceFailed = false,
   ) {
     setBulkImportError(null)
     setBulkImportProgress({ done: 0, total: targets.length })
@@ -220,6 +221,7 @@ export default function RecordPage() {
     setBulkImportProgress(null)
 
     const messages: string[] = []
+    if (cardVoiceFailed) messages.push(CARD_VOICE_FAILED)
     if (failedShotTexts.length > 0) {
       messages.push(`保存できなかったショットがあります: ${failedShotTexts.join(', ')}`)
     }

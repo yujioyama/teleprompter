@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import RecordPage from './RecordPage'
 import { Script } from '../types'
+import * as cardVoiceStore from '../utils/cardVoiceStore'
 import { getCardVoice } from '../utils/cardVoiceStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { processRecordedVideo } from '../utils/processRecordedVideo'
@@ -545,5 +546,18 @@ describe('RecordPage card voices from teleprompter-cam', () => {
     ])
     await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
     expect(await getCardVoice('script-1', 'card-1')).toBeNull()
+  })
+
+  it('says so when a card voice could not be saved, and still imports the take', async () => {
+    const spy = vi.spyOn(cardVoiceStore, 'saveCardVoice').mockRejectedValue(new Error('quota'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      cardVoice(SHOT_1),
+    ])
+    expect(await screen.findByText(/カードの声を保存できませんでした。/)).toBeInTheDocument()
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+    spy.mockRestore()
   })
 })
