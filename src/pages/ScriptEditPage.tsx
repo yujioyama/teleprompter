@@ -13,7 +13,11 @@ import { useLineImages } from '../hooks/useLineImages'
 import LineImageEditor from '../components/LineImageEditor'
 import { heardPeopleOfInbox, heardPeopleOfShots, SPEAKER_NAME_MAX_LENGTH, withHeardPeople, type HeardPerson } from '../utils/speakerNames'
 import { SCENE_MAX_LENGTH } from '../utils/sceneLabel'
-import { LineImage, Shot, type VideoType } from '../types'
+import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type VideoType } from '../types'
+import InsertCardEditor, { type EditorCard } from '../components/InsertCardEditor'
+import { DEFAULT_CARD_TEXT, cardAudioOf } from '../utils/insertCard'
+import { DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
+import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import styles from './ScriptEditPage.module.css'
 
 const DRAFT_KEY = 'teleprompter_new_script_draft'
@@ -30,10 +34,10 @@ const NEW_SCRIPT_SPLIT_OPTIONS: SplitOptions = {
  * line number while the lines are still as sent, else by their words (twin
  * lines take the marks in turn).
  */
-function heardLinesOf(item: InboxItem | undefined, lines: string[]): (number | null)[] {
-  if (!item?.heard?.length) return lines.map(() => null)
+function heardLinesOf(item: InboxItem | undefined, lines: string[], marks: number[] | undefined = item?.heard): (number | null)[] {
+  if (!item || !marks?.length) return lines.map(() => null)
   const sent = takeLinesOf(item.body)
-  const marked = new Set(item.heard)
+  const marked = new Set(marks)
   if (sent.length === lines.length && sent.every((line, i) => lineKey(line) === lineKey(lines[i]))) {
     return lines.map((_, i) => (marked.has(i + 1) ? i + 1 : null))
   }
@@ -60,6 +64,49 @@ function speakerOfLine(item: InboxItem | undefined, at: number): Pick<Shot, 'spe
 
 function generateId() {
   return crypto.randomUUID()
+}
+
+/** Who says a line: us, the other person (相手のセリフ), or nobody aloud (心の声). */
+type LineRole = 'self' | 'heard' | 'thought'
+
+const ROLE_LABELS: [LineRole, string][] = [
+  ['self', '自分'],
+  ['heard', '相手'],
+  ['thought', '心の声'],
+]
+
+function roleOf(shot: Pick<Shot, 'heard' | 'thought'> | undefined): LineRole {
+  return shot?.thought ? 'thought' : shot?.heard ? 'heard' : 'self'
+}
+
+/** `shot` made `role`'s; one newly the other person's gets `icon`. */
+function withRole(shot: Shot, role: LineRole, icon: string): Shot {
+  if (role === roleOf(shot)) return shot
+  const next: Shot = { ...shot }
+  delete next.heard
+  delete next.speaker
+  delete next.speakerName
+  delete next.voice
+  delete next.thought
+  if (role === 'heard') return { ...next, heard: true, ...(icon !== DEFAULT_SPEAKER_ICON ? { speaker: icon } : {}) }
+  if (role === 'thought') return { ...next, thought: true }
+  return next
+}
+
+/** The cards an existing script or an inbox item starts the editor with. */
+function initialCards(existing: Script | undefined, item: InboxItem | undefined): EditorCard[] {
+  if (existing) {
+    if (existing.oneTake) return []
+    return (existing.cards ?? []).flatMap(card => {
+      const shot = existing.shots.find(s => s.id === card.afterShotId)
+      return shot ? [{ id: card.id, afterText: shot.text, text: card.text, ...(card.background ? { background: card.background } : {}) }] : []
+    })
+  }
+  const lines = item ? takeLinesOf(item.body) : []
+  return (item?.cards ?? []).flatMap(card => {
+    const line = lines[card.afterLine - 1]
+    return line ? [{ id: generateId(), afterText: line, text: card.text, ...(card.background ? { background: card.background } : {}) }] : []
+  })
 }
 
 interface Draft {
@@ -123,6 +170,11 @@ export default function ScriptEditPage() {
   )
   // The few words on where it happens, over line 1.
   const [scene, setScene] = useState<string>(() => (existingScript ? existingScript.scene : inboxItem?.scene) ?? '')
+  // 自分 / 相手 / 心の声 picked here for a line (by its words), over what the script or Claude said.
+  const [roleOverrides, setRoleOverrides] = useState<Map<string, LineRole>>(() => new Map())
+  // 挿入カード between lines, and what they do to the sound.
+  const [cards, setCards] = useState<EditorCard[]>(() => initialCards(existingScript, inboxItem))
+  const [cardAudio, setCardAudio] = useState<CardAudio>(() => cardAudioOf(existingScript))
 
   // Grow the textarea to fit its content so a long pasted script is visible
   // in full, instead of hiding most of it in a small scroll box nested
@@ -183,19 +235,22 @@ export default function ScriptEditPage() {
     }
 
     if (existingScript) {
-      const shots = withHeardPeople(reconcileShots(existingScript.shots, preview, generateId), people)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages, scene: scene.trim() })
+      const shots = withHeardPeople(withRoles(reconcileShots(existingScript.shots, preview, generateId)), people)
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages, scene: scene.trim(), cards: scriptCardsOf(shots), cardAudio: cardAudioToSave() })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
-      const shots: Shot[] = withHeardPeople(preview.map((text, i) => {
+      const shots: Shot[] = withHeardPeople(withRoles(preview.map((text, i) => {
         const at = heard[i]
         return { id: generateId(), text, ...(at ? { heard: true, ...speakerOfLine(inboxItem, at) } : {}) }
-      }), people)
+      })), people)
       // Kept against the lines as Claude sent them: edits made here just
       // leave those lines for the subtitle step's Claude用プロンプト.
       const japanese = inboxItem?.japanese ? lineJapaneseOf(inboxItem.body, inboxItem.japanese) : undefined
-      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, lineImages, scene.trim(), inboxItem?.cover)
+      const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, lineImages, scene.trim(), inboxItem?.cover, {
+        cards: scriptCardsOf(shots),
+        cardAudio: cardAudioToSave(),
+      })
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
         // Taken: clear it from the inbox so no device offers it again. If
@@ -212,6 +267,56 @@ export default function ScriptEditPage() {
 
   const shownLines = preview.length === 0 ? [] : oneTake ? preview[0].split('\n') : preview
   const imageOfLine = assignToLines(lineImages, shownLines)
+
+  // What each line is, before anything picked here: as the script has it, or as Claude sent it.
+  const baseRoles: LineRole[] = (() => {
+    if (oneTake) return preview.map(() => 'self')
+    if (existingScript) return reconcileShots(existingScript.shots, preview, () => '').map(roleOf)
+    const heard = heardLinesOf(inboxItem, preview)
+    const thought = heardLinesOf(inboxItem, preview, inboxItem?.thought ?? [])
+    return preview.map((_, i) => (thought[i] ? 'thought' : heard[i] ? 'heard' : 'self'))
+  })()
+  const roles: LineRole[] = preview.map((text, i) => roleOverrides.get(lineKey(text)) ?? baseRoles[i])
+
+  /** `shots` (one per line of the preview) each made the role picked for it. */
+  function withRoles(shots: Shot[]): Shot[] {
+    if (oneTake) return shots
+    const icon = people[0]?.icon ?? DEFAULT_SPEAKER_ICON
+    return shots.map((shot, i) => withRole(shot, roles[i] ?? 'self', shot.speaker ?? icon))
+  }
+
+  function setRole(text: string, role: LineRole) {
+    setRoleOverrides(all => new Map(all).set(lineKey(text), role))
+    // The other person needs a row for their role and voice.
+    if (role === 'heard' && people.length === 0) setPeople([{ icon: DEFAULT_SPEAKER_ICON, name: '', voice: 'natural' }])
+  }
+
+  /** The line a card follows, by index in the preview; -1 when that line is gone. */
+  const cardIndexOf = (card: EditorCard) => preview.findIndex(text => lineKey(text) === lineKey(card.afterText))
+  const shownCards = oneTake ? [] : cards.filter(card => {
+    const at = cardIndexOf(card)
+    return at >= 0 && at < preview.length - 1
+  })
+
+  /** The cards as the script keeps them: after a shot, by its id. */
+  function scriptCardsOf(shots: Shot[]): ScriptCard[] {
+    return shownCards.flatMap(card => {
+      const shot = shots[cardIndexOf(card)]
+      const text = card.text.trim()
+      if (!shot || !text) return []
+      const background = card.background && (isCardBackgroundName(card.background) || card.background.startsWith('https://')) && card.background !== DEFAULT_CARD_BACKGROUND ? card.background : undefined
+      return [{ id: card.id, afterShotId: shot.id, text, ...(background ? { background } : {}) }]
+    })
+  }
+
+  /** Both on is what a script without the setting means, so only an off is kept. */
+  function cardAudioToSave(): CardAudio | undefined {
+    return cardAudio.muffle && cardAudio.sound ? undefined : cardAudio
+  }
+
+  function addCard(afterText: string) {
+    setCards(all => [...all, { id: generateId(), afterText, text: DEFAULT_CARD_TEXT }])
+  }
 
   return (
     <div className={styles.page}>
@@ -320,11 +425,30 @@ export default function ScriptEditPage() {
             {lineImages.length > 0 && (
               <p className={styles.previewLabel}>画像がある台本なので、ステッカーと妖精は出ません</p>
             )}
-            {shownLines.map((text, i) => (
-              <div key={i} className={styles.previewItem}>
+            {shownLines.map((text, i) => {
+              const cardsHere = shownCards.filter(card => cardIndexOf(card) === i)
+              return (
+              <div key={i}>
+              <div className={styles.previewItem}>
                 <span className={styles.previewNum}>{i + 1}</span>
                 <div className={styles.previewLine}>
-                  <span className={styles.previewText}>{text}</span>
+                  <span className={`${styles.previewText} ${roles[i] === 'thought' ? styles.previewThought : ''}`}>{text}</span>
+                  {!oneTake && (
+                    <div className={styles.roleSwitch} role="radiogroup" aria-label={`${i + 1}行目は誰の`}>
+                      {ROLE_LABELS.map(([role, label]) => (
+                        <button
+                          key={role}
+                          type="button"
+                          role="radio"
+                          aria-checked={roles[i] === role}
+                          className={`${styles.roleBtn} ${roles[i] === role ? styles.roleBtnActive : ''}`}
+                          onClick={() => setRole(text, role)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <LineImageEditor
                     line={text}
                     image={imageOfLine[i]}
@@ -335,7 +459,35 @@ export default function ScriptEditPage() {
                   />
                 </div>
               </div>
-            ))}
+              {cardsHere.map(card => (
+                <InsertCardEditor
+                  key={card.id}
+                  card={card}
+                  onChange={next => setCards(all => all.map(c => (c.id === card.id ? next : c)))}
+                  onRemove={() => setCards(all => all.filter(c => c.id !== card.id))}
+                />
+              ))}
+              {!oneTake && i < shownLines.length - 1 && cardsHere.length === 0 && (
+                <button type="button" className={styles.addCardBtn} onClick={() => addCard(text)}>
+                  ＋ ここにカードを入れる（例: 2 days later）
+                </button>
+              )}
+              </div>
+              )
+            })}
+            {shownCards.length > 0 && (
+              <div className={styles.splitOptions} role="group" aria-label="カードの音">
+                <span className={styles.splitOptionsLabel}>カードの音</span>
+                <label className={styles.splitOptionItem}>
+                  <input type="checkbox" checked={cardAudio.muffle} onChange={e => setCardAudio(a => ({ ...a, muffle: e.target.checked }))} />
+                  カードの間はBGMを小さく、こもった音にする
+                </label>
+                <label className={styles.splitOptionItem}>
+                  <input type="checkbox" checked={cardAudio.sound} onChange={e => setCardAudio(a => ({ ...a, sound: e.target.checked }))} />
+                  カードが出るときに効果音を鳴らす
+                </label>
+              </div>
+            )}
           </div>
         )}
 

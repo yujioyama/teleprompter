@@ -5,6 +5,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import FinalizePage from './FinalizePage'
 import { Script } from '../types'
 import { saveShotVideo } from '../utils/shotVideoStore'
+import { cardClipsOf } from '../utils/cardClips'
 import * as burnModule from '../utils/burnSubtitles'
 import * as mixModule from '../utils/mixMusic'
 import { MUSIC_TRACKS } from '../data/musicTracks'
@@ -27,6 +28,10 @@ import { makeCover } from '../utils/autoCover'
 vi.mock('../utils/videoRecord', async importOriginal => {
   const actual = await importOriginal<typeof import('../utils/videoRecord')>()
   return { ...actual, buildVideoRecord: vi.fn(actual.buildVideoRecord) }
+})
+vi.mock('../utils/cardClips', async importOriginal => {
+  const actual = await importOriginal<typeof import('../utils/cardClips')>()
+  return { ...actual, cardClipsOf: vi.fn(async () => []) }
 })
 vi.mock('../utils/burnSubtitles')
 vi.mock('../utils/mixMusic')
@@ -273,6 +278,55 @@ function dragEndHandleTo(clientX: number) {
   fireEvent(timeline, new MouseEvent('pointermove', { bubbles: true, clientX }))
   fireEvent.pointerUp(timeline)
 }
+
+describe('FinalizePage 挿入カード', () => {
+  const SHOT_2 = '22222222-2222-2222-2222-222222222222'
+  const CARD = new Blob(['card'], { type: 'video/mp4' })
+
+  it('joins the card in after the line it follows, as a clip of its own', async () => {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1', trimEnabled: false },
+      { id: SHOT_2, text: 'ショット2', trimEnabled: false, thought: true },
+    ]
+    script.cards = [{ id: 'k', afterShotId: SHOT_1, text: '2 days later' }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(cardClipsOf).mockResolvedValueOnce([
+      { afterShotId: SHOT_1, clip: { shotId: 'card-k', blob: CARD, start: 0, end: 1.8 }, signature: 'card:x' },
+    ])
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(4)
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    fireEvent.click(screen.getByText('結合する'))
+    await waitFor(() => expect(concatVideos).toHaveBeenCalled())
+    const joined = vi.mocked(concatVideos).mock.calls.at(-1)![0] as Blob[]
+    expect(joined).toHaveLength(3)
+    expect(joined[1]).toBe(CARD)
+    expect(cardClipsOf).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes ahead without the cards, and says so, when they cannot be made', async () => {
+    const script = seedScript()
+    script.shots = [
+      { id: SHOT_1, text: 'ショット1', trimEnabled: false },
+      { id: SHOT_2, text: 'ショット2', trimEnabled: false },
+    ]
+    script.cards = [{ id: 'k', afterShotId: SHOT_1, text: '2 days later' }]
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    await saveShotVideo(script.id, SHOT_2, new Blob(['shot2'], { type: 'video/mp4' }))
+    vi.mocked(cardClipsOf).mockRejectedValueOnce(new Error('no WebCodecs'))
+    vi.mocked(probeVideoDuration).mockResolvedValueOnce(5).mockResolvedValueOnce(4)
+    renderFinalizePage('script-1')
+
+    await waitFor(() => expect(screen.getByText('結合する')).not.toBeDisabled())
+    fireEvent.click(screen.getByText('結合する'))
+    expect(await screen.findByText(/カードを作れなかったので、カードなしで結合しました/)).toBeInTheDocument()
+    const joined = vi.mocked(concatVideos).mock.calls.at(-1)![0] as Blob[]
+    expect(joined).toHaveLength(2)
+  })
+})
 
 describe('FinalizePage trim step: auto-cut around the speech (issue #21)', () => {
   it('opens each shot already trimmed to its speech, and combines that cut', async () => {

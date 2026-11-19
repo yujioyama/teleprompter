@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LineImage, LineJapanese, Script, Shot, type VideoType } from '../types'
 import { clearShotVideos } from '../utils/shotVideoStore'
 import { pruneLineImages } from '../utils/lineImageStore'
+import { cardImageUrlsOf } from '../utils/insertCard'
 import { mergeScripts, type MergeResult } from '../utils/scriptBackup'
 
 const STORAGE_KEY = 'teleprompter_scripts'
@@ -36,6 +37,7 @@ export function useScripts() {
     lineImages?: LineImage[],
     scene?: string,
     cover?: Script['cover'],
+    extras: Pick<Script, 'cards' | 'cardAudio'> = {},
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -49,6 +51,8 @@ export function useScripts() {
       ...(lineImages?.length ? { lineImages } : {}),
       ...(scene ? { scene } : {}),
       ...(cover ? { cover } : {}),
+      ...(extras.cards?.length ? { cards: extras.cards } : {}),
+      ...(extras.cardAudio ? { cardAudio: extras.cardAudio } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -61,7 +65,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages' | 'scene'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages' | 'scene' | 'cards' | 'cardAudio'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
@@ -72,6 +76,8 @@ export function useScripts() {
       if (!next.look) delete next.look
       if (!next.lineImages?.length) delete next.lineImages
       if (!next.scene) delete next.scene
+      if (!next.cards?.length) delete next.cards
+      if (!next.cardAudio) delete next.cardAudio
       return next
     })
     saveToStorage(updated)
@@ -86,7 +92,7 @@ export function useScripts() {
     // deleteScript async.
     clearShotVideos(id).catch(err => console.error('Failed to clear stored shot videos', err))
     // Another script may use the same image; one still in the inbox is fetched again.
-    pruneLineImages(new Set(updated.flatMap(s => (s.lineImages ?? []).map(image => image.imageId))))
+    pruneLineImages(new Set(updated.flatMap(s => [...(s.lineImages ?? []).map(image => image.imageId), ...cardImageUrlsOf(s.cards)])))
       .catch(err => console.error('Failed to clear stored images', err))
   }
 

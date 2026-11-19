@@ -11,6 +11,7 @@ import type { StickerPlacement } from '../utils/subtitleSticker'
 import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
 import type { NoiseReduction } from '../utils/ownVoiceNoise'
+import type { ThoughtEcho } from '../utils/voiceEffects'
 import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
 import type { CoverFramePlacement, CoverFrameSource } from '../utils/coverFrames'
 
@@ -23,6 +24,8 @@ export interface AppSettings {
   voicePreset: VoicePreset
   /** ノイズ除去 on our own takes as they're imported (not the other person's voice, not the BGM). */
   noiseReduction: NoiseReduction
+  /** 心の声: how much echo a thought's voice is given at import. */
+  thoughtEcho: ThoughtEcho
   /** BGM added to every video without stopping on the BGM step; null = none. */
   defaultBgmId: string | null
   /**
@@ -101,6 +104,7 @@ const DEFAULTS: AppSettings = {
   normalizeAudio: true,
   voicePreset: 'natural',
   noiseReduction: 'medium',
+  thoughtEcho: 'medium',
   defaultBgmId: 'warmpiano-my-nightly-prayer',
   conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.1,

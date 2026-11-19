@@ -198,3 +198,40 @@
 .heardPersonIcon {
   font-size: 22px;
 }
+
+.roleSwitch {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.roleBtn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #555);
+  background: transparent;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+}
+
+.roleBtnActive {
+  background: var(--accent, #4f8cff);
+  border-color: var(--accent, #4f8cff);
+  color: #fff;
+}
+
+.previewThought {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.addCardBtn {
+  display: block;
+  margin: 2px 0 6px 28px;
+  padding: 4px 10px;
+  border: 1px dashed var(--border, #555);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+}

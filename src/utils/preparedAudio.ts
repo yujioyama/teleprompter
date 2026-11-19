@@ -1,4 +1,4 @@
-import { delayEnding, type BgmEnding } from './bgmStop'
+import { delayEnding, sameEnding, type BgmEnding } from './bgmStop'
 import { mixMusic } from './mixMusic'
 import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
@@ -20,7 +20,7 @@ export interface FinalAudioKey {
 }
 
 function sameKey(a: FinalAudioKey, b: FinalAudioKey): boolean {
-  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && a.ending.stopAt === b.ending.stopAt && a.ending.soft === b.ending.soft && a.lead === b.lead
+  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && sameEnding(a.ending, b.ending) && a.lead === b.lead
 }
 
 /**

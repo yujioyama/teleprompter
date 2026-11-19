@@ -41,7 +41,7 @@ export function resolveShotTrimSettings(
 ): ShotTrimSettings {
   const between = (padding: number) => (conversation ? Math.max(padding, CONVERSATION_PADDING) : padding)
   return {
-    trimEnabled: shot?.trimEnabled ?? (shot?.heard ? false : global.trimEnabled),
+    trimEnabled: shot?.trimEnabled ?? (shot?.heard || shot?.thought ? false : global.trimEnabled),
     trimPaddingStart: shot?.trimPaddingStart ?? (isFirstShot ? global.firstShotPaddingStart : between(global.trimPaddingStart)),
     trimPaddingEnd: shot?.keepPause
       ? Math.max(PAUSE_PADDING_END, between(0))
@@ -52,7 +52,7 @@ export function resolveShotTrimSettings(
 
 /** A script re-enacting a conversation: filmed line by line, with some lines the other person's. */
 export function isConversation(script: { oneTake?: boolean; shots: Shot[] } | null | undefined): boolean {
-  return Boolean(script && !script.oneTake && script.shots.some(shot => shot.heard))
+  return Boolean(script && !script.oneTake && script.shots.some(shot => shot.heard || shot.thought))
 }
 
 /**

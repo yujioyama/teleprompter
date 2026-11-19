@@ -120,6 +120,12 @@ describe('makeHeardShot', () => {
     expect(buildHeardShotWebCodecs).toHaveBeenLastCalledWith(take, planHeardShot(region(), 1.25), 'fast')
   })
 
+  it('keeps the voice as it is for a 心の声, echoed, at its own pace', async () => {
+    const take = new Blob(['take'])
+    await makeHeardShot(take, 'kid', 'strong')
+    expect(buildHeardShotWebCodecs).toHaveBeenLastCalledWith(take, planHeardShot(region()), undefined, undefined, 'strong')
+  })
+
   it('rejects without speech or without WebCodecs', async () => {
     vi.mocked(detectSpeech).mockResolvedValueOnce(null)
     await expect(makeHeardShot(new Blob(['take']))).rejects.toThrow('no speech')

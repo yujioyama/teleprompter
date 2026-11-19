@@ -88,12 +88,69 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'cover'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'cover', 'cards', 'thought'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
     expect(result.tools[1].description).toContain('request_id')
     expect(Object.keys(result.tools[1].inputSchema.properties)).toEqual(['request_id', 'lines'])
+  })
+
+  describe('cards and thought', () => {
+    it('keeps the cards in line order and the 心の声 lines, and says so', async () => {
+      const res = await handleMcpRequest(callTool({
+        title: 'Sometime',
+        script: 'A\nB\nC\nD\nE\nF\nG',
+        heard: [2],
+        thought: [5, 3, 5],
+        cards: [{ afterLine: 6, text: '2 days later' }, { afterLine: 1, text: 'That night', background: 'peach' }, { afterLine: 3, text: 'Meanwhile', background: 'grape' }],
+      }), deps)
+      const { result } = await res.json()
+      expect(result.isError).toBeUndefined()
+      expect(result.content[0].text).toContain('心の声2行')
+      expect(result.content[0].text).toContain('カード3枚')
+      const item = (await store.list())[0]
+      expect(item.thought).toEqual([3, 5])
+      expect(item.cards).toEqual([
+        { afterLine: 1, text: 'That night', background: 'peach' },
+        { afterLine: 3, text: 'Meanwhile' },
+        { afterLine: 6, text: '2 days later' },
+      ])
+    })
+
+    it('takes an https picture as a card background', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A\nB', cards: [{ afterLine: 1, text: 'Later', background: 'https://img.test/sky.jpg' }] }), deps)
+      expect((await store.list())[0].cards).toEqual([{ afterLine: 1, text: 'Later', background: 'https://img.test/sky.jpg' }])
+    })
+
+    it('leaves both off a script with none', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A\nB', cards: [], thought: [] }), deps)
+      expect((await store.list())[0]).not.toHaveProperty('cards')
+      expect((await store.list())[0]).not.toHaveProperty('thought')
+    })
+
+    it.each([
+      ['a card after the last line', { cards: [{ afterLine: 2, text: 'x' }] }],
+      ['two cards in one place', { cards: [{ afterLine: 1, text: 'x' }, { afterLine: 1, text: 'y' }] }],
+      ['a background that is neither', { cards: [{ afterLine: 1, text: 'x', background: 'neon' }] }],
+      ['a thought line past the end', { thought: [3] }],
+      ['a line both heard and thought', { heard: [1], thought: [1] }],
+      ['a thought line in the cast', { heardCast: [{ lines: [2] }], thought: [2] }],
+    ])('refuses %s and stores nothing', async (_, args) => {
+      const res = await handleMcpRequest(callTool({ title: 'a', script: 'A\nB', ...args }), deps)
+      expect((await res.json()).result.isError).toBe(true)
+      expect(await store.list()).toEqual([])
+    })
+
+    it('tells Claude how to use them', async () => {
+      const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), deps)
+      const { result } = await res.json()
+      const description = result.tools[0].description
+      expect(description).toContain('cards には')
+      expect(description).toContain('1本に0〜2枚')
+      expect(description).toContain('thought には')
+      expect(result.tools.find((t: { name: string }) => t.name === RECORDS_TOOL_NAME).description).toContain('thought（心の声')
+    })
   })
 
   describe('heard', () => {

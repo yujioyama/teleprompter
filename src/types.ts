@@ -24,6 +24,32 @@ export interface Shot {
   speakerName?: string
   /** The voice a 相手のセリフ line is given at import; absent for our own. */
   voice?: HeardVoice
+  /**
+   * 心の声: a line thought, not said. Filmed with the mouth shut while its
+   * voice (recorded ahead in the camera app) plays; the import puts that
+   * voice, with a little echo, over the thinking face. Never also `heard`.
+   */
+  thought?: boolean
+}
+
+/**
+ * 挿入カード: a short full-screen card between two lines ("2 days later").
+ * It isn't a line: it sits after shot `afterShotId`, and no line moves.
+ */
+export interface ScriptCard {
+  id: string
+  afterShotId: string
+  text: string
+  /** A CARD_BACKGROUNDS name, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
+  background?: string
+}
+
+/** What a card does to the sound; both on when absent. */
+export interface CardAudio {
+  /** The BGM goes softer and muffled while a card is up. */
+  muffle: boolean
+  /** A short pop as each card comes up. */
+  sound: boolean
 }
 
 /** One script line's Japanese subtitle, as Claude sent it with the script. */
@@ -74,6 +100,10 @@ export interface Script {
   scene?: string
   /** The cover's words as Claude sent them, in place of the script's `*…*` and `{…}`; absent for those. */
   cover?: CoverText
+  /** 挿入カード between lines; absent for none. Ignored in a 一発撮り script, which is one shot. */
+  cards?: ScriptCard[]
+  /** How the cards sound; absent for both on. */
+  cardAudio?: CardAudio
   createdAt: string
   updatedAt: string
 }

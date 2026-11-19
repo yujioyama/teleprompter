@@ -17,6 +17,7 @@ import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
+import { camShotsOf, cardAfterShot } from '../utils/insertCard'
 import styles from './RecordPage.module.css'
 
 export default function RecordPage() {
@@ -72,7 +73,7 @@ export default function RecordPage() {
   // Cinematic-capture companion app (github.com/yujioyama/teleprompter-cam),
   // which is the only way to record — there is no in-browser camera anymore.
   function handleRecordInNativeApp() {
-    const payload = encodeURIComponent(JSON.stringify(safeScript.shots.slice(shotIndex)))
+    const payload = encodeURIComponent(JSON.stringify(camShotsOf(safeScript).slice(shotIndex)))
     window.location.href = `teleprompter-cam://record?shots=${payload}`
   }
 
@@ -134,8 +135,8 @@ export default function RecordPage() {
       const { shot, file } = targets[i]
       try {
         const mimeType = inferMimeType(file)
-        // Our own voice gets the noise taken out; a 相手のセリフ take's sound is replaced anyway.
-        const ownVoice = !shot.heard || safeScript.oneTake
+        // Our own voice gets the noise taken out; a 相手のセリフ or 心の声 take's sound is replaced anyway.
+        const ownVoice = !(shot.heard || shot.thought) || safeScript.oneTake
         const processTake = () => processRecordedVideo(file, mimeType, {
           normalizeAudio: globalSettings.normalizeAudio,
           ...(ownVoice ? { noiseReduction: globalSettings.noiseReduction } : {}),
@@ -154,12 +155,14 @@ export default function RecordPage() {
           // that is kept, loudness-corrected as before, to be seen and retaken.
           try {
             const recordedVoice = voices.get(shot.id)
+            // 心の声: our own voice, echoed, over the thinking face.
+            const thought = shot.thought ? globalSettings.thoughtEcho : undefined
             take = recordedVoice
-              ? await makeHeardShotFromVoice(file, recordedVoice, voiceOf(shot))
-              : await makeHeardShot(file, voiceOf(shot))
+              ? await makeHeardShotFromVoice(file, recordedVoice, voiceOf(shot), thought)
+              : await makeHeardShot(file, voiceOf(shot), thought)
           } catch (err) {
             console.warn('Could not make the 相手のセリフ clip', err)
-            unheardShotTexts.push(`${stripEmphasis(shot.text)}(${heardShotFailureText(err)})`)
+            unheardShotTexts.push(`${shot.thought ? '心の声: ' : ''}${stripEmphasis(shot.text)}(${heardShotFailureText(err, shot.thought)})`)
             if (needsDeviceRestart(err)) restartHint = true
             processed = await processTake()
             take = processed.blob
@@ -230,11 +233,24 @@ export default function RecordPage() {
 
   // 相手のセリフ: read aloud, then listened to in silence (see planHeardShot).
   const heardHere = Boolean(currentShot?.heard) && !safeScript.oneTake
+  // 心の声: the mouth stays shut while the voice plays.
+  const thoughtHere = Boolean(currentShot?.thought) && !safeScript.oneTake
+  // 挿入カード: nothing to film, only where it goes.
+  const cardNext = currentShot ? cardAfterShot(safeScript, currentShot.id) : undefined
 
+  // A line is ours, the other person's, or a thought: never two at once.
   function handleShotHeard(value: boolean) {
     if (!currentShot || !id) return
     const updatedShots = safeScript.shots.map(s =>
-      s.id === currentShot.id ? { ...s, heard: value || undefined } : s
+      s.id === currentShot.id ? { ...s, heard: value || undefined, ...(value ? { thought: undefined } : {}) } : s
+    )
+    updateScript(id, { shots: updatedShots })
+  }
+
+  function handleShotThought(value: boolean) {
+    if (!currentShot || !id) return
+    const updatedShots = safeScript.shots.map(s =>
+      s.id === currentShot.id ? { ...s, thought: value || undefined, ...(value ? { heard: undefined } : {}) } : s
     )
     updateScript(id, { shots: updatedShots })
   }
@@ -315,9 +331,18 @@ export default function RecordPage() {
               <span>カメラアプリで先に相手の声を録っておけば、撮影では流れる声を聞くだけ（自動で止まります）。録っていなければ、声に出して読んだら1秒ほど黙って聞く顔をしてから止める</span>
             </div>
           )}
-          <p className={`${styles.promptText} ${heardHere ? styles.promptTextHeard : ''}`}>
+          {thoughtHere && (
+            <div className={styles.heardGuide} role="note">
+              <span className={styles.heardBadge}>💭 心の声</span>
+              <span>カメラアプリで先に心の声を録っておけば、撮影では口を閉じたまま考える顔をするだけ（声が終わると自動で止まります）。録っていなければ、声に出して読んだら1秒ほど考える顔をしてから止める</span>
+            </div>
+          )}
+          <p className={`${styles.promptText} ${heardHere || thoughtHere ? styles.promptTextHeard : ''}`}>
             {currentShot && stripStickers(stripEmphasis(currentShot.text))}
           </p>
+          {cardNext && (
+            <p className={styles.cardMark} role="note">🎬 このあとにカード「{cardNext}」が入ります（撮るものはありません）</p>
+          )}
         </div>
 
         {/* Per-shot trim settings */}
@@ -327,7 +352,7 @@ export default function RecordPage() {
               className={styles.shotSettingsToggle}
               onClick={() => setShotSettingsOpen(o => !o)}
             >
-              ⚙ このショットの設定{hasOverride || currentShot?.heard ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
+              ⚙ このショットの設定{hasOverride || currentShot?.heard || currentShot?.thought ? ' ●' : ''} {shotSettingsOpen ? '▲' : '▼'}
             </button>
 
             {shotSettingsOpen && (
@@ -347,6 +372,25 @@ export default function RecordPage() {
                         aria-label="相手のセリフ"
                         checked={Boolean(currentShot?.heard)}
                         onChange={e => handleShotHeard(e.target.checked)}
+                      />
+                      <span className={styles.toggleTrack} />
+                    </label>
+                  </div>
+                )}
+                {!safeScript.oneTake && (
+                  <div className={styles.shotSettingsRow}>
+                    <div>
+                      <div className={styles.shotSettingsLabel}>心の声</div>
+                      <div className={styles.shotSettingsSub}>
+                        口を動かさずに思っている行です。カメラアプリで先に録った声（.m4a）を動画と一緒にインポートすると、考えている映像に自分の声がエコーつきでのります
+                      </div>
+                    </div>
+                    <label className={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        aria-label="心の声"
+                        checked={Boolean(currentShot?.thought)}
+                        onChange={e => handleShotThought(e.target.checked)}
                       />
                       <span className={styles.toggleTrack} />
                     </label>
@@ -512,6 +556,9 @@ export default function RecordPage() {
                   <span className={styles.shotListNum}>{i + 1}</span>
                   {shot.heard && !safeScript.oneTake && (
                     <span className={styles.shotListHeard} aria-label="相手のセリフ">{shot.speaker ?? DEFAULT_SPEAKER_ICON}</span>
+                  )}
+                  {shot.thought && !safeScript.oneTake && (
+                    <span className={styles.shotListHeard} aria-label="心の声">💭</span>
                   )}
                   <span className={styles.shotListText}>{stripStickers(stripEmphasis(shot.text))}</span>
                 </button>

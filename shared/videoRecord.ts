@@ -61,6 +61,10 @@ export const videoRecordSchema = z.object({
       .optional(),
     /** How many line images were shown (that video has no sticker or fairies); absent = none, or before them. */
     lineImages: z.number().int().positive().optional(),
+    /** 挿入カード: each card's text and the line it came after (from 1); absent = none, or before them. */
+    cards: z.array(z.object({ afterLine: z.number().int().positive(), text: z.string().max(100) })).max(20).optional(),
+    /** 心の声: the lines (from 1) thought rather than said; absent = none, or before them. */
+    thought: z.array(z.number().int().positive()).max(300).optional(),
   }),
 })
 

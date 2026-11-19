@@ -61,6 +61,17 @@ export interface InboxItem {
   scene?: string
   /** The words for the cover, in place of the script's `*…*` and `{…}` (a conversation has none); absent for those. */
   cover?: CoverText
+  /**
+   * 挿入カード: short full-screen cards between lines where time jumps
+   * ("2 days later"). Each goes after line `afterLine`; they are not lines
+   * themselves, so no line number moves. Absent for none.
+   */
+  cards?: InboxCard[]
+  /**
+   * 心の声: lines thought, not said (non-empty lines, from 1). Never also in
+   * `heard`. Absent for none.
+   */
+  thought?: number[]
   /** ISO timestamp of when it arrived. */
   createdAt: string
 }
@@ -82,3 +93,26 @@ export interface HeardCastMember {
   /** Their role, beside their icon (e.g. "Mom"). */
   name?: string
 }
+
+/** A 挿入カード Claude sent (see InboxItem.cards). */
+export interface InboxCard {
+  /** The line it comes after (non-empty lines of `body`, from 1). */
+  afterLine: number
+  /** One short English line, e.g. "2 days later". */
+  text: string
+  /** One of CARD_BACKGROUNDS, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
+  background?: string
+}
+
+/** The backgrounds the app has for a card, when no image is given. */
+export const CARD_BACKGROUNDS = ['grape', 'night', 'paper', 'peach', 'mint'] as const
+export type CardBackgroundName = (typeof CARD_BACKGROUNDS)[number]
+/** The background a card gets when none is named. */
+export const DEFAULT_CARD_BACKGROUND: CardBackgroundName = 'grape'
+
+export function isCardBackgroundName(value: unknown): value is CardBackgroundName {
+  return typeof value === 'string' && (CARD_BACKGROUNDS as readonly string[]).includes(value)
+}
+
+/** The longest card text the burn has room for on one line. */
+export const CARD_TEXT_MAX_LENGTH = 28

@@ -1,0 +1,50 @@
+.card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 6px 0 6px 28px;
+  padding: 10px;
+  border: 1px dashed var(--border, #555);
+  border-radius: 12px;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.badge {
+  font-size: 13px;
+  color: var(--text-muted, #aaa);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #555);
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+}
+
+.remove {
+  align-self: flex-start;
+  font-size: 13px;
+  background: none;
+  border: none;
+  color: var(--text-muted, #aaa);
+  text-decoration: underline;
+  padding: 0;
+}
+
+.preview {
+  width: 108px;
+  height: 192px;
+  border-radius: 8px;
+  flex: none;
+}

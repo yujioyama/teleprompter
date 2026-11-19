@@ -25,7 +25,7 @@ import {
 import { runColor, type Run } from './subtitleEmphasis'
 import { EMOJI_FONT_FAMILY, STICKER_IMAGE_HEIGHT, STICKER_SHADOW, stripStickers } from './subtitleSticker'
 import { SCENE_FILL, SCENE_IMAGE_HEIGHT, SCENE_LABEL_Y, SCENE_PILL_HEIGHT, SCENE_SHADOW_ROOM, SCENE_TAG, SCENE_TAG_COLOR, SCENE_TAG_FILL, SCENE_TAG_FONT, SCENE_TAG_HEIGHT, SCENE_TAG_INSET, layoutSceneLabel, sceneFont, sceneOf } from './sceneLabel'
-import { PHONE_BADGE, SPEAKER_TEXT_COLOR, onPhone, speakerNameOf, speakerOf } from './speakers'
+import { PHONE_BADGE, SPEAKER_TEXT_COLOR, isThought, onPhone, speakerNameOf, speakerOf } from './speakers'
 import { dieCutSticker, squareCanvas } from './stickerCanvas'
 import { STICKER_MAX_SCALE, placeSticker } from './stickerMotion'
 import type { FairyAppearance } from './fairyPlan'
@@ -33,6 +33,12 @@ import type { MidZoomSegment } from './midZoom'
 import { CREDIT_FONT, CREDIT_FONT_PX, LINE_IMAGE_RADIUS, LINE_IMAGE_SLOT, layoutLineImage, wrapCredit, type CueImage } from './lineImages'
 import { openingFilterStages, type OpeningLook } from './openingLook'
 import {
+  CLOUD_BORDER,
+  CLOUD_FILL,
+  THOUGHT_BORDER_COLOR,
+  THOUGHT_TEXT_COLOR,
+  cloudPath,
+  type ThoughtCloud,
   BUBBLE_BORDER,
   BUBBLE_FILL,
   EN_STYLE,
@@ -206,6 +212,27 @@ function drawBubble(ctx: CanvasRenderingContext2D, bubble: SpeakerBubble) {
   ctx.restore()
 }
 
+/** 心の声: the cloud behind the text, and the little circles trailing down from it. */
+function drawCloud(ctx: CanvasRenderingContext2D, cloud: ThoughtCloud) {
+  ctx.save()
+  const shape = new Path2D(cloudPath(cloud))
+  for (const dot of cloud.dots) {
+    shape.moveTo(dot.x + dot.r, dot.y)
+    shape.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2)
+  }
+  ctx.shadowColor = SUBTITLE_SHADOW.color
+  ctx.shadowBlur = 12
+  ctx.shadowOffsetY = 3
+  ctx.fillStyle = CLOUD_FILL
+  ctx.fill(shape)
+  ctx.shadowColor = 'transparent'
+  ctx.strokeStyle = THOUGHT_BORDER_COLOR
+  ctx.lineWidth = CLOUD_BORDER
+  ctx.lineJoin = 'round'
+  ctx.stroke(shape)
+  ctx.restore()
+}
+
 function drawSpeakerIcon(ctx: CanvasRenderingContext2D, icon: string, bubble: SpeakerBubble, phone = false) {
   ctx.save()
   ctx.beginPath()
@@ -305,19 +332,23 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * (相手のセリフ) the plain text is tinted and that icon sits beside the
  * first line.
  */
-export async function renderCueImage(cue: SubtitleCue, speaker?: string, phone = false, speakerName?: string): Promise<{ image: Blob; height: number }> {
+export async function renderCueImage(cue: SubtitleCue, speaker?: string, phone = false, speakerName?: string, thought = false): Promise<{ image: Blob; height: number }> {
   const measure = canvasMeasure()
-  const layout = layoutCue(cue, measure, { speaker: Boolean(speaker) })
+  const layout = layoutCue(cue, measure, { speaker: Boolean(speaker) && !thought, thought })
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
 
-  const bubble = speaker ? layout.bubble : undefined
+  const bubble = speaker && !thought ? layout.bubble : undefined
   if (bubble) drawBubble(ctx, bubble)
-  let top = bubble ? bubble.textTop : SUBTITLE_PADDING_Y
-  const plain = speaker ? SPEAKER_TEXT_COLOR : undefined
+  const cloud = layout.cloud
+  if (cloud) drawCloud(ctx, cloud)
+  let top = cloud ? cloud.textTop : bubble ? bubble.textTop : SUBTITLE_PADDING_Y
+  const plain = cloud ? THOUGHT_TEXT_COLOR : speaker ? SPEAKER_TEXT_COLOR : undefined
+  // A thought is a little slanted.
+  const slant = (font: string) => (cloud ? `italic ${font}` : font)
   const drawBlock = (block: TextBlockLayout, font: string) => {
     block.runs.forEach(runs => {
-      ctx.font = font
+      ctx.font = slant(font)
       const y = top + block.lineHeightPx / 2
       drawOutlinedRuns(ctx, runs, width / 2, y, block.fontPx, plain)
       top += block.lineHeightPx
@@ -490,7 +521,7 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.
-    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id), speakerNameOf(look.hook, cue.id))
+    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id), speakerNameOf(look.hook, cue.id), isThought(look.hook, cue.id))
     const position = safeSubtitlePosition(cuePosition(cue, look), height)
     const y = subtitleY(position, SUBTITLE_VIDEO_HEIGHT, height)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })

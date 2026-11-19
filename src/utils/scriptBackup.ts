@@ -37,8 +37,15 @@ function isShot(value: unknown): value is Shot {
     isOptional(shot.heard, 'boolean') &&
     isOptional(shot.speaker, 'string') &&
     isOptional(shot.speakerName, 'string') &&
-    isOptional(shot.voice, 'string')
+    isOptional(shot.voice, 'string') &&
+    isOptional(shot.thought, 'boolean')
   )
+}
+
+function isCard(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const card = value as Record<string, unknown>
+  return typeof card.id === 'string' && typeof card.afterShotId === 'string' && typeof card.text === 'string' && isOptional(card.background, 'string')
 }
 
 function isScript(value: unknown): value is Script {
@@ -51,6 +58,7 @@ function isScript(value: unknown): value is Script {
     typeof script.updatedAt === 'string' &&
     isOptional(script.caption, 'string') &&
     isOptional(script.scene, 'string') &&
+    (script.cards === undefined || (Array.isArray(script.cards) && script.cards.every(isCard))) &&
     Array.isArray(script.shots) &&
     script.shots.every(isShot)
   )

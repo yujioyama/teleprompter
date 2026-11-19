@@ -2,7 +2,7 @@ import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import type { HeardPlan } from '../heardShot'
 import { reduceNoise } from '../denoise'
 import { heardZoomTo } from '../heardZoom'
-import { levelVoice, shapeVoice, type HeardVoice } from '../voiceEffects'
+import { levelVoice, shapeVoice, thinkingVoice, type HeardVoice, type ThoughtEcho } from '../voiceEffects'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 import { normalizeShotWebCodecs } from './normalizeShot'
 import { OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE } from './support'
@@ -14,6 +14,9 @@ const EDGE_FADE_S = 0.01
  * The clip of a 相手のセリフ shot (see planHeardShot): the listening stretch
  * of `take` encoded as any shot is, with the audio replaced by the part of
  * the take where the line is spoken, in `voice` (see shapeVoice).
+ *
+ * `thought` (心の声): the voice is kept as it is, echoed (see thinkingVoice),
+ * and `voice` is not used.
  *
  * `voiceSource`, when given, is where the line's voice is taken from in place
  * of the take: a recording made ahead in the camera app (see
@@ -28,6 +31,7 @@ export async function buildHeardShotWebCodecs(
   plan: HeardPlan,
   voice?: HeardVoice,
   voiceSource?: Blob,
+  thought?: ThoughtEcho,
 ): Promise<Blob> {
   const picture = await normalizeShotWebCodecs(take, plan.listen.start, plan.listen.end, undefined, [], undefined, {
     stretch: plan.stretch,
@@ -43,7 +47,9 @@ export async function buildHeardShotWebCodecs(
     const seconds = await videoTrack.computeDuration()
     const spoken = lineOf(await decodeAudioTrack(audioTrack), plan.voice.start, plan.voice.end)
     // Whatever the effect did to its level, and however softly it was said, as loud as our own lines.
-    const shaped = levelVoice(Float32Array.from(shapeVoice(spoken.samples, spoken.sampleRate, voice)), spoken.sampleRate)
+    // 心の声: our own voice, with the echo of a thought; else the other person's voice.
+    const voiced = thought ? thinkingVoice(spoken.samples, spoken.sampleRate, thought) : shapeVoice(spoken.samples, spoken.sampleRate, voice)
+    const shaped = levelVoice(Float32Array.from(voiced), spoken.sampleRate)
     return await muxWithAudio(videoTrack, await renderVoice(shaped, spoken.sampleRate, seconds))
   } finally {
     source.dispose()

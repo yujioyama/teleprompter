@@ -5,6 +5,7 @@ import SubtitlePositionSettings from '../components/SubtitlePositionSettings'
 import ScriptBackup from '../components/ScriptBackup'
 import { VOICE_PRESET_OPTIONS } from '../utils/voicePreset'
 import { NOISE_REDUCTION_OPTIONS } from '../utils/ownVoiceNoise'
+import { THOUGHT_ECHOES, THOUGHT_ECHO_LABELS } from '../utils/voiceEffects'
 import styles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
@@ -51,6 +52,26 @@ export default function SettingsPage() {
                 onClick={() => updateSettings({ noiseReduction: o.value })}
               >
                 {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${styles.row} ${styles.sliderRow}`}>
+          <div>
+            <div className={styles.rowLabel}>心の声のエコー</div>
+            <div className={styles.rowSub}>心の声の行に、インポートのときにかけるエコーの強さです（声そのものは自分の声のまま）</div>
+          </div>
+          <div className={styles.presets} role="group" aria-label="心の声のエコー">
+            {THOUGHT_ECHOES.map(echo => (
+              <button
+                key={echo}
+                type="button"
+                className={`${styles.presetBtn} ${settings.thoughtEcho === echo ? styles.presetBtnActive : ''}`}
+                aria-pressed={settings.thoughtEcho === echo}
+                onClick={() => updateSettings({ thoughtEcho: echo })}
+              >
+                {THOUGHT_ECHO_LABELS[echo]}
               </button>
             ))}
           </div>

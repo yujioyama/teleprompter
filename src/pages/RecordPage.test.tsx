@@ -339,6 +339,47 @@ describe('RecordPage 相手のセリフ', () => {
     expect(stored().heard).toBeUndefined()
   })
 
+  describe('心の声', () => {
+    function seedThought() {
+      const script = seedScript()
+      script.shots = script.shots.map(shot => (shot.id === SHOT_1 ? { ...shot, thought: true } : shot))
+      script.cards = [{ id: 'card-a', afterShotId: SHOT_1, text: '2 days later' }]
+      localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+      return script
+    }
+
+    it('puts our own voice, echoed as set, over the thinking face', async () => {
+      vi.mocked(makeHeardShotFromVoice).mockClear()
+      localStorage.setItem('teleprompter_settings', JSON.stringify({ thoughtEcho: 'strong' }))
+      renderRecordPage(seedThought().id)
+      expect(screen.getByText('💭 心の声')).toBeInTheDocument()
+      const voice = new File(['v'], `TeleprompterCam-abc-voice-thought-shot1of3-${SHOT_1}.m4a`, { type: 'audio/x-m4a' })
+      selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+        videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+        voice,
+      ])
+      await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+      const call = vi.mocked(makeHeardShotFromVoice).mock.calls[0]
+      expect(call[1]).toBe(voice)
+      expect(call[2]).toBeUndefined()
+      expect(call[3]).toBe('strong')
+      expect(processRecordedVideo).not.toHaveBeenCalled()
+    })
+
+    it('shows where the card goes, and switches a line between 相手 and 心の声', () => {
+      renderRecordPage(seedThought().id)
+      expect(screen.getByText(/このあとにカード「2 days later」が入ります/)).toBeInTheDocument()
+      fireEvent.click(screen.getByText(/このショットの設定/))
+      fireEvent.click(screen.getByLabelText('相手のセリフ'))
+      const shot = () => (JSON.parse(localStorage.getItem('teleprompter_scripts')!) as Script[])[0].shots[0]
+      expect(shot().heard).toBe(true)
+      expect(shot().thought).toBeUndefined()
+      fireEvent.click(screen.getByLabelText('心の声'))
+      expect(shot().thought).toBe(true)
+      expect(shot().heard).toBeUndefined()
+    })
+  })
+
   it('saves the voice over the listening for such a shot, and the take as it is for the others', async () => {
     renderRecordPage(seedHeard().id)
     await importShot1()

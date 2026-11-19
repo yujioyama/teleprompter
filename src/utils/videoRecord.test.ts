@@ -162,3 +162,23 @@ describe('buildVideoRecord for a one-take script', () => {
     expect(build({ burn: BURN }).effects).not.toHaveProperty('lineImages')
   })
 })
+
+describe('cards and 心の声 in the record', () => {
+  it('keeps each card by the line it follows, and the thought lines', () => {
+    const script: Script = {
+      ...SCRIPT,
+      shots: [SCRIPT.shots[0], { ...SCRIPT.shots[1], thought: true }, SCRIPT.shots[2]],
+      cards: [{ id: 'k', afterShotId: 'b', text: '2 days later' }],
+    }
+    const record = build({ script })
+    expect(record.effects.cards).toEqual([{ afterLine: 2, text: '2 days later' }])
+    expect(record.effects.thought).toEqual([2])
+    expect(parseVideoRecord(record)).toEqual(record)
+  })
+
+  it('leaves both out when there are none', () => {
+    const record = build()
+    expect(record.effects).not.toHaveProperty('cards')
+    expect(record.effects).not.toHaveProperty('thought')
+  })
+})

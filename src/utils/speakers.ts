@@ -26,12 +26,24 @@ export const PHONE_BADGE = '📞'
  * with the icon above it (see layoutCue). Unchanged for a script that is all one voice.
  */
 export function withSpeakers(hook: HookOptions, cues: SubtitleCue[], inputs: ShotCueInput[]): HookOptions {
-  if (!inputs.some(input => input.speaker)) return hook
-  const speakers: CueSpeaker[] = cuesByShot(cues, inputs.map(input => input.duration)).flatMap((group, i) => {
+  if (!inputs.some(input => input.speaker || input.thought)) return hook
+  const groups = cuesByShot(cues, inputs.map(input => input.duration))
+  const speakers: CueSpeaker[] = groups.flatMap((group, i) => {
     const { speaker: icon, phone, speakerName: name } = inputs[i]
     return icon ? group.map(cue => ({ cueId: cue.id, icon, ...(phone ? { phone: true } : {}), ...(name ? { name } : {}) })) : []
   })
-  return speakers.length > 0 ? { ...hook, speakers } : hook
+  // 心の声: those lines' cues go in a thought cloud.
+  const thoughts = groups.flatMap((group, i) => (inputs[i].thought ? group.map(cue => cue.id) : []))
+  return {
+    ...hook,
+    ...(speakers.length > 0 ? { speakers } : {}),
+    ...(thoughts.length > 0 ? { thoughts } : {}),
+  }
+}
+
+/** Whether `cueId` is a 心の声 (see withSpeakers). */
+export function isThought(hook: Pick<HookOptions, 'thoughts'> | undefined, cueId: string): boolean {
+  return Boolean(hook?.thoughts?.includes(cueId))
 }
 
 /** The icon beside `cueId`'s subtitle, or undefined for our own line. */
