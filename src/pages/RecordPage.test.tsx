@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { IDBFactory } from 'fake-indexeddb'
 import RecordPage from './RecordPage'
 import { Script } from '../types'
+import { getCardVoice } from '../utils/cardVoiceStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { processRecordedVideo } from '../utils/processRecordedVideo'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
@@ -502,5 +503,47 @@ describe('RecordPage 相手のセリフ', () => {
     renderRecordPage(seedHeard({ oneTake: true, shots: [{ id: SHOT_1, text: 'ショット1' }] }).id)
     fireEvent.click(screen.getByText(/このショットの設定/))
     expect(screen.queryByLabelText('相手のセリフ')).not.toBeInTheDocument()
+  })
+})
+
+describe('RecordPage card voices from teleprompter-cam', () => {
+  function seedCards(): Script {
+    const script: Script = {
+      ...seedScript(),
+      cards: [{ id: 'card-1', afterShotId: SHOT_1, text: '2日後' }],
+    }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    return script
+  }
+  const cardVoice = (shot: string) =>
+    new File(['c'], `TeleprompterCam-abc-voice-card-shot1of3-${shot}.m4a`, { type: 'audio/x-m4a' })
+
+  it('saves a card voice for the card that follows the shot, and imports the take as usual', async () => {
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      cardVoice(SHOT_1),
+    ])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+    expect(await getCardVoice('script-1', 'card-1')).not.toBeNull()
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+  })
+
+  it('saves card voices picked alone and says so, with no error', async () => {
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [cardVoice(SHOT_1)])
+    expect(await screen.findByText('カードの声を保存しました（1枚）')).toBeInTheDocument()
+    expect(screen.queryByText(/動画も一緒に/)).not.toBeInTheDocument()
+    expect(await getCardVoice('script-1', 'card-1')).not.toBeNull()
+  })
+
+  it('ignores a card voice for a shot no card follows', async () => {
+    renderRecordPage(seedCards().id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      cardVoice(SHOT_2),
+    ])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+    expect(await getCardVoice('script-1', 'card-1')).toBeNull()
   })
 })

@@ -31,14 +31,25 @@ export function isVoiceFile(file: Pick<File, 'name' | 'type'>): boolean {
  * null for an older file, or a name the app doesn't know.
  */
 export function voiceOfVoiceFile(filename: string): HeardVoice | null {
+  if (isCardVoiceFile({ name: filename })) return null
   const match = /-voice-([A-Za-z]+)-shot\d+of\d+-/.exec(filename)
   return match && isHeardVoice(match[1]) ? match[1] : null
+}
+
+/**
+ * The narrator voice of a 挿入カード, saved next to the takes as
+ *   TeleprompterCam-<sessionTag>-voice-card-shot<index>of<count>-<shot.id>.m4a
+ * where <shot.id> is the shot the card follows. Not a line's voice.
+ */
+export function isCardVoiceFile(file: Pick<File, 'name'>): boolean {
+  return /-voice-card-shot\d+of\d+-/.test(file.name)
 }
 
 /** The picked voice files by the shot they're for; ones naming no shot are left out. */
 export function voicesByShotId(files: File[]): Map<string, File> {
   const voices = new Map<string, File>()
   for (const file of files) {
+    if (isCardVoiceFile(file)) continue
     const id = extractShotId(file.name)
     if (id) voices.set(id, file)
   }

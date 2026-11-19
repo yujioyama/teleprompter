@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType, type ProcessedVideo } from '../utils/processRecordedVideo'
-import { isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
+import { isCardVoiceFile, extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
 import { DEVICE_RESTART_HINT, heardShotFailureText, makeHeardShot, makeHeardShotFromVoice, needsDeviceRestart } from '../utils/heardShot'
@@ -17,7 +17,8 @@ import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
-import { camShotsOf, cardAfterShot } from '../utils/insertCard'
+import { saveCardVoice } from '../utils/cardVoiceStore'
+import { camShotsOf, cardAfterShot, cardsInOrder } from '../utils/insertCard'
 import styles from './RecordPage.module.css'
 
 export default function RecordPage() {
@@ -34,6 +35,7 @@ export default function RecordPage() {
   const [shotSettingsOpen, setShotSettingsOpen] = useState(false)
   const [shotListOpen, setShotListOpen] = useState(false)
   const [bulkImportError, setBulkImportError] = useState<string | null>(null)
+  const [bulkImportNotice, setBulkImportNotice] = useState<string | null>(null)
   const [bulkImportProgress, setBulkImportProgress] = useState<{ done: number; total: number } | null>(null)
 
   // Scroll the prompt text back to the top whenever another shot comes up —
@@ -83,9 +85,37 @@ export default function RecordPage() {
     if (picked.length === 0) return
     if (bulkImportProgress) return // a bulk import is already running
 
-    // 相手のセリフ voices recorded ahead in the camera app come picked with the takes.
-    const voices = voicesByShotId(picked.filter(isVoiceFile))
-    const files = picked.filter(file => !isVoiceFile(file))
+    setBulkImportNotice(null)
+    // 挿入カード voices come picked with the takes too: each goes to the card after the shot named in its file.
+    const cardVoices = picked.filter(isCardVoiceFile)
+    const rest = picked.filter(file => !isCardVoiceFile(file))
+    // 相手のセリフ voices recorded ahead in the camera app likewise.
+    const voices = voicesByShotId(rest.filter(isVoiceFile))
+    const files = rest.filter(file => !isVoiceFile(file))
+    if (cardVoices.length > 0) {
+      const cardOfShot = new Map(cardsInOrder(safeScript).map(({ card }) => [card.afterShotId, card.id]))
+      const saving = Promise.all(cardVoices.map(async file => {
+        const shotId = extractShotId(file.name)
+        const cardId = shotId ? cardOfShot.get(shotId) : undefined
+        if (!cardId) return false
+        await saveCardVoice(safeScript.id, cardId, file)
+        return true
+      }))
+      if (files.length === 0 && voices.size === 0) {
+        setBulkImportError(null)
+        saving
+          .then(saved => {
+            const count = saved.filter(Boolean).length
+            if (count > 0) setBulkImportNotice(`カードの声を保存しました（${count}枚）`)
+          })
+          .catch(err => {
+            console.error('Saving card voices failed', err)
+            setBulkImportError('カードの声を保存できませんでした。')
+          })
+        return
+      }
+      saving.catch(err => console.error('Saving card voices failed', err))
+    }
     if (files.length === 0) {
       setBulkImportError('相手の声のファイルだけが選ばれています。動画も一緒に選んでください。')
       return
@@ -294,6 +324,9 @@ export default function RecordPage() {
         </p>
         {bulkImportError && (
           <p className={styles.persistError}>{bulkImportError}</p>
+        )}
+        {bulkImportNotice && (
+          <p className={styles.importNotice}>{bulkImportNotice}</p>
         )}
         <button
           className={styles.finalizeBtn}
@@ -526,6 +559,10 @@ export default function RecordPage() {
 
           {!bulkImportProgress && bulkImportError && (
             <p className={styles.persistError}>{bulkImportError}</p>
+          )}
+
+          {!bulkImportProgress && bulkImportNotice && (
+            <p className={styles.importNotice}>{bulkImportNotice}</p>
           )}
         </div>
       </div>

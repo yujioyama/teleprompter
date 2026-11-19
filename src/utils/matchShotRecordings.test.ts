@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from './matchShotRecordings'
+import { extractShotId, isCardVoiceFile, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from './matchShotRecordings'
 import { Shot } from '../types'
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
@@ -121,5 +121,22 @@ describe('voiceOfVoiceFile', () => {
 
   it('still matches a named file to its shot', () => {
     expect(extractShotId(`TeleprompterCam-ab12-voice-olderWoman-shot2of5-${id}.m4a`)).toBe(id)
+  })
+})
+
+describe('card voice files', () => {
+  const card = file(`TeleprompterCam-x-voice-card-shot2of5-${SHOT_2}.m4a`)
+  const line = file(`TeleprompterCam-x-voice-shot2of5-${SHOT_2}.m4a`)
+
+  it('tells a card voice from a line voice', () => {
+    expect(isCardVoiceFile(card)).toBe(true)
+    expect(isCardVoiceFile(line)).toBe(false)
+    expect(isCardVoiceFile(file(`TeleprompterCam-x-voice-kid-shot2of5-${SHOT_2}.m4a`))).toBe(false)
+  })
+
+  it('keeps a card voice out of the line voices of the same shot', () => {
+    expect(voicesByShotId([line, card]).get(SHOT_2)).toBe(line)
+    expect(voicesByShotId([card]).size).toBe(0)
+    expect(voiceOfVoiceFile(card.name)).toBeNull()
   })
 })
