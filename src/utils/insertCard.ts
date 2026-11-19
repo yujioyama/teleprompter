@@ -13,6 +13,16 @@ import type { ShotCueInput } from './subtitleCues'
 /** How long a card is up, in seconds. */
 export const CARD_SECONDS = 1.8
 
+/** A card's voice (挿入カードの声) starts this far in: after the pop. */
+export const CARD_VOICE_START_S = 0.25
+/** The card stays up this long after its voice ends. */
+export const CARD_VOICE_TAIL_S = 0.4
+
+/** How long a card is up with a voice `voiceSeconds` long (none: CARD_SECONDS). Never shorter than CARD_SECONDS. */
+export function cardSecondsFor(voiceSeconds: number | undefined): number {
+  return voiceSeconds === undefined ? CARD_SECONDS : Math.max(CARD_SECONDS, CARD_VOICE_START_S + voiceSeconds + CARD_VOICE_TAIL_S)
+}
+
 /** Each letter pops in this long, from POP_FROM to a little past full size and back. */
 export const POP_SECONDS = 0.22
 /** The next letter's pop starts this much later than the one before. */

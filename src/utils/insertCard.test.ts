@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CARD_SECONDS,
+  cardSecondsFor,
   TILT_MAX_DEGREES,
   TILT_MIN_DEGREES,
   TILT_SECONDS,
@@ -205,5 +206,16 @@ describe('card clips on the joined timeline', () => {
   it('knows where each card is up', () => {
     const joined = withCardClips([clip('a', 2), clip('b', 3), clip('c', 1)], [card], c => c.clip)
     expect(cardSpansOf(joined)).toEqual([{ start: 5, end: 5 + CARD_SECONDS }])
+  })
+})
+
+describe('cardSecondsFor', () => {
+  it('keeps the card as long as it is without a voice or with a short one', () => {
+    expect(cardSecondsFor(undefined)).toBe(1.8)
+    expect(cardSecondsFor(0.5)).toBe(1.8)
+  })
+
+  it('makes the card last until the voice and a moment after it are over', () => {
+    expect(cardSecondsFor(2)).toBeCloseTo(2.65)
   })
 })
