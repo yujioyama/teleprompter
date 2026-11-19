@@ -1,4 +1,5 @@
 import type { Script } from '../types'
+import { DEFAULT_CARD_BACKGROUND } from '../../shared/inbox'
 import type { ShotClip } from './shotEncoding'
 import { CARD_SECONDS, cardAudioOf, cardBackgroundOf, cardClipId, cardsInOrder, cardTextOf } from './insertCard'
 export { cardClipId, isCardClip, cardSpansOf, cardCueInput } from './insertCard'
@@ -21,7 +22,7 @@ const made = new Map<string, Promise<Blob>>()
 
 /**
  * The clips of a script's cards, drawn and encoded once each. A card whose
- * background picture can't be got is drawn on paper instead; with no
+ * background picture can't be got is drawn on the usual background instead; with no
  * WebCodecs, there are no cards (the takes still join as before), and the
  * failure says so.
  */
@@ -33,7 +34,7 @@ export async function cardClipsOf(script: Pick<Script, 'cards' | 'cardAudio' | '
   const clips: CardClip[] = []
   for (const { card } of cards) {
     const text = cardTextOf(card.text)
-    const key = JSON.stringify([text, card.background ?? 'paper', sound])
+    const key = JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound])
     let blob = made.get(key)
     if (!blob) {
       blob = drawCard(text, card.background, sound, inboxKey)
@@ -59,8 +60,8 @@ async function drawCard(text: string, backgroundText: string | undefined, sound:
       if (!stored) throw new Error('image not stored')
       image = await createImageBitmap(stored.blob)
     } catch (err) {
-      console.warn('[cardClips] could not get the card background, using paper:', err)
-      background = { kind: 'named', name: 'paper' }
+      console.warn('[cardClips] could not get the card background, using the usual one:', err)
+      background = { kind: 'named', name: DEFAULT_CARD_BACKGROUND }
     }
   }
   try {

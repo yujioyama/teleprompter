@@ -16,7 +16,7 @@ import { SCENE_MAX_LENGTH } from '../utils/sceneLabel'
 import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type VideoType } from '../types'
 import InsertCardEditor, { type EditorCard } from '../components/InsertCardEditor'
 import { DEFAULT_CARD_TEXT, cardAudioOf } from '../utils/insertCard'
-import { isCardBackgroundName } from '../../shared/inbox'
+import { DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import styles from './ScriptEditPage.module.css'
 
@@ -304,7 +304,7 @@ export default function ScriptEditPage() {
       const shot = shots[cardIndexOf(card)]
       const text = card.text.trim()
       if (!shot || !text) return []
-      const background = card.background && (isCardBackgroundName(card.background) || card.background.startsWith('https://')) && card.background !== 'paper' ? card.background : undefined
+      const background = card.background && (isCardBackgroundName(card.background) || card.background.startsWith('https://')) && card.background !== DEFAULT_CARD_BACKGROUND ? card.background : undefined
       return [{ id: card.id, afterShotId: shot.id, text, ...(background ? { background } : {}) }]
     })
   }

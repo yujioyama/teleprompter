@@ -100,13 +100,15 @@ export interface InboxCard {
   afterLine: number
   /** One short English line, e.g. "2 days later". */
   text: string
-  /** One of CARD_BACKGROUNDS, or an https image URL; absent for the first of those. */
+  /** One of CARD_BACKGROUNDS, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
   background?: string
 }
 
 /** The backgrounds the app has for a card, when no image is given. */
-export const CARD_BACKGROUNDS = ['paper', 'peach', 'mint'] as const
+export const CARD_BACKGROUNDS = ['grape', 'night', 'paper', 'peach', 'mint'] as const
 export type CardBackgroundName = (typeof CARD_BACKGROUNDS)[number]
+/** The background a card gets when none is named. */
+export const DEFAULT_CARD_BACKGROUND: CardBackgroundName = 'grape'
 
 export function isCardBackgroundName(value: unknown): value is CardBackgroundName {
   return typeof value === 'string' && (CARD_BACKGROUNDS as readonly string[]).includes(value)

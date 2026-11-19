@@ -40,7 +40,7 @@ export interface ScriptCard {
   id: string
   afterShotId: string
   text: string
-  /** A CARD_BACKGROUNDS name, or an https image URL; absent for 'paper'. */
+  /** A CARD_BACKGROUNDS name, or an https image URL; absent for DEFAULT_CARD_BACKGROUND. */
   background?: string
 }
 

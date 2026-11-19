@@ -7,6 +7,8 @@ import {
   camShotsOf,
   cardAfterShot,
   cardBackgroundOf,
+  cardLinesOf,
+  letterCutsOf,
   cardClipId,
   cardRecordsOf,
   cardSpansOf,
@@ -83,14 +85,38 @@ describe('wobblesOf', () => {
 })
 
 describe('the card text', () => {
-  it('fits one line within the width, centered', () => {
-    const measure = (text: string, font: string) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.6
-    const layout = layoutCardText('A very long card that goes on', 1080, measure)
-    const left = layout.letters[0].x
-    const last = layout.letters.at(-1)!
-    expect(left).toBeGreaterThan(0)
-    expect(last.x + last.width).toBeLessThan(1080)
-    expect(left).toBeCloseTo(1080 - (last.x + last.width))
+  const measure = (text: string, font: string) => text.length * Number(/(\d+)px/.exec(font)![1]) * 0.6
+
+  it('is in capitals, on two lines split near the middle when it is long', () => {
+    expect(cardLinesOf('2 days later')).toEqual(['2 DAYS', 'LATER'])
+    expect(cardLinesOf('That night')).toEqual(['THAT', 'NIGHT'])
+    expect(cardLinesOf('Later')).toEqual(['LATER'])
+    expect(cardLinesOf('Meanwhile...')).toEqual(['MEANWHILE...'])
+  })
+
+  it('cuts each letter its own way, the same way every time', () => {
+    const cuts = letterCutsOf('2DAYSLATER')
+    expect(new Set(cuts.map(c => c.rotate.toFixed(2))).size).toBeGreaterThan(5)
+    for (const cut of cuts) {
+      expect(Math.abs(cut.rotate)).toBeLessThanOrEqual(7)
+      expect(cut.scaleY).toBeGreaterThan(1)
+    }
+    expect(letterCutsOf('2DAYSLATER')).toEqual(cuts)
+  })
+
+  it('fits every line within the width, each centered, the lines around the middle', () => {
+    const layout = layoutCardText('Two days later....', 1080, measure)
+    const rows = [...new Set(layout.letters.map(l => l.y))]
+    expect(rows).toHaveLength(2)
+    expect((rows[0] + rows[1]) / 2).toBeCloseTo(960)
+    for (const y of rows) {
+      const row = layout.letters.filter(l => l.y === y)
+      const left = row[0].x
+      const right = row.at(-1)!.x + row.at(-1)!.width
+      expect(left).toBeGreaterThan(0)
+      expect(right).toBeLessThan(1080)
+      expect(left).toBeCloseTo(1080 - right)
+    }
   })
 })
 
@@ -107,12 +133,12 @@ describe('cardPopSamples', () => {
 })
 
 describe('cardBackgroundOf', () => {
-  it('is paper unless one of the others or an https picture is named', () => {
-    expect(cardBackgroundOf(undefined)).toEqual({ kind: 'named', name: 'paper' })
+  it('is grape unless one of the others or an https picture is named', () => {
+    expect(cardBackgroundOf(undefined)).toEqual({ kind: 'named', name: 'grape' })
     expect(cardBackgroundOf('peach')).toEqual({ kind: 'named', name: 'peach' })
-    expect(cardBackgroundOf('neon')).toEqual({ kind: 'named', name: 'paper' })
+    expect(cardBackgroundOf('neon')).toEqual({ kind: 'named', name: 'grape' })
     expect(cardBackgroundOf('https://x.test/a.jpg')).toEqual({ kind: 'image', url: 'https://x.test/a.jpg' })
-    expect(cardBackgroundOf('http://x.test/a.jpg')).toEqual({ kind: 'named', name: 'paper' })
+    expect(cardBackgroundOf('http://x.test/a.jpg')).toEqual({ kind: 'named', name: 'grape' })
   })
 })
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CARD_BACKGROUNDS, CARD_TEXT_MAX_LENGTH, isCardBackgroundName } from '../../shared/inbox'
+import { CARD_BACKGROUNDS, CARD_TEXT_MAX_LENGTH, DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
 import { CARD_BACKGROUND_LABELS, CARD_SECONDS, cardBackgroundOf, wobblesOf } from '../utils/insertCard'
 import { drawCardFrame, layoutCardText } from '../utils/drawInsertCard'
 import styles from './InsertCardEditor.module.css'
@@ -49,7 +49,7 @@ export function InsertCardPreview({ text, background }: { text: string; backgrou
       return ctx.measureText(t).width
     })
     const wobbles = wobblesOf(layout.letters.map(l => l.ch).join(''))
-    const shownBackground = parsed.kind === 'image' && !image ? { kind: 'named' as const, name: 'paper' as const } : parsed
+    const shownBackground = parsed.kind === 'image' && !image ? { kind: 'named' as const, name: DEFAULT_CARD_BACKGROUND } : parsed
     const started = performance.now()
     let frame = 0
     const draw = (now: number) => {
@@ -77,7 +77,7 @@ interface InsertCardEditorProps {
 export default function InsertCardEditor({ card, onChange, onRemove }: InsertCardEditorProps) {
   const isImage = cardBackgroundOf(card.background).kind === 'image'
   const [urlDraft, setUrlDraft] = useState(isImage ? (card.background ?? '') : '')
-  const choice = isImage || (card.background !== undefined && !isCardBackgroundName(card.background) && card.background !== '') ? 'image' : (card.background ?? 'paper')
+  const choice = isImage || (card.background !== undefined && !isCardBackgroundName(card.background) && card.background !== '') ? 'image' : (card.background ?? DEFAULT_CARD_BACKGROUND)
   return (
     <div className={styles.card} data-testid="insert-card">
       <div className={styles.fields}>
@@ -97,7 +97,7 @@ export default function InsertCardEditor({ card, onChange, onRemove }: InsertCar
           onChange={e => {
             const value = e.target.value
             if (value === 'image') onChange({ ...card, background: urlDraft.startsWith('https://') ? urlDraft : 'image' })
-            else onChange({ ...card, background: value === 'paper' ? undefined : value })
+            else onChange({ ...card, background: value === DEFAULT_CARD_BACKGROUND ? undefined : value })
           }}
         >
           {CARD_BACKGROUNDS.map(name => (

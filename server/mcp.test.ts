@@ -103,7 +103,7 @@ describe('handleMcpRequest', () => {
         script: 'A\nB\nC\nD\nE\nF\nG',
         heard: [2],
         thought: [5, 3, 5],
-        cards: [{ afterLine: 6, text: '2 days later' }, { afterLine: 1, text: 'That night', background: 'peach' }, { afterLine: 3, text: 'Meanwhile', background: 'paper' }],
+        cards: [{ afterLine: 6, text: '2 days later' }, { afterLine: 1, text: 'That night', background: 'peach' }, { afterLine: 3, text: 'Meanwhile', background: 'grape' }],
       }), deps)
       const { result } = await res.json()
       expect(result.isError).toBeUndefined()
