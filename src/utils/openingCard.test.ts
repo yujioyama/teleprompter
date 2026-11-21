@@ -8,6 +8,8 @@ import {
   OPENING_VOICE_AT_S,
   OPENING_WIPE_S,
   charTimesFromWords,
+  coverTimeOf,
+  jaTypedCount,
   cursorShows,
   layoutOpening,
   matchWords,
@@ -141,5 +143,32 @@ describe('openingCardPlanOf', () => {
     const plan = openingCardPlanOf({ text: 'Hi', ja: 'やあ' }, { key: 'v1', timing: { seconds: 1 } })!
     expect(plan).toMatchObject({ text: 'Hi', ja: 'やあ', voiceKey: 'v1' })
     expect(plan.timing.voiceAt).toBe(OPENING_VOICE_AT_S)
+  })
+})
+
+describe('the Japanese, typed alongside', () => {
+  const timing = openingTimingOf(TEXT, { seconds: 2 })
+
+  it('starts with the English and is all in when the English is', () => {
+    expect(jaTypedCount(timing, 10, timing.charTimes[0] - 0.01)).toBe(0)
+    expect(jaTypedCount(timing, 10, timing.charTimes[0])).toBe(1)
+    expect(jaTypedCount(timing, 10, (timing.charTimes[0] + timing.typedEnd) / 2)).toBeGreaterThan(3)
+    expect(jaTypedCount(timing, 10, timing.typedEnd)).toBe(10)
+  })
+
+  it('lays out a long Japanese line on two lines, each starting where it will end up', () => {
+    const layout = layoutOpening('Hi', 1080, 1920, measure, 'あ'.repeat(60))
+    expect(layout.ja!.lines).toHaveLength(2)
+    expect(layout.ja!.lefts.every(x => x >= 0)).toBe(true)
+  })
+})
+
+describe('the cover', () => {
+  it('is the card with everything typed, before we walk through', () => {
+    const timing = openingTimingOf(TEXT, { seconds: 2 })
+    const t = coverTimeOf(timing)
+    expect(t).toBeGreaterThanOrEqual(timing.typedEnd)
+    expect(t).toBeLessThan(timing.wipeAt)
+    expect(typedCount(timing, t)).toBe([...TEXT].length)
   })
 })

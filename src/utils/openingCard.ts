@@ -1,11 +1,12 @@
 import type { ScriptOpening } from '../types'
 
 /**
- * 冒頭カード: before line 1 plays, its first frame holds under a see-through
- * dark curtain while one English sentence is typed out on it, a letter at a
- * time in a typewriter's font with a blinking cursor. Once the English is in,
- * its Japanese fades in small under it (not typed). When the voice is done,
- * the curtain lifts from the bottom up and line 1 starts. The burn, the
+ * 冒頭カード: before line 1 plays, an indigo shop curtain (暖簾, with 「話」
+ * and a 青海波 hem) hangs over the whole frame while one English sentence is
+ * typed out on it, a letter at a time in a typewriter's font with a blinking
+ * cursor, and its Japanese is typed under it over the same span. When the
+ * voice is done, we walk through: the middle panels are pushed apart like
+ * cloth and the curtain passes over our head into line 1. The burn, the
  * preview and the finished audio all read the same timing from here.
  *
  * The typing follows the recorded voice (the user's own, recorded in the
@@ -231,14 +232,16 @@ export function openingCardPlanOf(opening: ScriptOpening | undefined, voice?: { 
 export const OPENING_FONT_FAMILY = '"Courier New", Courier, Menlo, ui-monospace, monospace'
 export const openingFont = (px: number) => `700 ${px}px ${OPENING_FONT_FAMILY}`
 export const OPENING_JA_FONT_FAMILY = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif'
-export const openingJaFont = (px: number) => `600 ${px}px ${OPENING_JA_FONT_FAMILY}`
+export const openingJaFont = (px: number) => `700 ${px}px ${OPENING_JA_FONT_FAMILY}`
+const MON_FONT = (px: number) => `700 ${px}px "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif`
 
-/** The curtain: dark, with the frame still seen through it. */
-export const OPENING_VEIL = 'rgba(6, 6, 10, 0.64)'
-export const OPENING_INK = '#F3EFE6'
-export const OPENING_JA_INK = 'rgba(243, 239, 230, 0.82)'
-/** The curtain's lower edge is soft over this share of the height as it lifts. */
-const FEATHER_SHARE = 0.04
+export const OPENING_INK = '#F4EFE4'
+export const OPENING_JA_INK = 'rgba(244, 239, 228, 0.92)'
+const INK_SHADOW = 'rgba(0, 0, 20, 0.7)'
+
+/** The drawing's own size: the video's. Smaller canvases scale their context to it. */
+export const OPENING_WIDTH = 1080
+export const OPENING_HEIGHT = 1920
 
 /** The English fills at most this share of the width: TikTok cuts off the sides. */
 const TEXT_WIDTH_SHARE = 0.8
@@ -246,6 +249,7 @@ const TEXT_WIDTH_SHARE = 0.8
 const FONT_MAX_SHARE = 0.064
 const FONT_MIN_SHARE = 0.044
 const JA_SHARE = 0.04
+const JA_MIN_SHARE = 0.03
 const LINE_STEP = 1.38
 /** At most this many lines; past them, the smallest size anyway. */
 const MAX_LINES = 4
@@ -264,7 +268,8 @@ export interface OpeningLayout {
   cursorStart: { x: number; y: number }
   /** A character's advance, the cursor's width. */
   advance: number
-  ja?: { text: string; fontPx: number; y: number }
+  /** The Japanese: its lines, each drawn from `left` (so it doesn't shift as it's typed), the first at `y`. */
+  ja?: { text: string; lines: string[]; fontPx: number; y: number; step: number; lefts: number[] }
 }
 
 /** Word-wrapped lines of `text`, each at most `room` wide. */
@@ -285,10 +290,22 @@ function wrap(text: string, room: number, width: (s: string) => number): string[
   return lines
 }
 
+/** The Japanese on one line as big as fits, down to the smallest; past that, two lines split at the middle. */
+function layoutJa(text: string, width: number, measure: (text: string, font: string) => number): { lines: string[]; fontPx: number } {
+  const room = width * 0.84
+  let fontPx = Math.round(width * JA_SHARE)
+  const min = Math.round(width * JA_MIN_SHARE)
+  while (fontPx > min && measure(text, openingJaFont(fontPx)) > room) fontPx -= 2
+  if (measure(text, openingJaFont(fontPx)) <= room) return { lines: [text], fontPx }
+  const chars = [...text]
+  const half = Math.ceil(chars.length / 2)
+  return { lines: [chars.slice(0, half).join(''), chars.slice(half).join('')], fontPx: Math.round(width * JA_SHARE) }
+}
+
 /**
  * The text laid out as typed: wrapped as the whole sentence will be, each
  * line centered as it will end up, so letters appear in place and nothing
- * shifts while it's typed.
+ * shifts while it's typed. The Japanese likewise.
  */
 export function layoutOpening(text: string, width: number, height: number, measure: (text: string, font: string) => number, ja?: string): OpeningLayout {
   const room = width * TEXT_WIDTH_SHARE
@@ -330,23 +347,28 @@ export function layoutOpening(text: string, width: number, height: number, measu
   const advance = measure('M', font)
   const first = chars[0] ?? { x: width / 2, y: top + fontPx * 0.35 }
   const jaText = ja?.trim()
-  return {
-    fontPx,
-    chars,
-    cursorStart: { x: first.x, y: first.y },
-    advance,
-    ...(jaText
-      ? { ja: { text: jaText, fontPx: Math.round(width * JA_SHARE), y: top + step * (lines.length - 1) + fontPx * (0.35 + JA_GAP) + width * JA_SHARE * 0.5 } }
-      : {}),
+  let jaLayout: OpeningLayout['ja']
+  if (jaText) {
+    const { lines: jaLines, fontPx: jaPx } = layoutJa(jaText, width, measure)
+    const jaStep = jaPx * 1.4
+    jaLayout = {
+      text: jaText,
+      lines: jaLines,
+      fontPx: jaPx,
+      y: top + step * (lines.length - 1) + fontPx * (0.35 + JA_GAP) + jaPx * 0.5,
+      step: jaStep,
+      lefts: jaLines.map(l => (width - measure(l, openingJaFont(jaPx))) / 2),
+    }
   }
+  return { fontPx, chars, cursorStart: { x: first.x, y: first.y }, advance, ...(jaLayout ? { ja: jaLayout } : {}) }
 }
 
 const easeInOut = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2)
 const clamp01 = (p: number) => Math.min(1, Math.max(0, p))
 
-/** How far the curtain has lifted, 0 (down) to 1 (gone), `t` seconds into the card. */
+/** How far through the curtain we've walked, 0 (closed) to 1 (gone), `t` seconds into the card. */
 export function wipeProgress(timing: Pick<OpeningTiming, 'wipeAt'>, t: number): number {
-  return easeInOut(clamp01((t - timing.wipeAt) / OPENING_WIPE_S))
+  return clamp01((t - timing.wipeAt) / OPENING_WIPE_S)
 }
 
 /** How many characters are in `t` seconds into the card. */
@@ -354,6 +376,20 @@ export function typedCount(timing: Pick<OpeningTiming, 'charTimes'>, t: number):
   let n = 0
   while (n < timing.charTimes.length && timing.charTimes[n] <= t + 1e-6) n++
   return n
+}
+
+/**
+ * How many characters of the Japanese are in `t` seconds into the card:
+ * typed alongside the English, over the same span, so it can be read in
+ * the time the English takes.
+ */
+export function jaTypedCount(timing: Pick<OpeningTiming, 'charTimes' | 'typedEnd'>, jaLength: number, t: number): number {
+  if (jaLength === 0 || timing.charTimes.length === 0) return 0
+  const from = timing.charTimes[0]
+  const span = timing.typedEnd - from
+  if (t < from - 1e-6) return 0
+  if (span <= 0 || jaLength === 1) return jaLength
+  return Math.min(jaLength, Math.floor(((t - from) / span) * (jaLength - 1) + 1e-6) + 1)
 }
 
 /** Whether the cursor shows: steady while letters are coming, blinking before and after. */
@@ -367,10 +403,166 @@ export function cursorShows(timing: OpeningTiming, t: number): boolean {
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
+// ---- The 暖簾 ----
+
+/** The rod sits this far down; the cloth hangs from it to below the frame. */
+const NOREN_TOP = 70
+const NOREN_H = OPENING_HEIGHT - NOREN_TOP + 40
+const NOREN_PANELS = 4
+/** Where the panels are cut apart, from the cloth's top. */
+const NOREN_SLIT = 430
+const NOREN_INDIGO = '#1d3559'
+const NOREN_WHITE = 'rgba(240, 236, 226, 0.93)'
+
+function seededRandom(seed: number): () => number {
+  let s = seed
+  return () => (s = (s * 16807) % 2147483647) / 2147483647
+}
+
+let cloth: OffscreenCanvas | null = null
+
 /**
- * The card `t` seconds in, onto `ctx` (`width` × `height`): `background`
- * (line 1's first frame) under the curtain, the letters typed so far and the
- * cursor, the Japanese once it's in; then the curtain lifting off the frame.
+ * The cloth, drawn once and kept: indigo with soft folds and a weave, 「話」 in
+ * a white ring near the top, and 青海波 waves along the hem. Each frame only
+ * cuts it up and moves it.
+ */
+export function norenCloth(): OffscreenCanvas {
+  if (cloth) return cloth
+  const c = new OffscreenCanvas(OPENING_WIDTH, NOREN_H)
+  const g = c.getContext('2d')
+  if (!g) throw new Error('Canvas 2D context unavailable')
+  const W = OPENING_WIDTH
+  const rnd = seededRandom(3)
+  g.fillStyle = NOREN_INDIGO
+  g.fillRect(0, 0, W, NOREN_H)
+  for (let x = 0; x < W; x++) {
+    const b = 0.5 + 0.5 * Math.sin((x / 180) * Math.PI * 2 + 0.7 * Math.sin(x / 233))
+    g.fillStyle = `rgba(0,0,0,${(1 - b) * 0.22})`
+    g.fillRect(x, 0, 1, NOREN_H)
+  }
+  for (let i = 0; i < 20000; i++) {
+    g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)'
+    g.fillRect(rnd() * W, rnd() * NOREN_H, 2, 2 + rnd() * 5)
+  }
+  // 「話」 in a ring.
+  g.lineWidth = 12
+  g.strokeStyle = NOREN_WHITE
+  g.beginPath()
+  g.arc(W / 2, 250, 120, 0, Math.PI * 2)
+  g.stroke()
+  g.font = MON_FONT(150)
+  g.fillStyle = NOREN_WHITE
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.fillText('話', W / 2, 258)
+  // 青海波 along the hem: rows of white and indigo half rings.
+  const r = 64
+  const rows = 7
+  const base = NOREN_H - rows * r * 0.5 - 40
+  g.save()
+  g.beginPath()
+  g.rect(0, base - r, W, NOREN_H - base + r)
+  g.clip()
+  for (let row = 0; row < rows + 2; row++) {
+    const y = base + row * r * 0.5
+    for (let x = -r; x < W + r; x += r * 2) {
+      const cx = x + (row % 2 ? r : 0)
+      for (let k = 4; k >= 1; k--) {
+        g.beginPath()
+        g.arc(cx, y, (r * k) / 4, Math.PI, 0)
+        g.fillStyle = k % 2 ? NOREN_INDIGO : NOREN_WHITE
+        g.fill()
+      }
+    }
+  }
+  g.restore()
+  const shade = g.createLinearGradient(0, 0, 0, NOREN_H)
+  shade.addColorStop(0, 'rgba(0,0,0,0.3)')
+  shade.addColorStop(0.18, 'rgba(0,0,0,0)')
+  shade.addColorStop(1, 'rgba(0,0,0,0.22)')
+  g.fillStyle = shade
+  g.fillRect(0, 0, W, NOREN_H)
+  cloth = c
+  return c
+}
+
+/**
+ * The 暖簾 `t` seconds into the card. Hanging, the air moves the whole cloth
+ * together, so the panels stay edge to edge (only the seams show). Walking
+ * through (`walk` 0→1): the middle two panels are pushed apart first, bending
+ * like cloth (more the further down), the outer two only nudged; then the
+ * cloth comes closer and passes over the top of the frame.
+ */
+function drawNoren(ctx: Ctx, t: number, walk: number): void {
+  const W = OPENING_WIDTH
+  const part = easeInOut(clamp01(walk / 0.55))
+  const pass = easeInOut(clamp01((walk - 0.18) / 0.82))
+  if (pass >= 1) return
+  const tex = norenCloth()
+  ctx.save()
+  const s = 1 + pass * 1.25
+  ctx.translate(W / 2, NOREN_TOP)
+  ctx.scale(s, s)
+  ctx.translate(-W / 2, -NOREN_TOP - pass * (NOREN_H * 0.75))
+  const pw = W / NOREN_PANELS
+  const strip = 6
+  const hang = NOREN_H - NOREN_SLIT
+  for (let i = 0; i < NOREN_PANELS; i++) {
+    const x = pw * i
+    const side = i < NOREN_PANELS / 2 ? -1 : 1
+    const reach = i === 1 || i === 2 ? 1 : 0.3
+    for (let y = 0; y < hang; y += strip) {
+      const v = y / hang
+      const bend = Math.pow(v, 1.7)
+      const breeze = (Math.sin(t * 1.4 + v * 2.2) * 7 + Math.sin(t * 2.1 + i) * 1.2) * bend * (1 - part)
+      const push = side * part * reach * 330 * bend
+      const lift = -part * reach * 110 * bend * bend
+      const ripple = Math.sin(v * 5 - t * 7 + i) * 9 * part * reach * v
+      const turn = 1 - 0.28 * part * reach * bend
+      const dx = x + push + breeze + ripple + (side < 0 ? 0 : pw * (1 - turn))
+      const dy = NOREN_TOP + NOREN_SLIT + y + lift
+      // A hair wider than the panel, so neighbours meet with no light between them.
+      ctx.drawImage(tex, x, NOREN_SLIT + y, pw, strip, dx - 0.75, dy, pw * turn + 1.5, strip + 1)
+      const shade = 0.32 * part * reach * bend
+      if (shade > 0.01) {
+        ctx.fillStyle = `rgba(0,0,10,${shade})`
+        ctx.fillRect(dx, dy, pw * turn, strip + 1)
+      }
+      // The seam: a soft shadow where one panel meets the next, its hemmed edge catching light.
+      if (i > 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.38)'
+        ctx.fillRect(dx, dy, 3, strip + 1)
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'
+        ctx.fillRect(dx + 3, dy, 1.5, strip + 1)
+      }
+      if (i < NOREN_PANELS - 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.22)'
+        ctx.fillRect(dx + pw * turn - 2, dy, 2, strip + 1)
+      }
+    }
+  }
+  ctx.drawImage(tex, 0, 0, W, NOREN_SLIT, 0, NOREN_TOP, W, NOREN_SLIT)
+  // Where each slit starts, the stitching that keeps it from tearing.
+  for (let i = 1; i < NOREN_PANELS; i++) {
+    const x = pw * i
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'
+    ctx.fillRect(x - 1.5, NOREN_TOP + NOREN_SLIT - 40, 3, 40)
+    ctx.fillStyle = 'rgba(240,232,215,0.75)'
+    ctx.fillRect(x - 12, NOREN_TOP + NOREN_SLIT - 4, 24, 5)
+  }
+  const rod = ctx.createLinearGradient(0, NOREN_TOP - 26, 0, NOREN_TOP + 16)
+  rod.addColorStop(0, '#9a6b3c')
+  rod.addColorStop(1, '#4b2f17')
+  ctx.fillStyle = rod
+  ctx.fillRect(-40, NOREN_TOP - 26, W + 80, 42)
+  ctx.restore()
+}
+
+/**
+ * The card `t` seconds in, onto `ctx` at the video's size (OPENING_WIDTH ×
+ * OPENING_HEIGHT; scale the context for a smaller canvas): `background`
+ * (line 1's first frame) behind the 暖簾, the letters typed so far with the
+ * cursor and the Japanese typed alongside; then the walk through it.
  */
 export function drawOpeningCard(
   ctx: Ctx,
@@ -378,68 +570,58 @@ export function drawOpeningCard(
   layout: OpeningLayout,
   timing: OpeningTiming,
   t: number,
-  width: number,
-  height: number,
 ): void {
+  const W = OPENING_WIDTH
+  const H = OPENING_HEIGHT
   ctx.save()
-  if (background) ctx.drawImage(background, 0, 0, width, height)
+  if (background) ctx.drawImage(background, 0, 0, W, H)
   else {
     ctx.fillStyle = '#000'
-    ctx.fillRect(0, 0, width, height)
+    ctx.fillRect(0, 0, W, H)
   }
-  const lift = wipeProgress(timing, t)
-  if (lift >= 1) {
-    ctx.restore()
-    return
-  }
-  // The curtain's lower edge, rising from the bottom of the frame to above its top.
-  const feather = height * FEATHER_SHARE
-  const edge = (height + feather) * (1 - lift)
-  ctx.beginPath()
-  ctx.rect(0, 0, width, Math.max(0, edge))
-  ctx.clip()
-  if (lift > 0) {
-    const fade = ctx.createLinearGradient(0, edge - feather, 0, edge)
-    fade.addColorStop(0, OPENING_VEIL)
-    fade.addColorStop(1, 'rgba(6, 6, 10, 0)')
-    ctx.fillStyle = OPENING_VEIL
-    ctx.fillRect(0, 0, width, Math.max(0, edge - feather))
-    ctx.fillStyle = fade
-    ctx.fillRect(0, edge - feather, width, feather)
-  } else {
-    ctx.fillStyle = OPENING_VEIL
-    ctx.fillRect(0, 0, width, height)
-  }
-  // The words go with the curtain, fading as it lifts.
-  ctx.globalAlpha = 1 - clamp01(lift * 1.6)
-  ctx.textBaseline = 'alphabetic'
-  ctx.textAlign = 'left'
-  ctx.font = openingFont(layout.fontPx)
-  ctx.fillStyle = OPENING_INK
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
-  ctx.shadowBlur = layout.fontPx * 0.12
-  const shown = typedCount(timing, t)
-  for (let i = 0; i < shown; i++) {
-    const c = layout.chars[i]
-    if (c && c.ch !== ' ') ctx.fillText(c.ch, c.x, c.y)
-  }
-  if (cursorShows(timing, t)) {
-    const after = shown > 0 ? layout.chars[shown - 1] : null
-    const x = after ? after.x + (after.ch === ' ' ? layout.advance * 0.6 : layout.advance * 1.02) : layout.cursorStart.x
-    const y = after ? after.y : layout.cursorStart.y
-    ctx.shadowBlur = 0
-    ctx.fillRect(x, y - layout.fontPx * 0.78, Math.max(2, layout.fontPx * 0.09), layout.fontPx * 0.95)
-  }
-  if (layout.ja) {
-    const p = clamp01((t - timing.jaAt) / OPENING_JA_FADE_S)
-    if (p > 0) {
-      ctx.globalAlpha *= p
-      ctx.font = openingJaFont(layout.ja.fontPx)
-      ctx.textAlign = 'center'
+  const walk = wipeProgress(timing, t)
+  drawNoren(ctx, t, walk)
+  // The words are on the cloth: they go as soon as it's pushed.
+  const alpha = 1 - clamp01(walk * 3)
+  if (alpha > 0) {
+    ctx.globalAlpha = alpha
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
+    ctx.font = openingFont(layout.fontPx)
+    ctx.fillStyle = OPENING_INK
+    ctx.shadowColor = INK_SHADOW
+    ctx.shadowBlur = layout.fontPx * 0.15
+    ctx.shadowOffsetY = 2
+    const shown = typedCount(timing, t)
+    for (let i = 0; i < shown; i++) {
+      const c = layout.chars[i]
+      if (c && c.ch !== ' ') ctx.fillText(c.ch, c.x, c.y)
+    }
+    if (cursorShows(timing, t)) {
+      const after = shown > 0 ? layout.chars[shown - 1] : null
+      const x = after ? after.x + (after.ch === ' ' ? layout.advance * 0.6 : layout.advance * 1.02) : layout.cursorStart.x
+      const y = after ? after.y : layout.cursorStart.y
+      ctx.shadowBlur = 0
+      ctx.fillRect(x, y - layout.fontPx * 0.78, Math.max(2, layout.fontPx * 0.09), layout.fontPx * 0.95)
+    }
+    if (layout.ja) {
+      const { lines, fontPx, y, step, lefts } = layout.ja
+      let left = jaTypedCount(timing, [...layout.ja.text].length, t)
+      ctx.font = openingJaFont(fontPx)
       ctx.fillStyle = OPENING_JA_INK
-      ctx.shadowBlur = layout.ja.fontPx * 0.15
-      ctx.fillText(layout.ja.text, width / 2, layout.ja.y + (1 - easeInOut(p)) * layout.ja.fontPx * 0.4)
+      ctx.shadowBlur = fontPx * 0.2
+      lines.forEach((line, row) => {
+        const chars = [...line]
+        const n = Math.min(chars.length, left)
+        left -= n
+        if (n > 0) ctx.fillText(chars.slice(0, n).join(''), lefts[row], y + row * step)
+      })
     }
   }
   ctx.restore()
+}
+
+/** The card as it stands just before we walk through: both lines typed, the 暖簾 closed. The video's cover. */
+export function coverTimeOf(timing: OpeningTiming): number {
+  return Math.max(timing.typedEnd + 0.02, timing.wipeAt - 0.01)
 }
