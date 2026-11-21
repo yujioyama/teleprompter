@@ -767,7 +767,7 @@ export default function FinalizePage() {
           cache.prefetch(request)
         }
         // The YouTube version has no cover: its first shot is burned without it.
-        if (cover && youtubeEnabled) {
+        if (cover && youtubeEnabled && !aheadHook.openingCard) {
           cache.prefetch(burnRequestsWithOpening(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd)[0])
         }
       })
@@ -817,7 +817,8 @@ export default function FinalizePage() {
       if (!youtubeEnabled) return
       await preparedAudio.settled()
       if (cancelled) return
-      youtubeAudio.prepare(combinedBlob, { ...key, trackId: youtubeTrack.id, lead: 0 }, () => fetchTrack(youtubeTrack))
+      // With a 冒頭カード the YouTube version is the same burn, its cover and all (see openingInBurn).
+      youtubeAudio.prepare(combinedBlob, { ...key, trackId: youtubeTrack.id, lead: openingCard ? key.lead : 0 }, () => fetchTrack(youtubeTrack))
     })
     return () => {
       cancelled = true
@@ -959,7 +960,12 @@ export default function FinalizePage() {
   // When the burn put the cover in, the YouTube version starts from the
   // burn without it: made once the normal version is ready.
   const youtubeWanted = youtubeEnabled && exportBlob !== null
-  const needsPlain = youtubeWanted && burnedBlob !== null && burnedCover !== null
+  // A burn with the 冒頭カード is the YouTube version's too, cover frames (the card itself) and all:
+  // burning it again without them is one more heavy encode, and on an iPhone a failed one falls
+  // back to burning the whole video at once, which leaves the card out.
+  const openingInBurn = burnedBlob !== null && Boolean(burnInputs?.hook.openingCard)
+  const youtubeCover = burnedCover !== null && !openingInBurn
+  const needsPlain = youtubeWanted && burnedBlob !== null && youtubeCover
   const plain = needsPlain && plainBurned?.of === burnedBlob ? plainBurned : null
   useEffect(() => {
     if (!needsPlain || !burnedBlob || plainBurned?.of === burnedBlob) return
@@ -984,15 +990,15 @@ export default function FinalizePage() {
     voice: voicePreset,
     normalize: normalizeAudio,
   })
-  const youtubeVideo = burnedCover ? (plain?.blob ?? null) : (burnedBlob ?? combinedBlob)
+  const youtubeVideo = youtubeCover ? (plain?.blob ?? null) : (burnedBlob ?? combinedBlob)
   const youtubeSwap = useMemo<YoutubeBgmSwap | null>(
     () =>
       mixed && mixKey && combinedBlob && youtubeVideo
-        ? { source: combinedBlob, video: youtubeVideo, key: { ...mixKey, lead: 0 }, track: youtubeTrack, ahead: youtubeAudio }
+        ? { source: combinedBlob, video: youtubeVideo, key: { ...mixKey, lead: openingInBurn ? mixKey.lead : 0 }, track: youtubeTrack, ahead: youtubeAudio }
         : null,
-    [mixed, mixKey, combinedBlob, youtubeVideo, youtubeTrack, youtubeAudio],
+    [mixed, mixKey, combinedBlob, youtubeVideo, youtubeTrack, youtubeAudio, openingInBurn],
   )
-  const youtubeFinished = !youtubeWanted ? null : !burnedCover ? finishedBlob : mixed ? (youtubeSwap && finishedBlob) : plainFinished
+  const youtubeFinished = !youtubeWanted ? null : !youtubeCover ? finishedBlob : mixed ? (youtubeSwap && finishedBlob) : plainFinished
   const { blob: youtubeBlob, url: youtubeUrl, state: madeYoutubeState } = useYoutubeExport(youtubeFinished, youtubeSwap)
   const youtubeState = plainFailed ? 'failed' : madeYoutubeState
   // Both versions go in one save; one that couldn't be made is left out.
