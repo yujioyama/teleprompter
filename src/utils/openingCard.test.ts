@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  OPENING_AFTER_VOICE_S,
   OPENING_HOLD_S,
   OPENING_SECONDS_PER_CHAR,
   OPENING_TARGET_S,
@@ -38,8 +39,12 @@ describe('openingTimingOf', () => {
     expect(timing.voiceAt).toBe(OPENING_VOICE_AT_S)
     expect(timing.charTimes[0]).toBeCloseTo(OPENING_VOICE_AT_S, 5)
     expect(timing.typedEnd).toBeCloseTo(OPENING_VOICE_AT_S + 2 - OPENING_TYPE_BEFORE_END_S, 3)
-    // The curtain waits for the voice to end.
-    expect(timing.wipeAt).toBeGreaterThanOrEqual(OPENING_VOICE_AT_S + 2)
+    // The curtain lifts just after the voice ends.
+    expect(timing.wipeAt).toBeCloseTo(OPENING_VOICE_AT_S + 2 + OPENING_AFTER_VOICE_S, 3)
+  })
+
+  it('keeps a card with a voice of about 2.5 s within about 4 seconds', () => {
+    expect(openingTimingOf(TEXT, { seconds: 2.5 }).seconds).toBeLessThanOrEqual(OPENING_TARGET_S)
   })
 
   it('grows with a long voice', () => {

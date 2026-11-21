@@ -53,10 +53,11 @@ export const OPENING_TYPE_START_S = 0.35
 export const OPENING_VOICE_AT_S = 0.3
 /** Spread over the voice, the last letter is in this long before it ends. */
 export const OPENING_TYPE_BEFORE_END_S = 0.2
-/** After the last letter, the card waits at least this long (to read the Japanese)… */
+/** Without a voice, the card waits this long after the last letter (to read the Japanese)… */
 export const OPENING_HOLD_S = 0.55
-/** …and after the voice ends, at least this long. */
+/** …with one, the curtain lifts this long after the voice ends, and at least OPENING_VOICE_HOLD_S after the last letter. */
 export const OPENING_AFTER_VOICE_S = 0.15
+export const OPENING_VOICE_HOLD_S = 0.3
 /** The Japanese comes in this long after the last letter, and fades in over OPENING_JA_FADE_S. */
 export const OPENING_JA_DELAY_S = 0.05
 export const OPENING_JA_FADE_S = 0.4
@@ -196,7 +197,9 @@ export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null)
   }
   const typedEnd = charTimes.length > 0 ? charTimes[charTimes.length - 1] : OPENING_TYPE_START_S
   const jaAt = roundTime(typedEnd + OPENING_JA_DELAY_S)
-  const wipeAt = roundTime(Math.max(typedEnd + OPENING_HOLD_S, voiceAt !== null ? voiceEnd + OPENING_AFTER_VOICE_S : 0))
+  const wipeAt = roundTime(voiceAt !== null
+    ? Math.max(voiceEnd + OPENING_AFTER_VOICE_S, typedEnd + OPENING_VOICE_HOLD_S)
+    : typedEnd + OPENING_HOLD_S)
   const seconds = Math.ceil((wipeAt + OPENING_WIPE_S) * FRAME_RATE - 1e-6) / FRAME_RATE
   return { charTimes, typedEnd, jaAt, voiceAt, wipeAt, seconds }
 }
@@ -242,7 +245,7 @@ const TEXT_WIDTH_SHARE = 0.8
 /** Sizes, as shares of the width. */
 const FONT_MAX_SHARE = 0.064
 const FONT_MIN_SHARE = 0.044
-const JA_SHARE = 0.036
+const JA_SHARE = 0.04
 const LINE_STEP = 1.38
 /** At most this many lines; past them, the smallest size anyway. */
 const MAX_LINES = 4
