@@ -1,7 +1,7 @@
 import { ALL_FORMATS, AudioBufferSource, BlobSource, Input, Quality, VideoSample, VideoSampleSink, VideoSampleSource } from 'mediabunny'
 import { createMp4Output, runOutput } from './audioTrack'
 import { OUTPUT_CHANNELS, OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_SAMPLE_RATE, OUTPUT_WIDTH } from './support'
-import { drawOpeningCard, layoutOpening, type OpeningCardPlan } from '../openingCard'
+import { coverTimeOf, drawOpeningCard, layoutOpening, type OpeningCardPlan } from '../openingCard'
 
 /**
  * Line 1's first frame (at `at` seconds into its take) at the output size,
@@ -61,7 +61,7 @@ export async function rawOpeningClipWebCodecs(
   output.addAudioTrack(audioSource)
   const buffer = await runOutput(output, async () => {
     for (let i = 0; i < frames; i++) {
-      drawOpeningCard(ctx, background, layout, timing, i * frameSeconds, OUTPUT_WIDTH, OUTPUT_HEIGHT)
+      drawOpeningCard(ctx, background, layout, timing, i * frameSeconds)
       const sample = new VideoSample(canvas, { timestamp: i * frameSeconds, duration: frameSeconds })
       try {
         await videoSource.add(sample)
@@ -93,4 +93,27 @@ async function openingAudio(seconds: number, voiceAt: number | null, voice?: { s
   node.connect(ctx.destination)
   node.start(voiceAt)
   return ctx.startRendering()
+}
+
+/**
+ * The video's cover when it opens with a 冒頭カード: the card as it stands
+ * just before we walk through (both lines typed, the 暖簾 closed), over line
+ * 1's first frame, as a PNG for the burn's cover frames.
+ */
+export async function openingCoverPng(take: Blob, at: number, plan: OpeningCardPlan): Promise<Blob> {
+  const background = await firstFrameOf(take, at)
+  const canvas = new OffscreenCanvas(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+  try {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas 2D context unavailable')
+    const layout = layoutOpening(plan.text, OUTPUT_WIDTH, OUTPUT_HEIGHT, (t, font) => {
+      ctx.font = font
+      return ctx.measureText(t).width
+    }, plan.ja)
+    drawOpeningCard(ctx, background, layout, plan.timing, coverTimeOf(plan.timing))
+    return await canvas.convertToBlob({ type: 'image/png' })
+  } finally {
+    background.width = 0
+    background.height = 0
+  }
 }

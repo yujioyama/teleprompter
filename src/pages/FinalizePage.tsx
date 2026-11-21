@@ -17,6 +17,7 @@ import {
 import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
 import { burnRequestsWithOpening, burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
 import { useOpeningCard } from '../hooks/useOpeningCard'
+import { openingCoverPng } from '../utils/webcodecs/openingClip'
 import OpeningCardPreview from '../components/OpeningCardPreview'
 import type { OpeningCardPlan } from '../utils/openingCard'
 import type { HookOptions } from '../utils/subtitleHook'
@@ -710,10 +711,25 @@ export default function FinalizePage() {
   // makeCover), made once per 結合 and words; null when it can't be made,
   // and the export puts it in as before.
   const { coverTextPosition, coverStickerSpot: movedCoverSticker, coverFramePlacement, coverFrameSource, coverFrameCount } = settings
-  const coverInBurn = coverFramePlacement === 'first' && coverFrameSource === 'made'
+  // 冒頭カード: the closed 暖簾, both lines typed, is the cover, first, whatever the cover settings say.
+  const openingCover = Boolean(openingCard)
+  const coverInBurn = openingCover || (coverFramePlacement === 'first' && coverFrameSource === 'made')
+  const coverPlacement = openingCover ? 'first' : coverFramePlacement
   const burnCoverCount = clampCoverFrameCount(coverFrameCount)
   const burnCoverFor = useCallback(
-    async (cues: SubtitleCue[]): Promise<BurnCover | undefined> => {
+    async (cues: SubtitleCue[], opening: OpeningCardPlan | null | undefined): Promise<BurnCover | undefined> => {
+      if (opening && combinedBlob) {
+        const key = JSON.stringify(['opening', blobId(combinedBlob), opening])
+        if (burnCoverRef.current?.key !== key) {
+          const png = openingCoverPng(combinedBlob, 0, opening).catch(err => {
+            console.warn('[FinalizePage] could not draw the opening card for the cover:', err)
+            return null
+          })
+          burnCoverRef.current = { key, png }
+        }
+        const image = await burnCoverRef.current.png
+        return image ? { image, count: burnCoverCount } : undefined
+      }
       if (!coverInBurn || !combinedBlob || !script) return undefined
       const words = coverWordsOf(script.shots.map(s => s.text), cues.map(c => c.ja), Boolean(script.lineImages?.length), script.cover)
       const sticker = coverStickerSpot(stickerPlacement, movedCoverSticker)
@@ -744,7 +760,7 @@ export default function FinalizePage() {
     if (aheadCues.length === 0 || !aheadCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     let cancelled = false
     const timer = setTimeout(() => {
-      void burnCoverFor(aheadCues).then(cover => {
+      void burnCoverFor(aheadCues, aheadHook.openingCard).then(cover => {
         if (cancelled) return
         const cache = getEncodeCache()
         for (const request of burnRequestsWithOpening(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd, cover)) {
@@ -843,7 +859,7 @@ export default function FinalizePage() {
   // the voice, the BGM and the subtitles move with it as one. When the burn
   // already put the cover in, nothing is left to do unless it's changed here.
   const madeCoverFrames = coverFrameSource === 'made'
-  const coverImage = madeCoverFrames ? madeCover.png : pickedCover
+  const coverImage = openingCover ? (burnedCover?.image ?? null) : madeCoverFrames ? madeCover.png : pickedCover
   const coverChange = useMemo<CoverChange | null>(() => {
     if (burnedCover) {
       const unchanged =
@@ -851,19 +867,20 @@ export default function FinalizePage() {
         clampCoverFrameCount(coverFrameCount) === burnedCover.count &&
         (coverImage === null || coverImage === burnedCover.image)
       if (unchanged) return null
-      const choice = { image: coverImage, placement: coverFramePlacement, count: coverFrameCount }
+      const choice = { image: coverImage, placement: coverPlacement, count: coverFrameCount }
       return { run: (video, onProgress) => swapBurnedCover(video, burnedCover, choice, reburn, onProgress) }
     }
-    if (!coverImage || coverFramePlacement === 'none') return null
+    // The 冒頭カード's cover only goes in with the burn.
+    if (!coverImage || coverPlacement === 'none' || openingCover) return null
     return {
-      run: (video, onProgress) => insertCoverFrames(video, coverImage, coverFramePlacement, coverFrameCount, onProgress),
+      run: (video, onProgress) => insertCoverFrames(video, coverImage, coverPlacement, coverFrameCount, onProgress),
     }
-  }, [burnedCover, coverInBurn, coverImage, coverFramePlacement, coverFrameCount, reburn])
+  }, [burnedCover, coverInBurn, coverImage, coverPlacement, coverFrameCount, reburn, openingCover])
   const { blob: exportBlob, url: finalUrl, state: coverFrameState, progress: coverFrameProgress } = useCoverFrames(
     finishedBlob,
     coverChange,
   )
-  const madeCoverWanted = madeCoverFrames && coverFramePlacement !== 'none'
+  const madeCoverWanted = !openingCover && madeCoverFrames && coverFramePlacement !== 'none'
   // The made cover is still being made, or changed and isn't in the frames
   // yet: the saves wait, so the video never goes out without it or with the
   // cover as it was before.
@@ -1099,7 +1116,7 @@ export default function FinalizePage() {
   // so Instagram and TikTok show it; none when no cover went in.
   async function postCoverOffsetMs(): Promise<number | undefined> {
     const coverIn = coverFrameState !== 'failed' && (burnedCover !== null || coverImage !== null)
-    const placement = coverIn ? coverFramePlacement : 'none'
+    const placement = coverIn ? coverPlacement : 'none'
     const duration = placement === 'last' && exportBlob ? await probeVideoDuration(exportBlob) : 0
     return coverOffsetMs(placement, clampCoverFrameCount(coverFrameCount), duration)
   }
@@ -1316,7 +1333,7 @@ export default function FinalizePage() {
                   const burnHook = withOpeningCard(hook, await openingCardReady())
                   burnInputsRef.current = { hook: burnHook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null
-                  const cover = await burnCoverFor(cues)
+                  const cover = await burnCoverFor(cues, burnHook.openingCard)
                   const burned = await burnSubtitlesByShot(
                     getEncodeCache(),
                     combinedClips,
@@ -1475,6 +1492,9 @@ export default function FinalizePage() {
                   </button>
                 </div>
               )}
+              {openingCover ? (
+                <p className={styles.missing}>サムネは冒頭カード（英語と日本語が出そろった暖簾）になります</p>
+              ) : (
               <CoverFrameSettings
                 source={settings.coverFrameSource}
                 madeCover={madeCover.png}
@@ -1484,6 +1504,7 @@ export default function FinalizePage() {
                 count={settings.coverFrameCount}
                 onChange={updateSettings}
               />
+              )}
               <YoutubeExportSettings
                 enabled={youtubeEnabled}
                 trackTitle={youtubeTrack.title}

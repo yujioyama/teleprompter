@@ -108,6 +108,6 @@ function draw(canvas: HTMLCanvasElement | null, frame: OffscreenCanvas | null, p
     ctx.font = font
     return ctx.measureText(text).width
   }
-  drawOpeningCard(ctx, frame, layoutOpening(plan.text, WIDTH, HEIGHT, measure, plan.ja), plan.timing, t, WIDTH, HEIGHT)
+  drawOpeningCard(ctx, frame, layoutOpening(plan.text, WIDTH, HEIGHT, measure, plan.ja), plan.timing, t)
   ctx.restore()
 }
