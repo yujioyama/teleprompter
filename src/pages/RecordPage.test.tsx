@@ -5,7 +5,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import RecordPage from './RecordPage'
 import { Script } from '../types'
 import * as cardVoiceStore from '../utils/cardVoiceStore'
-import { getCardVoice } from '../utils/cardVoiceStore'
+import { getCardVoice, getOpeningVoice } from '../utils/cardVoiceStore'
 import { listShotVideos } from '../utils/shotVideoStore'
 import { processRecordedVideo } from '../utils/processRecordedVideo'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
@@ -581,5 +581,41 @@ describe('RecordPage card voices from teleprompter-cam', () => {
     expect(await screen.findByText(/カードの声を保存できませんでした。/)).toBeInTheDocument()
     expect(await listShotVideos('script-1')).toHaveLength(1)
     spy.mockRestore()
+  })
+})
+
+describe('RecordPage the 冒頭カード voice from teleprompter-cam', () => {
+  const openingVoice = () =>
+    new File(['o'], `TeleprompterCam-abc-voice-opening-shot1of3-${SHOT_1}.m4a`, { type: 'audio/x-m4a' })
+
+  it('saves the opening voice picked alone for a script with an opening card, and says so', async () => {
+    const script: Script = { ...seedScript(), opening: { text: 'My mom called at 3 a.m.' } }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [openingVoice()])
+    expect(await screen.findByText('冒頭カードの声を保存しました')).toBeInTheDocument()
+    expect(await getOpeningVoice('script-1')).not.toBeNull()
+  })
+
+  it('imports the first take as usual, without taking the opening voice for its line', async () => {
+    const script: Script = { ...seedScript(), opening: { text: 'Hi' } }
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [
+      videoFile(`TeleprompterCam-abc-shot1of3-${SHOT_1}.mov`),
+      openingVoice(),
+    ])
+    await waitFor(() => expect(screen.getByText('2 / 3 ≡')).toBeInTheDocument())
+    expect(await getOpeningVoice('script-1')).not.toBeNull()
+    expect(await listShotVideos('script-1')).toHaveLength(1)
+  })
+
+  it('leaves it out for a script with no opening card', async () => {
+    const script = seedScript()
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([script]))
+    renderRecordPage(script.id)
+    selectFiles(screen.getByLabelText('録画した動画をインポート') as HTMLInputElement, [openingVoice()])
+    expect(await screen.findByText('合うカードがない声のファイルがありました（1件）')).toBeInTheDocument()
+    expect(await getOpeningVoice('script-1')).toBeNull()
   })
 })

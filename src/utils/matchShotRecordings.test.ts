@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractShotId, isCardVoiceFile, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from './matchShotRecordings'
+import { extractShotId, isCardVoiceFile, isOpeningVoiceFile, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from './matchShotRecordings'
 import { Shot } from '../types'
 
 const SHOT_1 = '11111111-1111-1111-1111-111111111111'
@@ -138,5 +138,20 @@ describe('card voice files', () => {
     expect(voicesByShotId([line, card]).get(SHOT_2)).toBe(line)
     expect(voicesByShotId([card]).size).toBe(0)
     expect(voiceOfVoiceFile(card.name)).toBeNull()
+  })
+})
+
+describe('the 冒頭カード voice file', () => {
+  const id = '6f1c2e3a-0000-4000-8000-000000000001'
+  const opening = new File(['o'], `TeleprompterCam-abc-voice-opening-shot1of3-${id}.m4a`)
+  const line = new File(['l'], `TeleprompterCam-abc-voice-low-shot1of3-${id}.m4a`)
+
+  it('is told apart from the first line\'s voice', () => {
+    expect(isOpeningVoiceFile(opening)).toBe(true)
+    expect(isOpeningVoiceFile(line)).toBe(false)
+    expect(isCardVoiceFile(opening)).toBe(false)
+    expect(voiceOfVoiceFile(opening.name)).toBeNull()
+    expect(voicesByShotId([line, opening]).get(id)).toBe(line)
+    expect(voicesByShotId([opening]).size).toBe(0)
   })
 })

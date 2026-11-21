@@ -15,7 +15,12 @@ import {
   type SavedSubtitles,
 } from '../utils/finalizeProgressStore'
 import { ShotEncodeCache, blobId } from '../utils/shotEncodeCache'
-import { burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
+import { burnRequestsWithOpening, burnSubtitlesByShot, normalizeRequest, shotBurnRequests, type BurnCover, type ShotClip } from '../utils/shotEncoding'
+import { useOpeningCard } from '../hooks/useOpeningCard'
+import OpeningCardPreview from '../components/OpeningCardPreview'
+import type { OpeningCardPlan } from '../utils/openingCard'
+import type { HookOptions } from '../utils/subtitleHook'
+import type { OpeningAudioKey } from '../utils/preparedAudio'
 import { canUseWebCodecs } from '../utils/webcodecs/support'
 import { releaseCinemaLookCaches } from '../utils/drawCinemaLook'
 import { filmLookOf } from '../../shared/cinemaLook'
@@ -176,6 +181,23 @@ function savedClipsOf(clips: ShotClip[], takes: Map<string, string>, cards: Card
     shotId, start, end,
     videoUpdatedAt: isCardClip({ shotId }) ? (cards.find(c => c.clip.shotId === shotId)?.signature ?? 'card') : takes.get(shotId)!,
   }))
+}
+
+/** The hook with `plan` as its 冒頭カード, or with none. */
+function withOpeningCard(hook: HookOptions, plan: OpeningCardPlan | null): HookOptions {
+  if (!plan) {
+    if (!hook.openingCard) return hook
+    const rest = { ...hook }
+    delete rest.openingCard
+    return rest
+  }
+  return { ...hook, openingCard: plan }
+}
+
+/** The finished audio's part of the 冒頭カード (see FinalAudioKey.opening); nothing for none or not known yet. */
+function openingAudioKeyOf(plan: OpeningCardPlan | null | undefined): { opening?: OpeningAudioKey } {
+  if (!plan) return {}
+  return { opening: { seconds: plan.timing.seconds, voiceAt: plan.timing.voiceAt, ...(plan.voiceKey ? { voiceKey: plan.voiceKey } : {}) } }
 }
 
 function findLastIndexBefore(entries: ShotEntry[], index: number): number {
@@ -636,9 +658,11 @@ export default function FinalizePage() {
     [script, storedLineImages, lineImagesLoading],
   )
   const speakerInputs = combined?.cueInputs
-  const scene = script?.scene
+  // 冒頭カード: with one, the 状況のラベル isn't shown.
+  const { plan: openingCard, ready: openingCardReady } = useOpeningCard(script)
+  const scene = script?.opening?.text.trim() ? undefined : script?.scene
   const hookFor = useCallback(
-    (cues: SubtitleCue[], position: SubtitlePosition) => withLineImages(
+    (cues: SubtitleCue[], position: SubtitlePosition) => withOpeningCard(withLineImages(
       withScene(
         // The speakers first: the opening keeps clear of their taller, bubbled cues.
         withOpening(
@@ -651,8 +675,8 @@ export default function FinalizePage() {
         scene,
       ),
       { ...lineImages, cues },
-    ),
-    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs, scene],
+    ), openingCard ?? null),
+    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs, scene, openingCard],
   )
   const hook = useMemo(() => hookFor(subtitleCues, subtitlePosition), [hookFor, subtitleCues, subtitlePosition])
   // The subtitles the subtitle step will open with, known as soon as the
@@ -714,21 +738,21 @@ export default function FinalizePage() {
   const reviewingSubtitles = step === 'subtitle' && subtitleStage === 'reviewing'
   // A 一発撮り take's hook lasts just the first line rather than the whole take.
   const aheadHookEnd = oneTake && aheadCues.length > 0 ? aheadCues[0].end : undefined
-  const watchingCombined = step === 'trim' && combinedIsCurrent && !lineImagesLoading
+  const watchingCombined = step === 'trim' && combinedIsCurrent && !lineImagesLoading && openingCard !== undefined
   useEffect(() => {
-    if (!(reviewingSubtitles || watchingCombined) || combinedClips.length === 0) return
+    if (!(reviewingSubtitles || watchingCombined) || combinedClips.length === 0 || openingCard === undefined) return
     if (aheadCues.length === 0 || !aheadCues.every(c => c.ja !== null && c.ja.trim() !== '')) return
     let cancelled = false
     const timer = setTimeout(() => {
       void burnCoverFor(aheadCues).then(cover => {
         if (cancelled) return
         const cache = getEncodeCache()
-        for (const request of shotBurnRequests(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd, cover)) {
+        for (const request of burnRequestsWithOpening(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd, cover)) {
           cache.prefetch(request)
         }
         // The YouTube version has no cover: its first shot is burned without it.
         if (cover && youtubeEnabled) {
-          cache.prefetch(shotBurnRequests(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd)[0])
+          cache.prefetch(burnRequestsWithOpening(combinedClips, aheadCues, subtitlePosition, aheadHook, aheadHookEnd)[0])
         }
       })
     }, BACKGROUND_ENCODE_DELAY_MS)
@@ -736,7 +760,7 @@ export default function FinalizePage() {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [reviewingSubtitles, watchingCombined, aheadCues, subtitlePosition, combinedClips, aheadHook, aheadHookEnd, burnCoverFor, youtubeEnabled])
+  }, [reviewingSubtitles, watchingCombined, aheadCues, subtitlePosition, combinedClips, aheadHook, aheadHookEnd, burnCoverFor, youtubeEnabled, openingCard])
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
@@ -759,7 +783,7 @@ export default function FinalizePage() {
   // has to join it too. One after the other: both at once is more memory
   // than an iPhone gives the page.
   useEffect(() => {
-    if (step !== 'subtitle' || !combinedBlob || !defaultTrack) return
+    if (step !== 'subtitle' || !combinedBlob || !defaultTrack || openingCard === undefined) return
     let cancelled = false
     audioAheadRef.current = canUseWebCodecs().then(async ok => {
       if (cancelled || !ok) return
@@ -771,6 +795,7 @@ export default function FinalizePage() {
         ending: bgmEnding(defaultTrack.genre, bgmStopAt, cardSpans),
         // The cover the burn is to put in comes first, over silence.
         lead: coverInBurn ? coverLeadSeconds(burnCoverCount) : 0,
+        ...openingAudioKeyOf(openingCard),
       }
       preparedAudio.prepare(combinedBlob, key, () => fetchTrack(defaultTrack))
       if (!youtubeEnabled) return
@@ -781,7 +806,7 @@ export default function FinalizePage() {
     return () => {
       cancelled = true
     }
-  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, cardSpans, preparedAudio, coverInBurn, burnCoverCount, youtubeEnabled, youtubeTrack, youtubeAudio])
+  }, [step, combinedBlob, defaultTrack, bgmVolume, normalizeAudio, voicePreset, bgmStopAt, cardSpans, preparedAudio, coverInBurn, burnCoverCount, youtubeEnabled, youtubeTrack, youtubeAudio, openingCard])
 
   // Loudness is corrected once, on the finished video: the BGM mix halves
   // the voice (see mixMusicWebCodecs) and per-shot levels drift, so only the
@@ -864,7 +889,7 @@ export default function FinalizePage() {
   // Below the effect above on purpose: run in the same pass, that one would
   // clear the cover this one brings back.
   useEffect(() => {
-    if (!savedBurn || lineImagesLoading) return
+    if (!savedBurn || lineImagesLoading || openingCard === undefined) return
     setSavedBurn(null)
     if (step !== 'subtitle' || subtitleStage !== 'reviewing') return
     const combinedNow = combinedClipsSignature(savedClipsOf(combinedClips, takesRef.current))
@@ -880,7 +905,7 @@ export default function FinalizePage() {
     setStep('bgm')
     // Only the saved burn arriving and the images settling decide this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedBurn, lineImagesLoading])
+  }, [savedBurn, lineImagesLoading, openingCard])
 
   // The cover frames want the made cover but none has been drawn: make the
   // one カバー画像を作る would start with, so it goes in without opening it.
@@ -1269,6 +1294,7 @@ export default function FinalizePage() {
 
           {step === 'subtitle' && combinedBlob && (
             <div className={styles.stepBody}>
+              {openingCard && <OpeningCardPreview plan={openingCard} video={combinedBlob} />}
               <SubtitleWorkflow
                 key={combinedUrl}
                 combinedBlob={combinedBlob}
@@ -1286,7 +1312,9 @@ export default function FinalizePage() {
                 // Saved to the script, so leaving the step and coming back keeps the pick.
                 onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? 'none' })}
                 burn={async (cues, position, onProgress, signal) => {
-                  burnInputsRef.current = { hook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
+                  // The 冒頭カード's voice must be read before it's burned in, timed to it.
+                  const burnHook = withOpeningCard(hook, await openingCardReady())
+                  burnInputsRef.current = { hook: burnHook, cues, position, durations: combinedClips.map(c => c.end - c.start) }
                   burnedCoverRef.current = null
                   const cover = await burnCoverFor(cues)
                   const burned = await burnSubtitlesByShot(
@@ -1295,13 +1323,15 @@ export default function FinalizePage() {
                     combinedBlob,
                     cues,
                     position,
-                    hook,
+                    burnHook,
                     onProgress,
                     signal,
                     oneTake && cues.length > 0 ? cues[0].end : undefined,
                     cover,
                   )
                   burnedCoverRef.current = burned.cover && cover ? cover : null
+                  // Burned as one video, the card was left out: the audio mustn't wait for it.
+                  if (!burned.opening && burnInputsRef.current) burnInputsRef.current = { ...burnInputsRef.current, hook: withOpeningCard(burnHook, null) }
                   return burned.blob
                 }}
                 onBurned={blob => {
@@ -1360,6 +1390,7 @@ export default function FinalizePage() {
                     voice: voicePreset,
                     ending: bgmEnding(track.genre, bgmStopAt, cardSpans),
                     lead: burnedCover ? coverLeadSeconds(burnedCover.count) : 0,
+                    ...openingAudioKeyOf(burnedBlob ? (burnInputs?.hook.openingCard ?? null) : null),
                   }
                   mixKeyRef.current = key
                   return mixForExport(preparedAudio, combinedBlob as Blob, (burnedBlob ?? combinedBlob) as Blob, trackBlob, key)

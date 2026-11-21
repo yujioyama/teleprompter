@@ -6,9 +6,9 @@ import {
   decodeAudioTrack,
   runOutput,
 } from './audioTrack'
-import { PLAYS_TO_END, type BgmEnding } from '../bgmStop'
+import { PLAYS_TO_END, delayEnding, type BgmEnding } from '../bgmStop'
 import { applyVoicePreset, type VoicePreset } from '../voicePreset'
-import { renderMix } from './mixMusicWebCodecs'
+import { renderMix, type OpeningAudio } from './mixMusicWebCodecs'
 import { applyTargetLoudness, channelsOf } from './normalizeLoudnessWebCodecs'
 
 /**
@@ -50,6 +50,8 @@ export function durationsMatch(audio: number, video: number, sampleRate: number)
  * the audio of an already re-encoded cut runs past its picture and would
  * miss joinVideoAndAudio's tolerance. `lead` seconds of silence go before
  * it, for a video whose burn put the cover frames in ahead of the first shot.
+ * With `opening` (冒頭カード), the card's length comes after the lead, with
+ * its voice and the BGM, and the source's audio after that.
  */
 export async function prepareFinalAudio(
   source: Blob,
@@ -59,6 +61,7 @@ export async function prepareFinalAudio(
   voice: VoicePreset,
   ending: BgmEnding = PLAYS_TO_END,
   lead = 0,
+  opening?: OpeningAudio,
 ): Promise<Blob> {
   const input = new Input({ source: new BlobSource(source), formats: ALL_FORMATS })
   let audio: AudioBuffer
@@ -72,7 +75,11 @@ export async function prepareFinalAudio(
     applyVoicePreset(channelsOf(decoded), decoded.sampleRate, voice)
     // The offline context cuts or pads the decoded audio to this length, so
     // no second full-length copy is held next to it (~23 MB a minute).
-    audio = await renderMix(decoded, track, volume, duration, Math.round(duration * decoded.sampleRate), ending)
+    // 冒頭カード: the card comes first, and everything after it that much later.
+    // Its voice is already leveled as our lines are (see openingVoice).
+    const ahead = opening?.seconds ?? 0
+    const total = duration + ahead
+    audio = await renderMix(decoded, track, volume, total, Math.round(total * decoded.sampleRate), delayEnding(ending, ahead), opening)
   } finally {
     input.dispose()
   }

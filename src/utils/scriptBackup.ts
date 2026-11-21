@@ -48,6 +48,12 @@ function isCard(value: unknown): boolean {
   return typeof card.id === 'string' && typeof card.afterShotId === 'string' && typeof card.text === 'string' && isOptional(card.background, 'string') && isOptional(card.ja, 'string')
 }
 
+function isOpening(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const opening = value as Record<string, unknown>
+  return typeof opening.text === 'string' && isOptional(opening.ja, 'string')
+}
+
 function isScript(value: unknown): value is Script {
   if (typeof value !== 'object' || value === null) return false
   const script = value as Record<string, unknown>
@@ -58,6 +64,7 @@ function isScript(value: unknown): value is Script {
     typeof script.updatedAt === 'string' &&
     isOptional(script.caption, 'string') &&
     isOptional(script.scene, 'string') &&
+    (script.opening === undefined || isOpening(script.opening)) &&
     (script.cards === undefined || (Array.isArray(script.cards) && script.cards.every(isCard))) &&
     Array.isArray(script.shots) &&
     script.shots.every(isShot)

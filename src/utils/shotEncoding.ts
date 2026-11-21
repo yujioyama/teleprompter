@@ -12,6 +12,10 @@ import { onAbort, throwIfCancelled } from './cancellation'
 import { clampCoverFrameCount, renderCoverFrame } from './coverFrames'
 import { isCardClip } from './insertCard'
 import { timeStep } from './finalizeTimings'
+import type { OpeningCardPlan } from './openingCard'
+import { firstFrameOf, rawOpeningClipWebCodecs } from './webcodecs/openingClip'
+import { openingVoiceByKey } from './webcodecs/openingVoice'
+import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -34,10 +38,11 @@ export interface BurnCover {
   count: number
 }
 
-/** The burned video, and whether `cover` went in: not when the whole video had to be burned at once. */
+/** The burned video, and whether `cover` (and the 冒頭カード) went in: not when the whole video had to be burned at once. */
 export interface BurnedVideo {
   blob: Blob
   cover: boolean
+  opening?: boolean
 }
 
 /** The shot trimmed and normalized to the output profile. */
@@ -181,10 +186,66 @@ export function shotBurnRequests(
       fairies: fairiesForShot(plan, offset, duration),
       midZoom: midZoomForShot(zoomPlan, offset, duration),
     }
-    const request = burnRequest(clip, cuesForShot(styled, offset, duration), look, i === 0 ? cover : undefined)
+    // With a 冒頭カード, the cover goes in ahead of the card instead (see openingBurnRequest).
+    const request = burnRequest(clip, cuesForShot(styled, offset, duration), look, i === 0 && !hook.openingCard ? cover : undefined)
     offset += duration
     return request
   })
+}
+
+/**
+ * 冒頭カード: its clip, drawn over the first shot's first frame and
+ * normalized as a shot is, with `cover`'s frames ahead of it. It goes in
+ * front of the first shot's (see burnRequestsWithOpening). The key holds
+ * what it looks and sounds like, and the first shot's take and trim (its
+ * first frame is the card's picture).
+ */
+export function openingBurnRequest(first: ShotClip, plan: OpeningCardPlan, cover?: BurnCover): EncodeRequest {
+  const count = cover ? clampCoverFrameCount(cover.count) : 0
+  const look = JSON.stringify(plan)
+  return {
+    slot: cover ? 'opening-cover' : 'opening',
+    key: `opening|${clipKey(first)}|${look}${cover ? `|${blobId(cover.image)}x${count}` : ''}`,
+    seconds: plan.timing.seconds,
+    run: async (onProgress, signal) => {
+      const voice = plan.voiceKey ? await openingVoiceByKey(plan.voiceKey) : null
+      if (plan.voiceKey && !voice) console.warn('[openingBurnRequest] the opening voice is gone, drawing the card without it')
+      const background = await firstFrameOf(first.blob, first.start)
+      let raw: Blob
+      try {
+        raw = await rawOpeningClipWebCodecs(plan, background, voice)
+      } finally {
+        background.width = 0
+        background.height = 0
+      }
+      throwIfCancelled(signal)
+      const frame = cover ? await renderCoverFrame(cover.image) : null
+      try {
+        return await normalizeShotWebCodecs(raw, 0, plan.timing.seconds, onProgress, [], signal, frame ? { cover: { frame, count } } : {})
+      } finally {
+        if (frame) {
+          frame.width = 0
+          frame.height = 0
+        }
+      }
+    },
+  }
+}
+
+/**
+ * The burn's requests in the order they're joined: the 冒頭カード first when
+ * the hook has one (with the cover), then one per shot (shotBurnRequests).
+ */
+export function burnRequestsWithOpening(
+  clips: ShotClip[],
+  cues: SubtitleCue[],
+  position: SubtitlePosition,
+  hook: HookOptions,
+  hookEnd?: number,
+  cover?: BurnCover,
+): EncodeRequest[] {
+  const shots = shotBurnRequests(clips, cues, position, hook, hookEnd, cover)
+  return hook.openingCard && clips.length > 0 ? [openingBurnRequest(clips[0], hook.openingCard, cover), ...shots] : shots
 }
 
 /**
@@ -266,13 +327,13 @@ export async function burnSubtitlesByShot(
   const plan = fairyPlanOf(clips, cues, hook, position)
   const zoomPlan = midZoomPlanOf(clips, cues, hook)
   const hookSpan = firstShotDurationOf(clips, hookEnd)
-  if (!cover && !cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, hookSpan) && plan.length === 0 && zoomPlan.length === 0) {
+  if (!cover && !hook.openingCard && !cues.some(c => c.ja !== null) && !hasFirstShotExtras(hook, hookSpan) && plan.length === 0 && zoomPlan.length === 0) {
     return { blob: combinedBlob, cover: false }
   }
   if (clips.length > 0 && (await canUseWebCodecs())) {
     let burned: Blob[] | null = null
     try {
-      burned = await encodeAll(cache, shotBurnRequests(clips, cues, position, hook, hookEnd, cover), onProgress, signal, '焼き込み: エンコード待ち')
+      burned = await encodeAll(cache, burnRequestsWithOpening(clips, cues, position, hook, hookEnd, cover), onProgress, signal, '焼き込み: エンコード待ち')
     } catch (err) {
       // A cancel isn't WebCodecs breaking down: don't fall back or turn it off.
       throwIfCancelled(signal)
@@ -282,7 +343,7 @@ export async function burnSubtitlesByShot(
       try {
         const clips = burned
         const joined = await timeStep('焼き込み: つなぐ', () => concatClipsWebCodecs(clips, signal))
-        return { blob: joined, cover: cover !== undefined }
+        return { blob: joined, cover: cover !== undefined, ...(hook.openingCard ? { opening: true } : {}) }
       } catch (err) {
         throwIfCancelled(signal)
         console.warn('[burnSubtitlesByShot] joining burned shots failed, burning the joined video instead:', err)
@@ -290,6 +351,8 @@ export async function burnSubtitlesByShot(
     }
     onProgress?.(0)
   }
+  // The 冒頭カード needs the per-shot burn; burned as one video, it's left out.
+  if (hook.openingCard) console.warn('[burnSubtitlesByShot] burning the whole video at once: the opening card is left out')
   const blob = await timeStep('焼き込み: 全体を再エンコード(フォールバック)', () => burnSubtitles(
     combinedBlob,
     cues,

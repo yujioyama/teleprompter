@@ -73,6 +73,13 @@ export interface LineImage {
   credit?: string
 }
 
+/** The 冒頭カード's words (see Script.opening). */
+export interface ScriptOpening {
+  text: string
+  /** Its Japanese, small under it; absent for none. */
+  ja?: string
+}
+
 export interface Script {
   id: string
   title: string
@@ -100,6 +107,11 @@ export interface Script {
   lineImages?: LineImage[]
   /** A few words on where it happens, shown over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
+  /**
+   * 冒頭カード: one English sentence typed out over line 1's first frame
+   * before line 1 plays (see openingCard.ts). With one, `scene` isn't shown.
+   */
+  opening?: ScriptOpening
   /** The cover's words as Claude sent them, in place of the script's `*…*` and `{…}`; absent for those. */
   cover?: CoverText
   /** 挿入カード between lines; absent for none. Ignored in a 一発撮り script, which is one shot. */

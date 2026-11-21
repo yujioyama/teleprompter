@@ -31,7 +31,7 @@ export function isVoiceFile(file: Pick<File, 'name' | 'type'>): boolean {
  * null for an older file, or a name the app doesn't know.
  */
 export function voiceOfVoiceFile(filename: string): HeardVoice | null {
-  if (isCardVoiceFile({ name: filename })) return null
+  if (isCardVoiceFile({ name: filename }) || isOpeningVoiceFile({ name: filename })) return null
   const match = /-voice-([A-Za-z]+)-shot\d+of\d+-/.exec(filename)
   return match && isHeardVoice(match[1]) ? match[1] : null
 }
@@ -45,11 +45,20 @@ export function isCardVoiceFile(file: Pick<File, 'name'>): boolean {
   return /-voice-card-shot\d+of\d+-/.test(file.name)
 }
 
+/**
+ * The user's own voice reading the 冒頭カード, saved next to the takes as
+ *   TeleprompterCam-<sessionTag>-voice-opening-shot1of<count>-<shot.id>.m4a
+ * named after the first shot (the card goes before it). Not a line's voice.
+ */
+export function isOpeningVoiceFile(file: Pick<File, 'name'>): boolean {
+  return /-voice-opening-shot\d+of\d+-/.test(file.name)
+}
+
 /** The picked voice files by the shot they're for; ones naming no shot are left out. */
 export function voicesByShotId(files: File[]): Map<string, File> {
   const voices = new Map<string, File>()
   for (const file of files) {
-    if (isCardVoiceFile(file)) continue
+    if (isCardVoiceFile(file) || isOpeningVoiceFile(file)) continue
     const id = extractShotId(file.name)
     if (id) voices.set(id, file)
   }

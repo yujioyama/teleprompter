@@ -88,7 +88,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'cover', 'cards', 'thought'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'cover', 'opening', 'cards', 'thought'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')
@@ -208,6 +208,13 @@ describe('handleMcpRequest', () => {
       const item = (await store.list())[0]
       expect(item.scene).toBe('a wrong number')
       expect(item).not.toHaveProperty('heardName')
+    })
+
+    it('keeps the opening card, and its Japanese only when sent', async () => {
+      await handleMcpRequest(callTool({ title: 'a', script: 'A', opening: { text: 'My mom called at 3 a.m.', ja: '母から夜中の3時に電話' } }), deps)
+      expect((await store.list())[0].opening).toEqual({ text: 'My mom called at 3 a.m.', ja: '母から夜中の3時に電話' })
+      await handleMcpRequest(callTool({ title: 'b', script: 'A', opening: { text: 'It was late.' } }), deps)
+      expect((await store.list()).find(item => item.title === 'b')!.opening).toEqual({ text: 'It was late.' })
     })
 
     it('keeps the cover words, filling the row left out, and drops a blank cover', async () => {

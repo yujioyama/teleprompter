@@ -37,7 +37,7 @@ export function useScripts() {
     lineImages?: LineImage[],
     scene?: string,
     cover?: Script['cover'],
-    extras: Pick<Script, 'cards' | 'cardAudio'> = {},
+    extras: Pick<Script, 'cards' | 'cardAudio' | 'opening'> = {},
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -53,6 +53,7 @@ export function useScripts() {
       ...(cover ? { cover } : {}),
       ...(extras.cards?.length ? { cards: extras.cards } : {}),
       ...(extras.cardAudio ? { cardAudio: extras.cardAudio } : {}),
+      ...(extras.opening?.text ? { opening: extras.opening } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -65,7 +66,7 @@ export function useScripts() {
     return script
   }
 
-  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages' | 'scene' | 'cards' | 'cardAudio'>>): void {
+  function updateScript(id: string, changes: Partial<Pick<Script, 'title' | 'shots' | 'caption' | 'oneTake' | 'videoType' | 'look' | 'lineImages' | 'scene' | 'opening' | 'cards' | 'cardAudio'>>): void {
     const updated = scripts.map(s => {
       if (s.id !== id) return s
       const next: Script = { ...s, ...changes, updatedAt: new Date().toISOString() }
@@ -76,6 +77,7 @@ export function useScripts() {
       if (!next.look) delete next.look
       if (!next.lineImages?.length) delete next.lineImages
       if (!next.scene) delete next.scene
+      if (!next.opening?.text) delete next.opening
       if (!next.cards?.length) delete next.cards
       if (!next.cardAudio) delete next.cardAudio
       return next

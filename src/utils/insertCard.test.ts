@@ -215,6 +215,13 @@ describe('the camera app and the record', () => {
     expect(cardAfterShot(script(cards), 'a')).toBeUndefined()
   })
 
+  it('gives the camera app the opening sentence on the first line only, even from a later shot on', () => {
+    const withOpening = { ...script(cards), opening: { text: ' It was late. ' } }
+    expect(camShotsOf(withOpening).map(s => s.openingBefore)).toEqual(['It was late.', undefined, undefined, undefined])
+    expect(camShotsOf(withOpening).slice(1).some(s => s.openingBefore)).toBe(false)
+    expect(camShotsOf(script(cards)).some(s => 'openingBefore' in s)).toBe(false)
+  })
+
   it('records each card by the line it follows, and the 心の声 lines', () => {
     expect(cardRecordsOf(script(cards))).toEqual([{ afterLine: 2, text: '2 days later' }])
     expect(thoughtLinesOfShots(shots)).toEqual([3])
