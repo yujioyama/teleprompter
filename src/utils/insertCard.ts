@@ -269,13 +269,18 @@ export function cardCueInput(duration: number): ShotCueInput {
 /**
  * The shots as the camera app is given them: each one a card follows says
  * so (`cardAfter`, its text), for the camera to show where the card goes.
- * Nothing is filmed for a card.
+ * Nothing is filmed for a card. The first shot carries the 冒頭カード's
+ * sentence (`openingBefore`), whose voice the camera records ahead.
  */
-export function camShotsOf(script: Pick<Script, 'cards' | 'oneTake' | 'shots'>, shots: Shot[] = script.shots): (Shot & { cardAfter?: string })[] {
+export function camShotsOf(script: Pick<Script, 'cards' | 'oneTake' | 'shots' | 'opening'>, shots: Shot[] = script.shots): (Shot & { cardAfter?: string; openingBefore?: string })[] {
   const cards = cardsInOrder(script)
+  // 冒頭カード: its sentence on the first line, for its voice to be recorded ahead.
+  const opening = script.opening?.text.trim()
+  const firstId = script.shots[0]?.id
   return shots.map(shot => {
     const card = cards.find(c => c.card.afterShotId === shot.id)
-    return card ? { ...shot, cardAfter: cardTextOf(card.card.text) } : shot
+    const withCard = card ? { ...shot, cardAfter: cardTextOf(card.card.text) } : shot
+    return opening && shot.id === firstId ? { ...withCard, openingBefore: opening } : withCard
   })
 }
 

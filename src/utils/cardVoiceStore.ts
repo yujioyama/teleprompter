@@ -61,9 +61,26 @@ export function getCardVoice(scriptId: string, cardId: string): Promise<{ blob: 
   })
 }
 
-/** Delete the voices of scripts or cards that are gone. */
-export function pruneCardVoices(scripts: { id: string; cards?: { id: string }[] }[]): Promise<void> {
-  const keep = new Set(scripts.flatMap(script => (script.cards ?? []).map(card => keyOf(script.id, card.id))))
+/**
+ * 冒頭カードの声 is kept here too, under this id in place of a card's: the
+ * user's own voice reading the opening sentence.
+ */
+export const OPENING_VOICE_ID = 'opening'
+
+export function saveOpeningVoice(scriptId: string, blob: Blob): Promise<void> {
+  return saveCardVoice(scriptId, OPENING_VOICE_ID, blob)
+}
+
+export function getOpeningVoice(scriptId: string): Promise<{ blob: Blob; savedAt: string } | null> {
+  return getCardVoice(scriptId, OPENING_VOICE_ID)
+}
+
+/** Delete the voices of scripts or cards (or 冒頭カード) that are gone. */
+export function pruneCardVoices(scripts: { id: string; cards?: { id: string }[]; opening?: unknown }[]): Promise<void> {
+  const keep = new Set(scripts.flatMap(script => [
+    ...(script.cards ?? []).map(card => keyOf(script.id, card.id)),
+    ...(script.opening ? [keyOf(script.id, OPENING_VOICE_ID)] : []),
+  ]))
   return withStore('readwrite', store => {
     const req = store.getAllKeys()
     req.onsuccess = () => {

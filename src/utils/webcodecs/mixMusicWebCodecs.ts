@@ -55,6 +55,15 @@ export async function mixMusicWebCodecs(
  * offline context cuts or pads `original` to it, so a caller needing another
  * length needn't copy the whole buffer first.
  */
+/**
+ * 冒頭カード ahead of the original audio: `seconds` long, with its voice
+ * (mono, any rate) from `voice.at` seconds in.
+ */
+export interface OpeningAudio {
+  seconds: number
+  voice?: { samples: Float32Array; sampleRate: number; at: number }
+}
+
 export async function renderMix(
   original: AudioBuffer,
   trackBlob: Blob,
@@ -62,8 +71,11 @@ export async function renderMix(
   duration: number,
   length = original.length,
   ending: BgmEnding = PLAYS_TO_END,
+  opening?: OpeningAudio,
 ): Promise<AudioBuffer> {
   // `amix duration=first`: the output is as long as the original audio.
+  // 冒頭カード: the original starts after the card, whose voice plays on it;
+  // the BGM plays from the very start, under the card too.
   const ctx = new OfflineAudioContext(original.numberOfChannels, length, original.sampleRate)
 
   const bgm = await ctx.decodeAudioData(await trackBlob.arrayBuffer())
@@ -114,7 +126,17 @@ export async function renderMix(
   }
   bgmNode.connect(fadeIn).connect(duck).connect(fadeOut).connect(cardGain).connect(muffle).connect(bgmGain).connect(ctx.destination)
 
-  originalNode.start(0)
+  originalNode.start(opening?.seconds ?? 0)
+  if (opening?.voice && opening.voice.samples.length > 0) {
+    const line = ctx.createBuffer(1, opening.voice.samples.length, opening.voice.sampleRate)
+    line.getChannelData(0).set(opening.voice.samples)
+    const voiceNode = ctx.createBufferSource()
+    voiceNode.buffer = line
+    const voiceGain = ctx.createGain()
+    voiceGain.gain.value = AMIX_SCALE
+    voiceNode.connect(voiceGain).connect(ctx.destination)
+    voiceNode.start(opening.voice.at)
+  }
   bgmNode.start(0)
   return ctx.startRendering()
 }

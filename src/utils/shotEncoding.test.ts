@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ShotEncodeCache } from './shotEncodeCache'
 import {
   burnRequest,
+  burnRequestsWithOpening,
   burnSubtitlesByShot,
   encodeAll,
   normalizeRequest,
@@ -28,6 +29,14 @@ vi.mock('./webcodecs/support', () => ({
 vi.mock('./webcodecs/concatClips', () => ({
   concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs)),
 }))
+vi.mock('./webcodecs/openingClip', () => ({
+  firstFrameOf: vi.fn(async () => ({ width: 1080, height: 1920 })),
+  rawOpeningClipWebCodecs: vi.fn(async () => new Blob(['raw-opening'])),
+}))
+vi.mock('./webcodecs/normalizeShot', () => ({
+  normalizeShotWebCodecs: vi.fn(async () => new Blob(['opening'])),
+}))
+vi.mock('./webcodecs/openingVoice', () => ({ openingVoiceByKey: vi.fn(async () => null) }))
 vi.mock('./coverFrames', () => ({
   clampCoverFrameCount: (count: number) => Math.min(5, Math.max(1, Math.round(count))),
   renderCoverFrame: vi.fn(async () => ({ width: 1080, height: 1920 })),
@@ -513,5 +522,41 @@ describe('mid-video zoom', () => {
       { start: 2, end: 5, kind: 'drift' },
       { start: 7, end: 9.5, kind: 'punch' },
     ])
+  })
+})
+
+describe('the 冒頭カード', () => {
+  const clips = [clip('a', 0.4, 2), clip('b', 0, 1)]
+  const cues = cuesFromShotEntries([{ text: 'first', duration: 1.6 }, { text: 'second', duration: 1 }])
+  const plan = { text: 'Hi there', timing: { charTimes: [0.35], typedEnd: 0.35, jaAt: 0.4, voiceAt: null, wipeAt: 0.9, seconds: 1.8 } }
+  const COVER = { image: new Blob(['cover.png']), count: 2 }
+
+  it('goes in ahead of the first shot, with the cover ahead of it instead of on the shot', () => {
+    const requests = burnRequestsWithOpening(clips, cues, 50, { ...NO_HOOK, openingCard: plan }, undefined, COVER)
+    expect(requests).toHaveLength(3)
+    expect(requests[0].slot).toBe('opening-cover')
+    expect(requests[0].seconds).toBe(1.8)
+    expect(requests.slice(1).some(r => r.slot.startsWith('burn-cover'))).toBe(false)
+  })
+
+  it('is left out without one, and the cover stays on the first shot', () => {
+    const requests = burnRequestsWithOpening(clips, cues, 50, NO_HOOK, undefined, COVER)
+    expect(requests).toHaveLength(2)
+    expect(requests[0].slot).toBe('burn-cover:a')
+  })
+
+  it('is joined first and said to be in', async () => {
+    const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, [], 50, { ...NO_HOOK, openingCard: plan })
+    const joined = vi.mocked(concatClipsWebCodecs).mock.calls.at(-1)![0]
+    expect(await joined[0].text()).toBe('opening')
+    expect(joined).toHaveLength(3)
+    expect(out.opening).toBe(true)
+  })
+
+  it('changes its key with its words, but not the shots\'', () => {
+    const one = burnRequestsWithOpening(clips, cues, 50, { ...NO_HOOK, openingCard: plan })
+    const two = burnRequestsWithOpening(clips, cues, 50, { ...NO_HOOK, openingCard: { ...plan, text: 'Bye' } })
+    expect(one[0].key).not.toBe(two[0].key)
+    expect(one[1].key).toBe(two[1].key)
   })
 })

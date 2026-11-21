@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import { saveShotVideo, listShotVideos } from '../utils/shotVideoStore'
 import { releaseFFmpeg } from '../utils/ffmpegClient'
 import { processRecordedVideo, inferMimeType, type ProcessedVideo } from '../utils/processRecordedVideo'
-import { isCardVoiceFile, extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
+import { isCardVoiceFile, isOpeningVoiceFile, extractShotId, isVoiceFile, resolveImportTargets, voiceOfVoiceFile, voicesByShotId } from '../utils/matchShotRecordings'
 import { analyzeTake } from '../utils/analyzeTake'
 import { withSpeakerVoice } from '../utils/speakerVoice'
 import { DEVICE_RESTART_HINT, heardShotFailureText, makeHeardShot, makeHeardShotFromVoice, needsDeviceRestart } from '../utils/heardShot'
@@ -17,7 +17,7 @@ import { resolveShotTrimSettings } from '../utils/shotTrim'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
 import { stripStickers } from '../utils/subtitleSticker'
 import { Shot } from '../types'
-import { saveCardVoice } from '../utils/cardVoiceStore'
+import { saveCardVoice, saveOpeningVoice } from '../utils/cardVoiceStore'
 import { camShotsOf, cardAfterShot, cardsInOrder } from '../utils/insertCard'
 import styles from './RecordPage.module.css'
 
@@ -89,18 +89,30 @@ export default function RecordPage() {
 
     setBulkImportNotice(null)
     // 挿入カード voices come picked with the takes too: each goes to the card after the shot named in its file.
-    const cardVoices = picked.filter(isCardVoiceFile)
-    const rest = picked.filter(file => !isCardVoiceFile(file))
+    // So does the 冒頭カード's voice, for the script's opening card.
+    const isAheadVoice = (file: File) => isCardVoiceFile(file) || isOpeningVoiceFile(file)
+    const cardVoices = picked.filter(isAheadVoice)
+    const rest = picked.filter(file => !isAheadVoice(file))
     // 相手のセリフ voices recorded ahead in the camera app likewise.
     const voices = voicesByShotId(rest.filter(isVoiceFile))
     const files = rest.filter(file => !isVoiceFile(file))
     let cardVoiceFailed = false
     let savedCardVoices = 0
+    let savedOpeningVoice = false
     let unmatchedCardVoices = 0
     if (cardVoices.length > 0) {
       const cardOfShot = new Map(cardsInOrder(safeScript).map(({ card }) => [card.afterShotId, card.id]))
       try {
         await Promise.all(cardVoices.map(async file => {
+          if (isOpeningVoiceFile(file)) {
+            if (!safeScript.opening?.text.trim()) {
+              unmatchedCardVoices++
+              return
+            }
+            await saveOpeningVoice(safeScript.id, file)
+            savedOpeningVoice = true
+            return
+          }
           const shotId = extractShotId(file.name)
           const cardId = shotId ? cardOfShot.get(shotId) : undefined
           if (!cardId) {
@@ -125,6 +137,7 @@ export default function RecordPage() {
       setBulkImportError(cardVoiceFailed ? CARD_VOICE_FAILED : null)
       const notices: string[] = []
       if (!cardVoiceFailed && savedCardVoices > 0) notices.push(`カードの声を保存しました（${savedCardVoices}枚）`)
+      if (!cardVoiceFailed && savedOpeningVoice) notices.push('冒頭カードの声を保存しました')
       if (unmatchedNotice) notices.push(unmatchedNotice)
       if (rest.some(isVoiceFile)) notices.push('相手の声・心の声のファイルは、動画と一緒に選ぶと使われます。')
       setBulkImportNotice(notices.length > 0 ? notices.join(' / ') : null)

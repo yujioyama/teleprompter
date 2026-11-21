@@ -83,6 +83,25 @@ describe('PreparedAudio', () => {
   })
 })
 
+describe('the 冒頭カード', () => {
+  it('builds the audio with the card ahead of the source, and anew when the card changes', async () => {
+    const prepared = new PreparedAudio()
+    const key = { ...KEY, opening: { seconds: 2, voiceAt: null } }
+    prepared.prepare(COMBINED, key, async () => TRACK)
+    await prepared.get(COMBINED, key)
+    expect(prepareFinalAudio).toHaveBeenLastCalledWith(COMBINED, TRACK, 0.3, true, 'natural', KEY.ending, 0, { seconds: 2 })
+    expect(prepared.get(COMBINED, KEY)).toBeNull()
+    expect(prepared.get(COMBINED, { ...key, opening: { seconds: 3, voiceAt: null } })).toBeNull()
+  })
+
+  it('mixed the slow way, stops the BGM after the card too', async () => {
+    const prepared = new PreparedAudio()
+    const key = { ...KEY, ending: { stopAt: 10, soft: false }, lead: 0.1, opening: { seconds: 2, voiceAt: null } }
+    await mixForExport(prepared, COMBINED, BURNED, TRACK, key)
+    expect(vi.mocked(mixMusic).mock.calls[0][4]).toEqual({ stopAt: 12.1, soft: false })
+  })
+})
+
 describe('mixForExport', () => {
   it('joins the burned video with the prepared audio, already at the export loudness', async () => {
     const prepared = new PreparedAudio()

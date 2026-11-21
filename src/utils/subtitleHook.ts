@@ -9,6 +9,7 @@ import type { MidZoomSegment } from './midZoom'
 import type { CueImage } from './lineImages'
 import type { CueSpeaker } from './speakers'
 import type { CueScene } from './sceneLabel'
+import type { OpeningCardPlan } from './openingCard'
 import { LETTERBOX, openingEnd, openingLookFor, type OpeningLook } from './openingLook'
 import type { CinemaLook } from '../../shared/cinemaLook'
 
@@ -86,6 +87,11 @@ export interface HookOptions {
   thoughts?: string[]
   /** 状況のラベル, over line 1 (see withScene); default none. */
   scene?: CueScene
+  /**
+   * 冒頭カード, typed over line 1's first frame before it (see openingCard.ts):
+   * the burn puts it in ahead of the first shot, after the cover. Absent for none.
+   */
+  openingCard?: OpeningCardPlan
 }
 
 export type HookSettings = Pick<

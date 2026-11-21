@@ -13,10 +13,10 @@ import { useLineImages } from '../hooks/useLineImages'
 import LineImageEditor from '../components/LineImageEditor'
 import { heardPeopleOfInbox, heardPeopleOfShots, SPEAKER_NAME_MAX_LENGTH, withHeardPeople, type HeardPerson } from '../utils/speakerNames'
 import { SCENE_MAX_LENGTH } from '../utils/sceneLabel'
-import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type VideoType } from '../types'
+import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type ScriptOpening, type VideoType } from '../types'
 import InsertCardEditor, { type EditorCard } from '../components/InsertCardEditor'
 import { DEFAULT_CARD_TEXT, cardAudioOf } from '../utils/insertCard'
-import { DEFAULT_CARD_BACKGROUND, isCardBackgroundName } from '../../shared/inbox'
+import { DEFAULT_CARD_BACKGROUND, OPENING_JA_MAX_LENGTH, OPENING_TEXT_MAX_LENGTH, isCardBackgroundName } from '../../shared/inbox'
 import { getCardVoice } from '../utils/cardVoiceStore'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import styles from './ScriptEditPage.module.css'
@@ -171,6 +171,9 @@ export default function ScriptEditPage() {
   )
   // The few words on where it happens, over line 1.
   const [scene, setScene] = useState<string>(() => (existingScript ? existingScript.scene : inboxItem?.scene) ?? '')
+  // 冒頭カード: the sentence typed out before line 1, and its Japanese.
+  const [openingText, setOpeningText] = useState<string>(() => (existingScript ? existingScript.opening?.text : inboxItem?.opening?.text) ?? '')
+  const [openingJa, setOpeningJa] = useState<string>(() => (existingScript ? existingScript.opening?.ja : inboxItem?.opening?.ja) ?? '')
   // 自分 / 相手 / 心の声 picked here for a line (by its words), over what the script or Claude said.
   const [roleOverrides, setRoleOverrides] = useState<Map<string, LineRole>>(() => new Map())
   // 挿入カード between lines, and what they do to the sound.
@@ -253,7 +256,7 @@ export default function ScriptEditPage() {
 
     if (existingScript) {
       const shots = withHeardPeople(withRoles(reconcileShots(existingScript.shots, preview, generateId)), people)
-      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages, scene: scene.trim(), cards: scriptCardsOf(shots), cardAudio: cardAudioToSave() })
+      updateScript(existingScript.id, { title: title.trim(), shots, caption: caption.trim(), oneTake, videoType: videoType ?? undefined, lineImages, scene: scene.trim(), opening: openingToSave(), cards: scriptCardsOf(shots), cardAudio: cardAudioToSave() })
       navigate(`/scripts/${existingScript.id}/shots`)
     } else {
       const heard = oneTake ? [] : heardLinesOf(inboxItem, preview)
@@ -267,6 +270,7 @@ export default function ScriptEditPage() {
       const script = createScript(title.trim(), shots, caption.trim(), oneTake, japanese, videoType ?? undefined, lineImages, scene.trim(), inboxItem?.cover, {
         cards: scriptCardsOf(shots),
         cardAudio: cardAudioToSave(),
+        opening: openingToSave(),
       })
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
@@ -328,6 +332,13 @@ export default function ScriptEditPage() {
   }
 
   /** Both on is what a script without the setting means, so only an off is kept. */
+  function openingToSave(): ScriptOpening | undefined {
+    const text = openingText.trim()
+    if (!text) return undefined
+    const ja = openingJa.trim()
+    return { text, ...(ja ? { ja } : {}) }
+  }
+
   function cardAudioToSave(): CardAudio | undefined {
     return cardAudio.muffle && cardAudio.sound ? undefined : cardAudio
   }
@@ -556,6 +567,28 @@ export default function ScriptEditPage() {
           value={scene}
           onChange={e => setScene(e.target.value)}
         />
+
+        <label className={styles.label} htmlFor="script-opening">冒頭カード（任意。1行目の前に、暗い幕の上で英語の1文をタイプライターで打ちます。あると状況のラベルは出ません）</label>
+        <input
+          id="script-opening"
+          className={styles.titleInput}
+          type="text"
+          placeholder="例: My mom called me at 3 a.m."
+          maxLength={OPENING_TEXT_MAX_LENGTH}
+          value={openingText}
+          onChange={e => setOpeningText(e.target.value)}
+        />
+        {openingText.trim() && (
+          <input
+            aria-label="冒頭カードの日本語"
+            className={styles.titleInput}
+            type="text"
+            placeholder="日本語（任意。英語の下に小さく出ます）"
+            maxLength={OPENING_JA_MAX_LENGTH}
+            value={openingJa}
+            onChange={e => setOpeningJa(e.target.value)}
+          />
+        )}
 
         <label className={styles.label} htmlFor="script-caption">キャプション（任意）</label>
         <textarea

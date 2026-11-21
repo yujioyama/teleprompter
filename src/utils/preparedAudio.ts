@@ -4,6 +4,8 @@ import { markLoudnessNormalized } from './normalizeLoudness'
 import { joinVideoAndAudio, prepareFinalAudio } from './webcodecs/finalAudio'
 import type { VoicePreset } from './voicePreset'
 import { timeStep } from './finalizeTimings'
+import { openingVoiceByKey } from './webcodecs/openingVoice'
+import type { OpeningAudio } from './webcodecs/mixMusicWebCodecs'
 
 /** Everything the finished audio depends on besides the video's own sound. */
 export interface FinalAudioKey {
@@ -18,10 +20,32 @@ export interface FinalAudioKey {
    * the cover frames the burn put in ahead of the first shot, or 0.
    */
   lead: number
+  /**
+   * 冒頭カード, which the burn puts in after the lead: how long it is, when
+   * its voice starts and which voice it is. Absent for none.
+   */
+  opening?: OpeningAudioKey
+}
+
+export interface OpeningAudioKey {
+  seconds: number
+  voiceAt: number | null
+  voiceKey?: string
+}
+
+function sameOpening(a: OpeningAudioKey | undefined, b: OpeningAudioKey | undefined): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+}
+
+/** The opening's audio as the mix takes it, its voice prepared (see openingVoice). */
+export async function openingAudioOf(key: OpeningAudioKey | undefined): Promise<OpeningAudio | undefined> {
+  if (!key) return undefined
+  const voice = key.voiceKey && key.voiceAt !== null ? await openingVoiceByKey(key.voiceKey) : null
+  return { seconds: key.seconds, ...(voice && key.voiceAt !== null ? { voice: { samples: voice.samples, sampleRate: voice.sampleRate, at: key.voiceAt } } : {}) }
 }
 
 function sameKey(a: FinalAudioKey, b: FinalAudioKey): boolean {
-  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && sameEnding(a.ending, b.ending) && a.lead === b.lead
+  return a.trackId === b.trackId && a.volume === b.volume && a.normalize === b.normalize && a.voice === b.voice && sameEnding(a.ending, b.ending) && a.lead === b.lead && sameOpening(a.opening, b.opening)
 }
 
 /**
@@ -35,7 +59,11 @@ export class PreparedAudio {
 
   prepare(source: Blob, key: FinalAudioKey, track: () => Promise<Blob>): void {
     if (this.entry && this.entry.source === source && sameKey(this.entry.key, key)) return
-    const audio = track().then(blob => prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending, key.lead))
+    const audio = Promise.all([track(), openingAudioOf(key.opening)]).then(([blob, opening]) =>
+      opening
+        ? prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending, key.lead, opening)
+        : prepareFinalAudio(source, blob, key.volume, key.normalize, key.voice, key.ending, key.lead),
+    )
     // Only means mixing the slow way later; never shown to the user.
     audio.catch(err => console.warn('[PreparedAudio] could not prepare the final audio:', err))
     this.entry = { source, key, audio }
@@ -66,7 +94,7 @@ export class PreparedAudio {
  * otherwise by mixing as before. A joined video's loudness is already
  * corrected when `key.normalize`, so the export step won't redo it. Mixed
  * into `video` as it is, the BGM stops where the punchline is in `video`:
- * `key.lead` after where it is in `source`.
+ * `key.lead` (and the 冒頭カード) after where it is in `source`.
  */
 export async function mixForExport(
   prepared: PreparedAudio,
@@ -92,6 +120,6 @@ export async function mixForExport(
     console.info('[mixForExport] no prepared audio for this choice, mixing instead')
   }
   return timeStep('BGM: その場でミックス(遅い道)', () =>
-    mixMusic(video, trackBlob, key.volume, key.voice, delayEnding(key.ending, key.lead)),
+    mixMusic(video, trackBlob, key.volume, key.voice, delayEnding(key.ending, key.lead + (key.opening?.seconds ?? 0))),
   )
 }

@@ -1,4 +1,4 @@
-import type { CoverText, HeardCastMember, InboxCard, InboxImage, InboxItem, VideoType } from '../shared/inbox.js'
+import type { CoverText, HeardCastMember, InboxCard, InboxImage, InboxItem, InboxOpening, VideoType } from '../shared/inbox.js'
 import { redisFromEnv, type RedisLike } from './redis.js'
 
 const PREFIX = 'inbox:'
@@ -10,7 +10,7 @@ export interface InboxStore {
    * Waiting items with the same title are older versions of this script
    * (Claude resent it after a fix), so they are replaced: `replaced` counts them.
    */
-  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType; images?: InboxImage[]; heard?: number[]; heardIcon?: string; heardVoice?: string; heardName?: string; heardCast?: HeardCastMember[]; scene?: string; cover?: CoverText; cards?: InboxCard[]; thought?: number[] }): Promise<{ item: InboxItem; replaced: number }>
+  add(input: { title: string; body: string; caption: string; japanese?: string[]; videoType?: VideoType; images?: InboxImage[]; heard?: number[]; heardIcon?: string; heardVoice?: string; heardName?: string; heardCast?: HeardCastMember[]; scene?: string; opening?: InboxOpening; cover?: CoverText; cards?: InboxCard[]; thought?: number[] }): Promise<{ item: InboxItem; replaced: number }>
   /** Newest first. */
   list(): Promise<InboxItem[]>
   /** Succeeds when the item is already gone. */
@@ -40,7 +40,7 @@ export function createInboxStore(
   }
 
   return {
-    async add({ title, body, caption, japanese, videoType, images, heard, heardIcon, heardVoice, heardName, heardCast, scene, cover, cards, thought }) {
+    async add({ title, body, caption, japanese, videoType, images, heard, heardIcon, heardVoice, heardName, heardCast, scene, opening, cover, cards, thought }) {
       const stale = (await list()).filter(old => old.title === title)
       const item: InboxItem = {
         id: newId(),
@@ -56,6 +56,7 @@ export function createInboxStore(
         ...(heard?.length && heardName ? { heardName } : {}),
         ...(heard?.length && heardCast?.length ? { heardCast } : {}),
         ...(scene ? { scene } : {}),
+        ...(opening?.text ? { opening: { text: opening.text, ...(opening.ja ? { ja: opening.ja } : {}) } } : {}),
         ...(cover && (cover.en || cover.ja) ? { cover } : {}),
         ...(cards?.length ? { cards } : {}),
         ...(thought?.length ? { thought } : {}),

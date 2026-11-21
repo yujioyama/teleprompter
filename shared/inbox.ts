@@ -59,6 +59,12 @@ export interface InboxItem {
   heardCast?: HeardCastMember[]
   /** A few words on where the conversation happens, over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
+  /**
+   * 冒頭カード: one English sentence typed out over line 1's first frame
+   * before it plays, with its Japanese faded in under it. With one, `scene`
+   * isn't shown. Absent for none.
+   */
+  opening?: InboxOpening
   /** The words for the cover, in place of the script's `*…*` and `{…}` (a conversation has none); absent for those. */
   cover?: CoverText
   /**
@@ -93,6 +99,17 @@ export interface HeardCastMember {
   /** Their role, beside their icon (e.g. "Mom"). */
   name?: string
 }
+
+/** The 冒頭カード Claude sent (see InboxItem.opening). */
+export interface InboxOpening {
+  /** One English sentence. */
+  text: string
+  /** Its Japanese, small under it; absent for none. */
+  ja?: string
+}
+
+export const OPENING_TEXT_MAX_LENGTH = 120
+export const OPENING_JA_MAX_LENGTH = 80
 
 /** A 挿入カード Claude sent (see InboxItem.cards). */
 export interface InboxCard {
