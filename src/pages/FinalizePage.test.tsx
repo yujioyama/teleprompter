@@ -99,6 +99,16 @@ vi.mock('../utils/webcodecs/support', async importOriginal => ({
   canUseWebCodecs: vi.fn(async () => false),
   disableWebCodecs: vi.fn(),
 }))
+vi.mock('../utils/webcodecs/openingClip', () => ({
+  firstFrameOf: vi.fn(async () => ({ width: 1080, height: 1920 })),
+  rawOpeningClipWebCodecs: vi.fn(async () => new Blob(['raw-opening'], { type: 'video/mp4' })),
+  openingCoverPng: vi.fn(async () => new Blob(['opening-cover'], { type: 'image/png' })),
+}))
+vi.mock('../utils/webcodecs/normalizeShot', async importOriginal => ({
+  ...(await importOriginal<typeof import('../utils/webcodecs/normalizeShot')>()),
+  normalizeShotWebCodecs: vi.fn(async (_blob: Blob, _s: number, _e: number, _p: unknown, _o: unknown, _sig: unknown, options?: { cover?: unknown }) =>
+    new Blob([options?.cover ? 'opening+cover' : 'opening'], { type: 'video/mp4' })),
+}))
 vi.mock('../utils/webcodecs/concatClips', () => ({
   concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs, { type: 'video/mp4' })),
 }))
@@ -2021,6 +2031,26 @@ describe('FinalizePage export step: YouTube version', () => {
     expect(prepareFinalAudio).toHaveBeenCalledTimes(2)
     expect(burnModule.burnShotSubtitles).toHaveBeenCalledTimes(2)
     expect(vi.mocked(joinVideoAndAudio).mock.calls.some(([, audio]) => audio === youtubeAudio)).toBe(true)
+  })
+
+  it('opens the YouTube version with the opening card too: it is the same burn, not burned again', async () => {
+    useSettingsOf({ youtubeExportEnabled: true })
+    localStorage.setItem('teleprompter_scripts', JSON.stringify([{ ...seedScript(), opening: { text: 'It was late.' } }]))
+    vi.mocked(canUseWebCodecs).mockResolvedValue(true)
+    vi.mocked(burnModule.burnShotSubtitles).mockImplementation(async () => new Blob(['burned-shot'], { type: 'video/mp4' }))
+    vi.mocked(joinVideoAndAudio).mockImplementation(async (video, audio) => new Blob([video, audio], { type: 'video/mp4' }))
+    await walkToExport()
+    fireEvent.click(await screen.findByText('2本とも保存する', {}, { timeout: 4000 }))
+    const saved = await savedTogether()
+    // One burn, opening with the card (and its cover): nothing burned again for YouTube.
+    const joins = vi.mocked(concatClipsWebCodecs).mock.calls
+    expect(joins).toHaveLength(1)
+    expect(await joins[0][0][0].text()).toBe('opening+cover')
+    const burned = await vi.mocked(concatClipsWebCodecs).mock.results[0].value
+    // Both versions are that burn with their BGM's audio on.
+    const joinedVideos = vi.mocked(joinVideoAndAudio).mock.calls.map(([video]) => video)
+    expect(joinedVideos.filter(video => video === burned)).toHaveLength(2)
+    expect(saved.map(([, name]) => name)).toEqual(['テスト動画-final', 'テスト動画-youtube'])
   })
 
   it('saves just the one video, cover frames and all, while switched off', async () => {
