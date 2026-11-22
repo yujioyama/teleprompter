@@ -253,6 +253,6 @@ describe('cardSecondsFor', () => {
   })
 
   it('makes the card last until the voice and a moment after it are over', () => {
-    expect(cardSecondsFor(2)).toBeCloseTo(2.65)
+    expect(cardSecondsFor(2)).toBeCloseTo(2.45)
   })
 })

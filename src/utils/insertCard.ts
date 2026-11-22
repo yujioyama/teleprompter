@@ -16,7 +16,7 @@ export const CARD_SECONDS = 1.8
 /** A card's voice (挿入カードの声) starts this far in: after the pop. */
 export const CARD_VOICE_START_S = 0.25
 /** The card stays up this long after its voice ends. */
-export const CARD_VOICE_TAIL_S = 0.4
+export const CARD_VOICE_TAIL_S = 0.2
 
 /** How long a card is up with a voice `voiceSeconds` long (none: CARD_SECONDS). Never shorter than CARD_SECONDS. */
 export function cardSecondsFor(voiceSeconds: number | undefined): number {
