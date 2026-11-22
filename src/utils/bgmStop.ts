@@ -33,7 +33,8 @@ export interface BgmEnding {
   soft: boolean
   /**
    * 挿入カード: where each card is up. The BGM plays on through them, the
-   * same track, only softer and muffled (see CARD_DUCK_LEVEL). Absent for none.
+   * same track, only softer and muffled (see CARD_DUCK_LEVEL), or silent
+   * through a spooky one. Absent for none.
    */
   cards?: CardSpan[]
 }
@@ -42,6 +43,13 @@ export interface BgmEnding {
 export interface CardSpan {
   start: number
   end: number
+  /** A spooky card (isSpookyCard): the BGM goes silent, not soft, and comes back after it. */
+  silent?: boolean
+}
+
+/** The BGM's level through `card`: CARD_DUCK_LEVEL, or 0 through a spooky one. */
+export function cardLevelOf(card: Pick<CardSpan, 'silent'>): number {
+  return card.silent ? 0 : CARD_DUCK_LEVEL
 }
 
 /** The BGM's level while a card is up, as a share of its usual level. */
@@ -70,21 +78,22 @@ export function delayEnding(ending: BgmEnding, by: number): BgmEnding {
 }
 
 export function sameEnding(a: BgmEnding, b: BgmEnding): boolean {
-  const cards = (e: BgmEnding) => JSON.stringify((e.cards ?? []).map(c => [c.start.toFixed(3), c.end.toFixed(3)]))
+  const cards = (e: BgmEnding) => JSON.stringify((e.cards ?? []).map(c => [c.start.toFixed(3), c.end.toFixed(3), Boolean(c.silent)]))
   return a.stopAt === b.stopAt && a.soft === b.soft && cards(a) === cards(b)
 }
 
 /**
  * The BGM's level at `t` from the cards alone (1 away from them): down to
- * CARD_DUCK_LEVEL over CARD_RAMP_SECONDS as a card comes up, back over as
+ * the card's level (cardLevelOf) over CARD_RAMP_SECONDS as a card comes up, back over as
  * long once it's gone. The ffmpeg path's expression is this, written out.
  */
 export function cardDuckAt(t: number, cards: CardSpan[] = []): number {
   let level = 1
-  for (const { start, end } of cards) {
+  for (const card of cards) {
+    const { start, end } = card
     const down = Math.min(1, Math.max(0, (t - start) / CARD_RAMP_SECONDS))
     const up = Math.min(1, Math.max(0, (end + CARD_RAMP_SECONDS - t) / CARD_RAMP_SECONDS))
-    level *= 1 - (1 - CARD_DUCK_LEVEL) * Math.min(down, up)
+    level *= 1 - (1 - cardLevelOf(card)) * Math.min(down, up)
   }
   return level
 }

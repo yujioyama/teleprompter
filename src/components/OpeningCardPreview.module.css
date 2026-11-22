@@ -43,3 +43,22 @@
   color: var(--text, #f0f0f5);
   font-size: 14px;
 }
+
+.styles {
+  display: flex;
+  gap: 6px;
+}
+
+.style {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2a2a3a);
+  background: transparent;
+  color: var(--text-muted, #888899);
+  font-size: 13px;
+}
+
+.picked {
+  border-color: var(--accent, #6c63ff);
+  color: var(--text, #f0f0f5);
+}

@@ -15,6 +15,7 @@ const DEFAULTS = {
   conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.1,
   bgmStopBeforePunchline: true,
+  openingStyle: 'stars',
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,

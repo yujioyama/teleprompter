@@ -12,6 +12,7 @@ import type { StickerMotion } from '../utils/stickerMotion'
 import type { VoicePreset } from '../utils/voicePreset'
 import type { NoiseReduction } from '../utils/ownVoiceNoise'
 import type { ThoughtEcho } from '../utils/voiceEffects'
+import type { OpeningStyle } from '../utils/openingCard'
 import { COVER_TEXT_POSITION_DEFAULT, type CoverStickerSpot } from '../utils/coverImage'
 import type { CoverFramePlacement, CoverFrameSource } from '../utils/coverFrames'
 
@@ -37,6 +38,8 @@ export interface AppSettings {
   bgmVolume: number
   /** Drop the BGM out just before the punchline (the last shot). */
   bgmStopBeforePunchline: boolean
+  /** How the 冒頭カード looks: the night sky (since 2026-11-22) or the 暖簾. */
+  openingStyle: OpeningStyle
   /** 0-100, where the subtitle step starts its position. */
   subtitlePosition: number
   /** Draw the first shot's cues at the hook position, from its first frame. */
@@ -109,6 +112,7 @@ const DEFAULTS: AppSettings = {
   conversationBgmId: 'musicbox-cat-box',
   bgmVolume: 0.1,
   bgmStopBeforePunchline: true,
+  openingStyle: 'stars',
   subtitlePosition: SUBTITLE_POSITION_TOP,
   hookStyleEnabled: true,
   hookPosition: SUBTITLE_POSITION_TOP,

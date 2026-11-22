@@ -5,7 +5,7 @@ import { getFFmpeg } from './ffmpegClient'
 import { finishAudio } from './normalizeLoudness'
 import type { VoicePreset } from './voicePreset'
 import { canUseWebCodecs } from './webcodecs/support'
-import { bgmEnvelope, CARD_DUCK_LEVEL, CARD_MUFFLE_HZ, CARD_RAMP_SECONDS, PLAYS_TO_END, type BgmEnding, type CardSpan } from './bgmStop'
+import { bgmEnvelope, cardLevelOf, CARD_MUFFLE_HZ, CARD_RAMP_SECONDS, PLAYS_TO_END, type BgmEnding, type CardSpan } from './bgmStop'
 import { mixMusicWebCodecs } from './webcodecs/mixMusicWebCodecs'
 
 /**
@@ -34,15 +34,16 @@ export function buildMixFilterComplex(durationSeconds: number, volume: number, e
 }
 
 /**
- * 挿入カード: the BGM softer while each card is up (cardDuckAt, written out),
+ * 挿入カード: the BGM softer (or silent) while each card is up (cardDuckAt, written out),
  * and muffled. The muffle switches on and off with the card rather than
  * gliding, which ffmpeg's lowpass can't do; the level's ramps soften it.
  */
 export function cardFilters(cards: CardSpan[]): string {
   if (cards.length === 0) return ''
   const r = CARD_RAMP_SECONDS
-  const depth = +(1 - CARD_DUCK_LEVEL).toFixed(3)
-  const factors = cards.map(({ start, end }) => {
+  const factors = cards.map(card => {
+    const { start, end } = card
+    const depth = +(1 - cardLevelOf(card)).toFixed(3)
     const s = start.toFixed(3)
     const e = (end + r).toFixed(3)
     return `(1-${depth}*min(clip((t-${s})/${r},0,1),clip((${e}-t)/${r},0,1)))`

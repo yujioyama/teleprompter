@@ -12,11 +12,11 @@ vi.mock('./cardVoiceStore', () => ({ getCardVoice: vi.fn(async () => null) }))
 vi.mock('./webcodecs/cardVoice', () => ({ prepareCardVoice: vi.fn(async () => null) }))
 
 // Each test its own card text: drawn cards are kept between calls by what they look like.
-function script(text: string): Pick<Script, 'id' | 'cards' | 'cardAudio' | 'oneTake' | 'shots'> {
+function script(text: string, background?: string): Pick<Script, 'id' | 'cards' | 'cardAudio' | 'oneTake' | 'shots'> {
   return {
     id: 's1',
     shots: [{ id: 'a', text: 'Line one' }, { id: 'b', text: 'Line two' }],
-    cards: [{ id: 'c1', afterShotId: 'a', text }],
+    cards: [{ id: 'c1', afterShotId: 'a', text, ...(background ? { background } : {}) }],
   }
 }
 
@@ -30,11 +30,11 @@ describe('cardClipsOf', () => {
   })
 
   it('draws a card with no voice as before: 1.8 s, no voice, the same signature', async () => {
-    const { clips: [card], unreadVoices } = await cardClipsOf(script('No voice'))
+    const { clips: [card], unreadVoices } = await cardClipsOf(script('No voice', 'paper'))
     expect(unreadVoices).toEqual([])
     expect(card.clip.end).toBe(1.8)
     expect(voiceArg()).toBeUndefined()
-    expect(card.signature).toBe(`card:${JSON.stringify(['No voice', 'grape', true])}`)
+    expect(card.signature).toBe(`card:${JSON.stringify(['No voice', 'paper', true])}`)
     expect(getCardVoice).toHaveBeenCalledWith('s1', 'c1')
     expect(prepareCardVoice).not.toHaveBeenCalled()
   })
@@ -54,6 +54,11 @@ describe('cardClipsOf', () => {
     expect(voiced.signature).toContain('2026-11-19T10:00:00.000Z')
   })
 
+  it('gives a spooky (grape) card a new signature, so one saved before it is redrawn', async () => {
+    const { clips: [card] } = await cardClipsOf(script('Spooky'))
+    expect(card.signature).toBe(`card:${JSON.stringify(['Spooky', 'grape', true, 'spooky-1'])}`)
+  })
+
   it('draws a stored voice with no speech in it as a card with no voice, and says so', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(getCardVoice).mockResolvedValue({ blob: new Blob(['hush']), savedAt: '2026-11-19T11:00:00.000Z' })
@@ -61,7 +66,7 @@ describe('cardClipsOf', () => {
     expect(unreadVoices).toEqual([])
     expect(card.clip.end).toBe(1.8)
     expect(voiceArg()).toBeUndefined()
-    expect(card.signature).toBe(`card:${JSON.stringify(['Silent voice', 'grape', true])}`)
+    expect(card.signature).toBe(`card:${JSON.stringify(['Silent voice', 'grape', true, 'spooky-1'])}`)
     expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
@@ -74,7 +79,7 @@ describe('cardClipsOf', () => {
     const first = await cardClipsOf(script('Broken voice'))
     expect(first.clips[0].clip.end).toBe(1.8)
     expect(voiceArg()).toBeUndefined()
-    expect(first.clips[0].signature).toBe(`card:${JSON.stringify(['Broken voice', 'grape', true])}`)
+    expect(first.clips[0].signature).toBe(`card:${JSON.stringify(['Broken voice', 'grape', true, 'spooky-1'])}`)
     expect(first.unreadVoices).toEqual(['Broken voice'])
 
     const prepared = { samples: new Float32Array(48000 * 2), sampleRate: 48000 }

@@ -46,7 +46,7 @@ import { DEFAULT_SPEAKER_ICON, withSpeakers } from '../utils/speakers'
 import { withScene } from '../utils/sceneLabel'
 import { isPhoneVoice } from '../utils/voiceEffects'
 import { cardClipsOf, withCardClips, type CardClip } from '../utils/cardClips'
-import { cardAudioOf, cardCueInput, cardSpansOf, cardsInOrder, isCardClip } from '../utils/insertCard'
+import { cardAudioOf, cardCueInput, cardSpansOf, cardsInOrder, isCardClip, spookyCardClipsOf } from '../utils/insertCard'
 import type { Shot } from '../types'
 import { useLineImages } from '../hooks/useLineImages'
 import { stripEmphasis } from '../utils/subtitleEmphasis'
@@ -660,7 +660,7 @@ export default function FinalizePage() {
   )
   const speakerInputs = combined?.cueInputs
   // 冒頭カード: with one, the 状況のラベル isn't shown.
-  const { plan: openingCard, ready: openingCardReady } = useOpeningCard(script)
+  const { plan: openingCard, ready: openingCardReady } = useOpeningCard(script, settings.openingStyle)
   const scene = script?.opening?.text.trim() ? undefined : script?.scene
   const hookFor = useCallback(
     (cues: SubtitleCue[], position: SubtitlePosition) => withOpeningCard(withLineImages(
@@ -780,9 +780,13 @@ export default function FinalizePage() {
 
   // Where the BGM drops out (or is lowered, for a soft genre): just before
   // the last shot, the punchline — in a 一発撮り take, just before its last line.
-  // 挿入カード: where the BGM goes soft and muffled, unless that's switched off for the script.
+  // 挿入カード: where the BGM goes soft and muffled (silent through a spooky card), unless that's switched off for the script.
   const muffleCards = cardAudioOf(script).muffle
-  const cardSpans = useMemo(() => (muffleCards ? cardSpansOf(combinedClips) : []), [muffleCards, combinedClips])
+  const scriptCards = script?.cards
+  const cardSpans = useMemo(
+    () => (muffleCards ? cardSpansOf(combinedClips, spookyCardClipsOf({ cards: scriptCards })) : []),
+    [muffleCards, combinedClips, scriptCards],
+  )
   const bgmStopAt = useMemo(
     () => oneTake
       ? (bgmStopBeforePunchline && subtitleCues.length > 1 ? subtitleCues[subtitleCues.length - 1].start : null)
@@ -1317,7 +1321,14 @@ export default function FinalizePage() {
 
           {step === 'subtitle' && combinedBlob && (
             <div className={styles.stepBody}>
-              {openingCard && <OpeningCardPreview plan={openingCard} video={combinedBlob} />}
+              {openingCard && (
+                <OpeningCardPreview
+                  plan={openingCard}
+                  video={combinedBlob}
+                  style={settings.openingStyle}
+                  onStyleChange={openingStyle => updateSettings({ openingStyle })}
+                />
+              )}
               <SubtitleWorkflow
                 key={combinedUrl}
                 combinedBlob={combinedBlob}

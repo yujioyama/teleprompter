@@ -2,7 +2,7 @@ import { ALL_FORMATS, BlobSource, Input } from 'mediabunny'
 import { applyVoicePreset, type VoicePreset } from '../voicePreset'
 import { decodeAudioTrack, muxWithAudio } from './audioTrack'
 import { channelsOf } from './normalizeLoudnessWebCodecs'
-import { bgmEnvelope, CARD_DUCK_LEVEL, CARD_MUFFLE_HZ, CARD_RAMP_SECONDS, OPEN_HZ, PLAYS_TO_END, type BgmEnding } from '../bgmStop'
+import { bgmEnvelope, cardLevelOf, CARD_MUFFLE_HZ, CARD_RAMP_SECONDS, OPEN_HZ, PLAYS_TO_END, type BgmEnding } from '../bgmStop'
 
 /**
  * ffmpeg's `amix` (normalize=1, the default) scales every input by
@@ -108,16 +108,18 @@ export async function renderMix(
   fadeOut.gain.linearRampToValueAtTime(0, fade.start + fade.length)
   const bgmGain = ctx.createGain()
   bgmGain.gain.value = volume * AMIX_SCALE
-  // 挿入カード: the same music, softer and muffled while each card is up.
+  // 挿入カード: the same music, softer and muffled while each card is up (silent through a spooky one).
   const cardGain = ctx.createGain()
   const muffle = ctx.createBiquadFilter()
   muffle.type = 'lowpass'
   muffle.Q.value = Math.SQRT1_2
   muffle.frequency.value = OPEN_HZ
-  for (const { start, end } of ending.cards ?? []) {
+  for (const card of ending.cards ?? []) {
+    const { start, end } = card
+    const level = cardLevelOf(card)
     cardGain.gain.setValueAtTime(1, start)
-    cardGain.gain.linearRampToValueAtTime(CARD_DUCK_LEVEL, start + CARD_RAMP_SECONDS)
-    cardGain.gain.setValueAtTime(CARD_DUCK_LEVEL, end)
+    cardGain.gain.linearRampToValueAtTime(level, start + CARD_RAMP_SECONDS)
+    cardGain.gain.setValueAtTime(level, end)
     cardGain.gain.linearRampToValueAtTime(1, end + CARD_RAMP_SECONDS)
     muffle.frequency.setValueAtTime(OPEN_HZ, start)
     muffle.frequency.exponentialRampToValueAtTime(CARD_MUFFLE_HZ, start + CARD_RAMP_SECONDS)

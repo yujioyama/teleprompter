@@ -52,6 +52,7 @@ describe('resolveShotTrimSettings', () => {
     conversationBgmId: null,
     bgmVolume: 0.3,
     bgmStopBeforePunchline: true,
+    openingStyle: 'stars',
     subtitlePosition: 72,
     hookStyleEnabled: true,
     hookPosition: 50,

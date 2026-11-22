@@ -181,8 +181,20 @@ export function charTimesFromWords(text: string, words: OpeningWord[], voiceAt: 
   })
 }
 
-/** The card's timing for `text`, with the recorded voice or without one. */
-export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null): OpeningTiming {
+/**
+ * How the card looks (2026-11-22): 'stars', a calm night sky in the 挿入カード's
+ * hand-cut lettering, cut straight to line 1; 'noren', the 暖簾 we walk through.
+ */
+export type OpeningStyle = 'stars' | 'noren'
+export const OPENING_STYLES: readonly OpeningStyle[] = ['stars', 'noren']
+export const OPENING_STYLE_LABELS: Record<OpeningStyle, string> = { stars: '星空', noren: '暖簾' }
+
+/**
+ * The card's timing for `text`, with the recorded voice or without one. The
+ * 暖簾 takes OPENING_WIPE_S to walk through after `wipeAt`; the night sky
+ * cuts to line 1 there.
+ */
+export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null, style: OpeningStyle = 'noren'): OpeningTiming {
   const chars = [...text]
   let charTimes: number[]
   let voiceAt: number | null = null
@@ -201,7 +213,7 @@ export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null)
   const wipeAt = roundTime(voiceAt !== null
     ? Math.max(voiceEnd + OPENING_AFTER_VOICE_S, typedEnd + OPENING_VOICE_HOLD_S)
     : typedEnd + OPENING_HOLD_S)
-  const seconds = Math.ceil((wipeAt + OPENING_WIPE_S) * FRAME_RATE - 1e-6) / FRAME_RATE
+  const seconds = Math.ceil((wipeAt + (style === 'noren' ? OPENING_WIPE_S : 0)) * FRAME_RATE - 1e-6) / FRAME_RATE
   return { charTimes, typedEnd, jaAt, voiceAt, wipeAt, seconds }
 }
 
@@ -212,17 +224,24 @@ export interface OpeningCardPlan {
   timing: OpeningTiming
   /** The prepared voice (see openingVoice.ts), by its key; absent for none. */
   voiceKey?: string
+  /** Absent: the 暖簾 (a plan made before the night sky). */
+  style?: OpeningStyle
 }
 
-export function openingCardPlanOf(opening: ScriptOpening | undefined, voice?: { key: string; timing: OpeningVoiceTiming } | null): OpeningCardPlan | null {
+export function openingCardPlanOf(
+  opening: ScriptOpening | undefined,
+  voice?: { key: string; timing: OpeningVoiceTiming } | null,
+  style: OpeningStyle = 'noren',
+): OpeningCardPlan | null {
   const text = opening?.text.trim()
   if (!text) return null
   const ja = opening?.ja?.trim()
   return {
     text,
     ...(ja ? { ja } : {}),
-    timing: openingTimingOf(text, voice?.timing),
+    timing: openingTimingOf(text, voice?.timing, style),
     ...(voice ? { voiceKey: voice.key } : {}),
+    style,
   }
 }
 
@@ -291,7 +310,7 @@ function wrap(text: string, room: number, width: (s: string) => number): string[
 }
 
 /** The Japanese on one line as big as fits, down to the smallest; past that, two lines split at the middle. */
-function layoutJa(text: string, width: number, measure: (text: string, font: string) => number): { lines: string[]; fontPx: number } {
+export function layoutJa(text: string, width: number, measure: (text: string, font: string) => number): { lines: string[]; fontPx: number } {
   const room = width * 0.84
   let fontPx = Math.round(width * JA_SHARE)
   const min = Math.round(width * JA_MIN_SHARE)
