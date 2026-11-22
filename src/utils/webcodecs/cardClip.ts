@@ -1,12 +1,13 @@
 import { AudioBufferSource, Quality, VideoSample, VideoSampleSource } from 'mediabunny'
 import { createMp4Output, runOutput } from './audioTrack'
 import { OUTPUT_CHANNELS, OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_SAMPLE_RATE, OUTPUT_WIDTH } from './support'
-import { cardPopSamples, drawCardFrame, layoutCardText } from '../drawInsertCard'
-import { CARD_VOICE_START_S, cardSecondsFor, wobblesOf, type CardBackground } from '../insertCard'
+import { cardMistSamples, cardPopSamples, drawCardFrame, layoutCardText } from '../drawInsertCard'
+import { CARD_VOICE_START_S, cardSecondsFor, isSpookyCard, wobblesOf, type CardBackground } from '../insertCard'
 
 /**
  * A 挿入カード as a clip of its own: every frame drawn (the letters popping
- * in and wobbling), over silence with the pop at its start when `sound`.
+ * in and wobbling), over silence with the pop at its start when `sound`
+ * (and, on a spooky card, its mist: cardMistSamples).
  * With `voice` (挿入カードの声, mono, any rate), the voice is heard from
  * CARD_VOICE_START_S and the card lasts as long as it needs (cardSecondsFor).
  * It goes into the 結合 like a take, trimmed and normalized as one, so it
@@ -49,7 +50,7 @@ export async function rawCardClipWebCodecs(
       }
     }
     videoSource.close()
-    await audioSource.add(await cardAudio(sound, seconds, voice))
+    await audioSource.add(await cardAudio(sound, seconds, voice, isSpookyCard(background)))
     audioSource.close()
   })
   canvas.width = 0
@@ -60,16 +61,21 @@ export async function rawCardClipWebCodecs(
 
 /**
  * The card's sound: silence a little past its end (so a trim never finds it
- * short), the pop at 0, and the voice, when there is one, from CARD_VOICE_START_S.
+ * short), the pop at 0 (with the mist under it on a spooky card), and the voice, when there is one, from CARD_VOICE_START_S.
  */
-async function cardAudio(sound: boolean, seconds: number, voice: { samples: Float32Array; sampleRate: number } | undefined): Promise<AudioBuffer> {
+async function cardAudio(sound: boolean, seconds: number, voice: { samples: Float32Array; sampleRate: number } | undefined, spooky: boolean): Promise<AudioBuffer> {
   const length = Math.ceil((seconds + 0.1) * OUTPUT_SAMPLE_RATE)
   const audio = new AudioBuffer({ numberOfChannels: OUTPUT_CHANNELS, length, sampleRate: OUTPUT_SAMPLE_RATE })
   if (sound) {
     // A moment in, so the AAC priming the trim cuts doesn't take its attack.
-    const pop = cardPopSamples(OUTPUT_SAMPLE_RATE)
     const at = Math.round(0.03 * OUTPUT_SAMPLE_RATE)
-    for (let c = 0; c < OUTPUT_CHANNELS; c++) audio.copyToChannel(pop, c, at)
+    const pop = cardPopSamples(OUTPUT_SAMPLE_RATE)
+    const mist = spooky ? cardMistSamples(OUTPUT_SAMPLE_RATE, seconds - 0.03) : null
+    for (let c = 0; c < OUTPUT_CHANNELS; c++) {
+      const channel = audio.getChannelData(c)
+      pop.forEach((v, i) => (channel[at + i] += v))
+      mist?.forEach((v, i) => (channel[at + i] += v))
+    }
   }
   if (voice && voice.samples.length > 0) {
     const heard = await voiceAt(voice, length)

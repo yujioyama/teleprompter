@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Script } from '../types'
-import { openingCardPlanOf, type OpeningCardPlan } from '../utils/openingCard'
+import { openingCardPlanOf, type OpeningCardPlan, type OpeningStyle } from '../utils/openingCard'
 import { openingVoiceOf } from '../utils/webcodecs/openingVoice'
 
 /**
@@ -8,9 +8,9 @@ import { openingVoiceOf } from '../utils/webcodecs/openingVoice'
  * recorded voice: null for none, undefined while the voice is being read.
  * A voice that can't be read leaves the card typed without one (and says
  * so in the console). `ready` resolves to the same, for a burn that can't
- * go before it's known.
+ * go before it's known. `style` is how it looks (the setting).
  */
-export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefined): {
+export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefined, style: OpeningStyle): {
   plan: OpeningCardPlan | null | undefined
   ready: () => Promise<OpeningCardPlan | null>
 } {
@@ -34,7 +34,7 @@ export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefine
         console.warn('[useOpeningCard] could not read the opening voice, typing the card without it:', err)
         return null
       })
-      .then(voice => openingCardPlanOf(opening, voice ? { key: voice.key, timing: voice.timing } : null))
+      .then(voice => openingCardPlanOf(opening, voice ? { key: voice.key, timing: voice.timing } : null, style))
     readyRef.current = made
     void made.then(next => {
       if (!cancelled) setPlan(next)
@@ -42,7 +42,7 @@ export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefine
     return () => {
       cancelled = true
     }
-  }, [scriptId, text, ja])
+  }, [scriptId, text, ja, style])
 
   return { plan, ready: () => readyRef.current }
 }

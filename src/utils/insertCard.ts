@@ -92,7 +92,12 @@ const easeOut = (t: number) => 1 - (1 - t) ** 3
 
 /** How big letter `index` is `t` seconds into the card: popping in, then 1. */
 export function letterScale(index: number, t: number): number {
-  const local = (t - index * POP_STAGGER_SECONDS) / POP_SECONDS
+  return popScaleAt(t - index * POP_STAGGER_SECONDS)
+}
+
+/** How big a letter is `since` seconds after its pop started: 0 before, up past full size, then 1. */
+export function popScaleAt(since: number): number {
+  const local = since / POP_SECONDS
   if (local <= 0) return 0
   if (local >= 1) return 1
   // Up past full size for the first 70%, then settling back.
@@ -147,6 +152,83 @@ export function letterTilt(wobbles: Wobble[], index: number, t: number): number 
     if (at >= 0) return wobble.angles[at] * Math.sin(Math.PI * local)
   }
   return 0
+}
+
+// ---- The spooky card (2026-11-22) ----
+
+/**
+ * A card on grape, the default, is spooky: pale purple fog drifts behind the
+ * letters, the light flickers like a dying bulb, the letters shiver instead
+ * of wobbling, and its sound is a hush of air with a far voice in it (see
+ * cardMistSamples) while the BGM goes silent. The other backgrounds are
+ * as they were.
+ */
+export function isSpookyCard(background: CardBackground): boolean {
+  return background.kind === 'named' && background.name === 'grape'
+}
+
+/** The flickers in one round of FLICKER_EVERY_S: [start, length] in seconds, each a dip in the light. */
+export const FLICKERS: readonly (readonly [number, number])[] = [
+  [0.55, 0.05],
+  [0.63, 0.04],
+  [1.25, 0.1],
+]
+/** The flickers come round again this often, on a card held longer for its voice. */
+export const FLICKER_EVERY_S = 1.3
+/** How dark a flicker makes the card: the share of light it takes away. */
+export const FLICKER_DIP = 0.55
+
+/** How much of the light a flicker takes away `t` seconds into the card: FLICKER_DIP during one, else 0. */
+export function flickerAt(t: number): number {
+  if (t < 0) return 0
+  const local = t % FLICKER_EVERY_S
+  return FLICKERS.some(([start, length]) => local >= start && local < start + length) ? FLICKER_DIP : 0
+}
+
+/** How far a shivering letter moves, as a share of the font size, and how far it turns, in degrees. */
+export const SHIVER_SHARE = 0.025
+export const SHIVER_DEGREES = 1.5
+
+/** Letter `index`'s shiver `t` seconds in: a new small jolt every frame (30 a second), the same on every draw. */
+export function letterShiver(index: number, t: number): { dx: number; dy: number; rotate: number } {
+  const next = random(hash(`shiver:${Math.floor(t * 30)}:${index}`))
+  return { dx: (next() - 0.5) * 2 * SHIVER_SHARE, dy: (next() - 0.5) * 2 * SHIVER_SHARE, rotate: (next() - 0.5) * 2 * SHIVER_DEGREES }
+}
+
+/** One puff of fog: where it starts and how big, as shares of the card's width and height, and how it moves. */
+export interface FogPuff {
+  x: number
+  y: number
+  /** Radius, as a share of the width. */
+  r: number
+  /** Across, in widths a second. */
+  speed: number
+  phase: number
+}
+
+/** How fast the fog rises, in widths a second; and its color. */
+export const FOG_RISE = 0.12
+export const FOG_COLOR = '205, 180, 225'
+export const FOG_ALPHA = 0.22
+
+export const FOG_PUFFS: readonly FogPuff[] = (() => {
+  const next = random(hash('fog'))
+  return Array.from({ length: 16 }, () => ({
+    x: next(),
+    y: 0.55 + next() * 0.5,
+    r: 0.2 + next() * 0.3,
+    speed: 0.19 + next() * 0.23,
+    phase: next() * Math.PI * 2,
+  }))
+})()
+
+/** Where puff `puff` is `t` seconds in, in px on a `width` × `height` card: drifting across (round again past the edge) and rising. */
+export function fogPuffAt(puff: FogPuff, t: number, width: number, height: number): { x: number; y: number; r: number } {
+  const r = puff.r * width
+  const span = width + 2 * r
+  const x = ((((puff.x * width + t * puff.speed * width) % span) + span) % span) - r
+  const y = puff.y * height - Math.sin(t * 2.2 + puff.phase) * width * 0.04 - t * FOG_RISE * width
+  return { x, y, r }
 }
 
 /** The cards that go in a script's video, in order, each with the line it follows (from 1). */
@@ -249,16 +331,28 @@ export function isCardClip(clip: { shotId: string }): boolean {
   return clip.shotId.startsWith(CARD_PREFIX)
 }
 
-/** The cards' spans on the joined timeline, in seconds: where the BGM goes soft. */
-export function cardSpansOf(clips: { shotId: string; start: number; end: number }[]): { start: number; end: number }[] {
-  const spans: { start: number; end: number }[] = []
+/**
+ * The cards' spans on the joined timeline, in seconds: where the BGM goes
+ * soft, or silent for a card `silent` says so of (a spooky one).
+ */
+export function cardSpansOf(
+  clips: { shotId: string; start: number; end: number }[],
+  silent: (clip: { shotId: string }) => boolean = () => false,
+): { start: number; end: number; silent?: true }[] {
+  const spans: { start: number; end: number; silent?: true }[] = []
   let offset = 0
   for (const clip of clips) {
     const duration = clip.end - clip.start
-    if (isCardClip(clip)) spans.push({ start: offset, end: offset + duration })
+    if (isCardClip(clip)) spans.push({ start: offset, end: offset + duration, ...(silent(clip) ? { silent: true as const } : {}) })
     offset += duration
   }
   return spans
+}
+
+/** Whether a clip is one of `script`'s spooky cards' (isSpookyCard): the BGM is silent through those. */
+export function spookyCardClipsOf(script: Pick<Script, 'cards'> | undefined): (clip: { shotId: string }) => boolean {
+  const ids = new Set((script?.cards ?? []).filter(card => isSpookyCard(cardBackgroundOf(card.background))).map(card => cardClipId(card.id)))
+  return clip => ids.has(clip.shotId)
 }
 
 /** A card's subtitle input: nothing to say, only time to take up. */

@@ -1,7 +1,8 @@
 import { ALL_FORMATS, AudioBufferSource, BlobSource, Input, Quality, VideoSample, VideoSampleSink, VideoSampleSource } from 'mediabunny'
 import { createMp4Output, runOutput } from './audioTrack'
 import { OUTPUT_CHANNELS, OUTPUT_FRAME_RATE, OUTPUT_HEIGHT, OUTPUT_SAMPLE_RATE, OUTPUT_WIDTH } from './support'
-import { coverTimeOf, drawOpeningCard, layoutOpening, type OpeningCardPlan } from '../openingCard'
+import { coverTimeOf, type OpeningCardPlan } from '../openingCard'
+import { openingCardDrawer } from '../openingStars'
 
 /**
  * Line 1's first frame (at `at` seconds into its take) at the output size,
@@ -47,10 +48,10 @@ export async function rawOpeningClipWebCodecs(
   const canvas = new OffscreenCanvas(OUTPUT_WIDTH, OUTPUT_HEIGHT)
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D context unavailable')
-  const layout = layoutOpening(plan.text, OUTPUT_WIDTH, OUTPUT_HEIGHT, (t, font) => {
+  const draw = openingCardDrawer(plan, OUTPUT_WIDTH, OUTPUT_HEIGHT, (t, font) => {
     ctx.font = font
     return ctx.measureText(t).width
-  }, plan.ja)
+  })
   const frames = Math.round(timing.seconds * OUTPUT_FRAME_RATE)
   const frameSeconds = 1 / OUTPUT_FRAME_RATE
 
@@ -61,7 +62,7 @@ export async function rawOpeningClipWebCodecs(
   output.addAudioTrack(audioSource)
   const buffer = await runOutput(output, async () => {
     for (let i = 0; i < frames; i++) {
-      drawOpeningCard(ctx, background, layout, timing, i * frameSeconds)
+      draw(ctx, background, i * frameSeconds)
       const sample = new VideoSample(canvas, { timestamp: i * frameSeconds, duration: frameSeconds })
       try {
         await videoSource.add(sample)
@@ -97,7 +98,7 @@ async function openingAudio(seconds: number, voiceAt: number | null, voice?: { s
 
 /**
  * The video's cover when it opens with a 冒頭カード: the card as it stands
- * just before we walk through (both lines typed, the 暖簾 closed), over line
+ * just before line 1 (everything in; the 暖簾 still closed), over line
  * 1's first frame, as a PNG for the burn's cover frames.
  */
 export async function openingCoverPng(take: Blob, at: number, plan: OpeningCardPlan): Promise<Blob> {
@@ -106,11 +107,11 @@ export async function openingCoverPng(take: Blob, at: number, plan: OpeningCardP
   try {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas 2D context unavailable')
-    const layout = layoutOpening(plan.text, OUTPUT_WIDTH, OUTPUT_HEIGHT, (t, font) => {
+    const draw = openingCardDrawer(plan, OUTPUT_WIDTH, OUTPUT_HEIGHT, (t, font) => {
       ctx.font = font
       return ctx.measureText(t).width
-    }, plan.ja)
-    drawOpeningCard(ctx, background, layout, plan.timing, coverTimeOf(plan.timing))
+    })
+    draw(ctx, background, coverTimeOf(plan.timing))
     return await canvas.convertToBlob({ type: 'image/png' })
   } finally {
     background.width = 0

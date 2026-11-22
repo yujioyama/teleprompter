@@ -1,7 +1,7 @@
 import type { Script } from '../types'
 import { DEFAULT_CARD_BACKGROUND } from '../../shared/inbox'
 import type { ShotClip } from './shotEncoding'
-import { cardAudioOf, cardSecondsFor, cardBackgroundOf, cardClipId, cardsInOrder, cardTextOf } from './insertCard'
+import { cardAudioOf, cardSecondsFor, cardBackgroundOf, cardClipId, cardsInOrder, cardTextOf, isSpookyCard } from './insertCard'
 export { cardClipId, isCardClip, cardSpansOf, cardCueInput } from './insertCard'
 import { downloadLineImage } from './lineImageDownload'
 import { getLineImages } from './lineImageStore'
@@ -11,6 +11,9 @@ import { prepareCardVoice } from './webcodecs/cardVoice'
 import { getCardVoice } from './cardVoiceStore'
 
 type CardVoice = { samples: Float32Array; sampleRate: number }
+
+/** In a spooky card's key, so the 結合s saved with a grape card from before it redraw it. */
+const SPOOKY_LOOK = 'spooky-1'
 
 /** A card's clip, and the shot it comes after. */
 export interface CardClip {
@@ -50,15 +53,17 @@ export async function cardClipsOf(script: Pick<Script, 'id' | 'cards' | 'cardAud
   const unreadVoices: string[] = []
   for (const { card } of cards) {
     const text = cardTextOf(card.text)
-    // Only a card with Japanese has it in its key, so the cards made before keep theirs.
+    // Only a card with Japanese has it in its key, so the cards made before keep theirs;
+    // likewise only a spooky one has its look (made since 2026-11-22) in it.
     const ja = card.ja ? [card.ja] : []
-    const plainKey = JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja])
+    const look = isSpookyCard(cardBackgroundOf(card.background)) ? [SPOOKY_LOOK] : []
+    const plainKey = JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja, ...look])
     const stored = await getCardVoice(script.id, card.id).catch(err => {
       console.warn('[cardClips] could not read the card voice, drawing the card without it:', err)
       unreadVoices.push(text)
       return null
     })
-    const key = stored ? JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja, stored.savedAt]) : plainKey
+    const key = stored ? JSON.stringify([text, card.background ?? DEFAULT_CARD_BACKGROUND, sound, ...ja, ...look, stored.savedAt]) : plainKey
     let drawn = made.get(key)
     if (!drawn) {
       drawn = (async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { drawOpeningCard, layoutOpening, type OpeningCardPlan } from '../utils/openingCard'
+import { OPENING_STYLES, OPENING_STYLE_LABELS, type OpeningCardPlan, type OpeningStyle } from '../utils/openingCard'
+import { openingCardDrawer } from '../utils/openingStars'
 import { firstFrameOf } from '../utils/webcodecs/openingClip'
 import { openingVoiceByKey } from '../utils/webcodecs/openingVoice'
 import styles from './OpeningCardPreview.module.css'
@@ -14,7 +15,18 @@ const HEIGHT = 1920
  * as it will be burned in, with its voice. Shows the last frame before the
  * curtain lifts until played.
  */
-export default function OpeningCardPreview({ plan, video }: { plan: OpeningCardPlan; video: Blob }) {
+export default function OpeningCardPreview({
+  plan,
+  video,
+  style,
+  onStyleChange,
+}: {
+  plan: OpeningCardPlan
+  video: Blob
+  /** How the card looks, and a pick of another (星空 or 暖簾). */
+  style: OpeningStyle
+  onStyleChange: (style: OpeningStyle) => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [frame, setFrame] = useState<OffscreenCanvas | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -91,6 +103,20 @@ export default function OpeningCardPreview({ plan, video }: { plan: OpeningCardP
         <span className={styles.meta}>
           {plan.timing.seconds.toFixed(1)}秒・{plan.voiceKey ? '声に合わせて打ちます' : '声なし（カメラアプリで録れます）'}
         </span>
+        <div className={styles.styles} role="radiogroup" aria-label="冒頭カードの見た目">
+          {OPENING_STYLES.map(option => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={style === option}
+              className={`${styles.style} ${style === option ? styles.picked : ''}`}
+              onClick={() => onStyleChange(option)}
+            >
+              {OPENING_STYLE_LABELS[option]}
+            </button>
+          ))}
+        </div>
         <button type="button" className={styles.play} onClick={() => (playing ? stopRef.current?.() : void play())}>
           {playing ? '停止' : '▶ 再生'}
         </button>
@@ -108,6 +134,6 @@ function draw(canvas: HTMLCanvasElement | null, frame: OffscreenCanvas | null, p
     ctx.font = font
     return ctx.measureText(text).width
   }
-  drawOpeningCard(ctx, frame, layoutOpening(plan.text, WIDTH, HEIGHT, measure, plan.ja), plan.timing, t)
+  openingCardDrawer(plan, WIDTH, HEIGHT, measure)(ctx, frame, t)
   ctx.restore()
 }
