@@ -16,6 +16,7 @@ import type { OpeningCardPlan } from './openingCard'
 import { firstFrameOf, rawOpeningClipWebCodecs } from './webcodecs/openingClip'
 import { openingVoiceByKey } from './webcodecs/openingVoice'
 import { normalizeShotWebCodecs } from './webcodecs/normalizeShot'
+import { reencodeClipsWebCodecs } from './webcodecs/reencodeClips'
 
 /** One shot as it goes into the joined video: its source and trim range. */
 export interface ShotClip {
@@ -300,17 +301,31 @@ export async function encodeAll(
   }
 }
 
+/** timeStep, with the error's message as the note when `work` fails (shown on the finalize page). */
+async function timeStepWithReason<T>(label: string, work: () => Promise<T>): Promise<T> {
+  let reason: string | null = null
+  return timeStep(label, async () => {
+    try {
+      return await work()
+    } catch (err) {
+      reason = err instanceof Error ? err.message : String(err)
+      throw err
+    }
+  }, () => reason)
+}
+
 /**
  * Burn subtitles into the joined video one shot at a time: each shot is
  * re-encoded from its source with its cue composited in (one encode per
  * shot, reusing any already done in the background), then the clips are
  * joined by packet copy.
  *
- * Falls back to re-encoding the whole joined video (burnSubtitles) when
- * that can't work: WebCodecs unavailable or failing (then ffmpeg.wasm
- * does it), or clips whose encoder headers don't match for packet copy.
- * `cover` goes in ahead of the first shot only shot by shot; the result
- * says whether it did.
+ * Burned shots whose encoder headers don't match for packet copy are
+ * decoded and encoded again as one (reencodeClipsWebCodecs), keeping the
+ * 冒頭カード and the cover. Falls back to re-encoding the whole joined
+ * video (burnSubtitles) when that can't work either, or WebCodecs is
+ * unavailable or failing (then ffmpeg.wasm does it). `cover` and the
+ * 冒頭カード go in only shot by shot; the result says whether they did.
  */
 export async function burnSubtitlesByShot(
   cache: ShotEncodeCache,
@@ -340,13 +355,21 @@ export async function burnSubtitlesByShot(
       disableWebCodecs(err)
     }
     if (burned) {
+      const clips = burned
+      const done = (blob: Blob): BurnedVideo => ({ blob, cover: cover !== undefined, ...(hook.openingCard ? { opening: true } : {}) })
       try {
-        const clips = burned
-        const joined = await timeStep('焼き込み: つなぐ', () => concatClipsWebCodecs(clips, signal))
-        return { blob: joined, cover: cover !== undefined, ...(hook.openingCard ? { opening: true } : {}) }
+        return done(await timeStepWithReason('焼き込み: つなぐ', () => concatClipsWebCodecs(clips, signal)))
       } catch (err) {
         throwIfCancelled(signal)
-        console.warn('[burnSubtitlesByShot] joining burned shots failed, burning the joined video instead:', err)
+        console.warn('[burnSubtitlesByShot] joining burned shots failed, re-encoding them as one instead:', err)
+      }
+      // Still the burned shots, so the 冒頭カード and the cover stay in.
+      onProgress?.(0)
+      try {
+        return done(await timeStepWithReason('焼き込み: まとめて再エンコード', () => reencodeClipsWebCodecs(clips, onProgress, signal)))
+      } catch (err) {
+        throwIfCancelled(signal)
+        console.warn('[burnSubtitlesByShot] re-encoding the burned shots failed, burning the joined video instead:', err)
       }
     }
     onProgress?.(0)
