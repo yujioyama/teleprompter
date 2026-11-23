@@ -15,6 +15,8 @@ import * as burnModule from './burnSubtitles'
 import type { SubtitleLook } from './burnSubtitles'
 import { canUseWebCodecs, disableWebCodecs } from './webcodecs/support'
 import { concatClipsWebCodecs } from './webcodecs/concatClips'
+import { reencodeClipsWebCodecs } from './webcodecs/reencodeClips'
+import { clearTimings, formatTiming, getTimings } from './finalizeTimings'
 import { trimAndNormalizeShot } from './trimAndNormalizeShot'
 import { CancelledError } from './cancellation'
 
@@ -28,6 +30,9 @@ vi.mock('./webcodecs/support', () => ({
 }))
 vi.mock('./webcodecs/concatClips', () => ({
   concatClipsWebCodecs: vi.fn(async (blobs: Blob[]) => new Blob(blobs)),
+}))
+vi.mock('./webcodecs/reencodeClips', () => ({
+  reencodeClipsWebCodecs: vi.fn(async () => new Blob(['re-encoded'])),
 }))
 vi.mock('./webcodecs/openingClip', () => ({
   firstFrameOf: vi.fn(async () => ({ width: 1080, height: 1920 })),
@@ -328,6 +333,7 @@ describe('burnSubtitlesByShot', () => {
 
     it('says it is not in when the whole video had to be burned', async () => {
       vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('different parameters'))
+      vi.mocked(reencodeClipsWebCodecs).mockRejectedValueOnce(new Error('encoder died'))
       vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK, undefined, undefined, undefined, COVER)
       expect(out).toEqual({ blob: expect.any(Blob), cover: false })
@@ -335,13 +341,36 @@ describe('burnSubtitlesByShot', () => {
     })
   })
 
-  it('burns the whole video, keeping WebCodecs on, when the burned shots can\'t be packet-joined', async () => {
+  it('re-encodes the burned shots as one, keeping WebCodecs on, when they can\'t be packet-joined', async () => {
     vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('different parameters'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK)
+    warn.mockRestore()
+
+    expect(disableWebCodecs).not.toHaveBeenCalled()
+    expect(vi.mocked(reencodeClipsWebCodecs).mock.calls[0][0]).toEqual(vi.mocked(concatClipsWebCodecs).mock.calls[0][0])
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
+    expect(await out.blob.text()).toBe('re-encoded')
+  })
+
+  it('notes why the join failed on the finalize page', async () => {
+    clearTimings()
+    vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('clip 1 was encoded with different parameters than clip 0 (映像: x)'))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK)
     warn.mockRestore()
 
-    expect(disableWebCodecs).not.toHaveBeenCalled()
+    const join = getTimings().find(t => t.type === 'step' && t.label === '焼き込み: つなぐ')!
+    expect(formatTiming(join)).toContain('(clip 1 was encoded with different parameters than clip 0 (映像: x)) ✕失敗/中断')
+  })
+
+  it('burns the whole video when re-encoding the burned shots fails too', async () => {
+    vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('different parameters'))
+    vi.mocked(reencodeClipsWebCodecs).mockRejectedValueOnce(new Error('encoder died'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, cues, 50, NO_HOOK)
+    warn.mockRestore()
+
     expect(burnModule.burnSubtitles).toHaveBeenCalledWith(JOINED, cues, fallbackLook, undefined, undefined)
   })
 })
@@ -551,6 +580,18 @@ describe('the 冒頭カード', () => {
     expect(await joined[0].text()).toBe('opening')
     expect(joined).toHaveLength(3)
     expect(out.opening).toBe(true)
+  })
+
+  it('stays in, with the cover, when the burned clips have to be re-encoded as one', async () => {
+    vi.mocked(concatClipsWebCodecs).mockRejectedValueOnce(new Error('different parameters'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const out = await burnSubtitlesByShot(new ShotEncodeCache(), clips, JOINED, [], 50, { ...NO_HOOK, openingCard: plan }, undefined, undefined, undefined, COVER)
+    warn.mockRestore()
+
+    const reencoded = vi.mocked(reencodeClipsWebCodecs).mock.calls[0][0]
+    expect(await reencoded[0].text()).toBe('opening')
+    expect(out).toEqual({ blob: expect.any(Blob), cover: true, opening: true })
+    expect(burnModule.burnSubtitles).not.toHaveBeenCalled()
   })
 
   it('changes its key with its words, but not the shots\'', () => {

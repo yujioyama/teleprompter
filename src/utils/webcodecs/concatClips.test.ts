@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { AudioTimeline, concatClipsWebCodecs, sameDecoderConfig } from './concatClips'
+import { AudioTimeline, concatClipsWebCodecs, decoderConfigDifference, sameDecoderConfig } from './concatClips'
 import { CancelledError } from '../cancellation'
 
 describe('sameDecoderConfig', () => {
@@ -32,6 +32,24 @@ describe('sameDecoderConfig', () => {
   it('rejects when only one side has a description', () => {
     expect(sameDecoderConfig({ codec: 'mp4a.40.2', description: avcC }, { codec: 'mp4a.40.2' })).toBe(false)
     expect(sameDecoderConfig({ codec: 'mp4a.40.2' }, { codec: 'mp4a.40.2' })).toBe(true)
+  })
+})
+
+describe('decoderConfigDifference', () => {
+  const avcC = new Uint8Array([1, 100, 0, 40, 255])
+
+  it('is null when they match', () => {
+    expect(decoderConfigDifference({ codec: 'avc1.640028', description: avcC }, { codec: 'avc1.640028', description: avcC.slice() })).toBeNull()
+  })
+
+  it('names the codec strings, or the byte where the headers part ways', () => {
+    expect(decoderConfigDifference({ codec: 'avc1.640028' }, { codec: 'avc1.64001f' })).toBe('avc1.640028 ≠ avc1.64001f')
+    expect(
+      decoderConfigDifference({ codec: 'avc1.640028', description: avcC }, { codec: 'avc1.640028', description: new Uint8Array([1, 100, 0, 41, 255, 7]) }),
+    ).toBe('avc1.640028のヘッダが3バイト目から違う (5B ≠ 6B)')
+    expect(
+      decoderConfigDifference({ codec: 'avc1.640028', description: avcC }, { codec: 'avc1.640028', description: new Uint8Array([1, 100, 0, 40, 255, 7]) }),
+    ).toBe('avc1.640028のヘッダの長さが違う (5B ≠ 6B)')
   })
 })
 

@@ -26,11 +26,23 @@ function descriptionBytes(config: DecoderConfig): Uint8Array | null {
 
 /** Whether packets encoded under `b` can be decoded with `a`'s config. */
 export function sameDecoderConfig(a: DecoderConfig, b: DecoderConfig): boolean {
-  if (a.codec !== b.codec) return false
+  return decoderConfigDifference(a, b) === null
+}
+
+/**
+ * How `b` differs from `a`, for the join's failure note (codec strings, or
+ * where the avcC/esds bytes first part ways), or null when they match.
+ */
+export function decoderConfigDifference(a: DecoderConfig, b: DecoderConfig): string | null {
+  if (a.codec !== b.codec) return `${a.codec} ≠ ${b.codec}`
   const da = descriptionBytes(a)
   const db = descriptionBytes(b)
-  if (!da || !db) return da === db
-  return da.length === db.length && da.every((byte, i) => byte === db[i])
+  if (!da || !db) return da === db ? null : `ヘッダ${da ? 'あり' : 'なし'} ≠ ${db ? 'あり' : 'なし'}`
+  const n = Math.min(da.length, db.length)
+  for (let i = 0; i < n; i++) {
+    if (da[i] !== db[i]) return `${a.codec}のヘッダが${i}バイト目から違う (${da.length}B ≠ ${db.length}B)`
+  }
+  return da.length === db.length ? null : `${a.codec}のヘッダの長さが違う (${da.length}B ≠ ${db.length}B)`
 }
 
 /** Samples per AAC-LC frame. */
@@ -159,11 +171,13 @@ export async function concatClipsWebCodecs(blobs: Blob[], signal?: AbortSignal):
           firstAudioConfig = audioConfig
           await output.start()
           started = true
-        } else if (
-          !sameDecoderConfig(firstVideoConfig, videoConfig) ||
-          !sameDecoderConfig(firstAudioConfig, audioConfig)
-        ) {
-          throw new Error(`clip ${i} was encoded with different parameters than clip 0`)
+        } else {
+          const video = decoderConfigDifference(firstVideoConfig, videoConfig)
+          const audio = decoderConfigDifference(firstAudioConfig, audioConfig)
+          if (video || audio) {
+            const what = [video && `映像: ${video}`, audio && `音声: ${audio}`].filter(Boolean).join(', ')
+            throw new Error(`clip ${i} was encoded with different parameters than clip 0 (${what})`)
+          }
         }
 
         // Rebase each clip so its first frame lands exactly at `offset`.
