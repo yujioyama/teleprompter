@@ -35,6 +35,8 @@ describe('the BGM under a card', () => {
     const ending = bgmEnding('lofi', 10, cards)
     expect(ending.cards).toEqual(cards)
     expect(delayEnding(ending, 0.5).cards).toEqual([{ start: 4.5, end: 6.3 }])
+    // A spooky card stays silent once moved (after the opening card, it always is).
+    expect(delayEnding(bgmEnding('lofi', 10, [{ start: 4, end: 5.8, silent: true }]), 3.2).cards).toEqual([{ start: 7.2, end: 9, silent: true }])
     expect(bgmEnding('lofi', 10)).not.toHaveProperty('cards')
     expect(sameEnding(ending, bgmEnding('lofi', 10, [{ start: 4, end: 5.8 }]))).toBe(true)
     expect(sameEnding(ending, bgmEnding('lofi', 10))).toBe(false)
