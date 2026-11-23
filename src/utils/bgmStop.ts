@@ -73,7 +73,7 @@ export function delayEnding(ending: BgmEnding, by: number): BgmEnding {
   return {
     ...ending,
     ...(ending.stopAt !== null ? { stopAt: ending.stopAt + by } : {}),
-    ...(ending.cards ? { cards: ending.cards.map(c => ({ start: c.start + by, end: c.end + by })) } : {}),
+    ...(ending.cards ? { cards: ending.cards.map(c => ({ ...c, start: c.start + by, end: c.end + by })) } : {}),
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OPENING_WIPE_S, openingCardPlanOf, openingTimingOf } from './openingCard'
-import { SHOOTING_SECONDS, STARS, layoutStarsOpening, shootingStarsOf, starBrightness } from './openingStars'
+import { SHOOTING_SECONDS, STARS, drawStarsOpening, layoutStarsOpening, shootingStarsOf, starBrightness, starsSceneOf } from './openingStars'
 import {
   FLICKER_DIP,
   FLICKER_EVERY_S,
@@ -58,6 +58,34 @@ describe('the night-sky opening', () => {
     expect(rows.size).toBeGreaterThan(1)
     expect(rows.size).toBeLessThanOrEqual(4)
     expect(layout.ja!.y).toBeGreaterThan(Math.max(...rows))
+  })
+
+  it('types the Japanese alongside the English, not after it', () => {
+    const JA = '初めて納豆を食べてみた'
+    const timing = openingTimingOf(TEXT, null, 'stars')
+    const scene = starsSceneOf(TEXT, layoutStarsOpening(TEXT, 1080, 1920, measure, JA), timing)
+    const jaDrawnAt = (t: number) => {
+      const drawn: string[] = []
+      const ctx = new Proxy({} as Record<string, unknown>, {
+        get: (target, key) =>
+          key === 'fillText' ? (s: string) => drawn.push(s)
+            : key in target ? target[key as string]
+              : key === 'createLinearGradient' || key === 'createRadialGradient' ? () => ({ addColorStop() {} })
+                : () => {},
+        set: (target, key, value) => ((target[key as string] = value), true),
+      })
+      drawStarsOpening(ctx as unknown as CanvasRenderingContext2D, null, scene, t, 1080, 1920)
+      // The Japanese is what's drawn in its characters.
+      return [...new Set(drawn.filter(s => /[぀-鿿]/.test(s)))].join('').length
+    }
+    expect(jaDrawnAt(timing.charTimes[0] - 0.01)).toBe(0)
+    const midway = jaDrawnAt((timing.charTimes[0] + timing.typedEnd) / 2)
+    expect(midway).toBeGreaterThan(0)
+    expect(midway).toBeLessThan(JA.length)
+    expect(jaDrawnAt(timing.typedEnd)).toBe(JA.length)
+    // Each line starts where it will end up, so nothing shifts as it's typed.
+    const { lefts, lines } = scene.layout.ja!
+    expect(lefts).toHaveLength(lines.length)
   })
 
   it('keeps a word on one line', () => {
