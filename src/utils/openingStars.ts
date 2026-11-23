@@ -1,6 +1,6 @@
 import { CARD_BACKGROUND_COLORS, letterCutsOf, letterTilt, popScaleAt, wobblesOf, type LetterCut, type Wobble } from './insertCard'
 import { cardFont, cardJaFont, fillJaWithShadow, letterShadow, paintCardBackground } from './drawInsertCard'
-import { OPENING_JA_FADE_S, drawOpeningCard, layoutJa, layoutOpening, wordSpansOf, type OpeningCardPlan, type OpeningTiming } from './openingCard'
+import { drawOpeningCard, jaTypedCount, layoutJa, layoutOpening, wordSpansOf, type OpeningCardPlan, type OpeningTiming } from './openingCard'
 import { hash, random } from './seededRandom'
 
 /**
@@ -8,7 +8,7 @@ import { hash, random } from './seededRandom'
  * mottle calm under twinkling stars that drift slowly, with now and then a
  * shooting star; the sentence in the cards' hand-cut capitals, each letter
  * popping in as it's heard (the typing's times), wobbling a little once
- * all are in; the Japanese fading in under it. At `wipeAt` it cuts straight
+ * all are in; the Japanese typed under it alongside, over the same span. At `wipeAt` it cuts straight
  * to line 1. Same size as the 暖簾 (OPENING_WIDTH × OPENING_HEIGHT).
  */
 
@@ -44,7 +44,8 @@ export interface StarsLayout {
   letters: StarsLetter[]
   /** The sentence in capitals as the wobbles read it, index for index with the source. */
   shown: string
-  ja?: { lines: string[]; fontPx: number; y: number; step: number }
+  /** The Japanese: its lines, each drawn from `left` (so it doesn't shift as it's typed), the first at `y`. */
+  ja?: { text: string; lines: string[]; fontPx: number; y: number; step: number; lefts: number[] }
 }
 
 /** The sentence laid out once, as it will end up, so each letter pops in in place. */
@@ -108,7 +109,14 @@ export function layoutStarsOpening(text: string, width: number, height: number, 
     fontPx,
     letters,
     shown,
-    ja: { lines: jaLines, fontPx: jaPx, y: top + step * (lines.length - 1) + fontPx * JA_GAP, step: jaPx * 1.4 },
+    ja: {
+      text: jaText,
+      lines: jaLines,
+      fontPx: jaPx,
+      y: top + step * (lines.length - 1) + fontPx * JA_GAP,
+      step: jaPx * 1.4,
+      lefts: jaLines.map(l => (width - measure(l, cardJaFont(jaPx))) / 2),
+    },
   }
 }
 
@@ -257,7 +265,7 @@ export function starsSceneOf(text: string, layout: StarsLayout, timing: OpeningT
 
 /**
  * The card `t` seconds in, onto `ctx` at `width` × `height`: the sky, the
- * letters popped in so far, the Japanese fading in; from `wipeAt`, line 1's
+ * letters popped in so far, the Japanese typed alongside; from `wipeAt`, line 1's
  * first frame (`background`) alone.
  */
 export function drawStarsOpening(ctx: Ctx, background: CanvasImageSource | null, scene: StarsScene, t: number, width: number, height: number): void {
@@ -290,13 +298,19 @@ export function drawStarsOpening(ctx: Ctx, background: CanvasImageSource | null,
     ctx.restore()
   }
   if (layout.ja) {
-    const shown = Math.min(1, Math.max(0, (t - timing.jaAt) / OPENING_JA_FADE_S))
-    if (shown > 0) {
+    // Typed alongside the English, over the same span, so there's time to read it.
+    const { text, lines, y, step, fontPx, lefts } = layout.ja
+    let left = jaTypedCount(timing, [...text].length, t)
+    if (left > 0) {
       ctx.save()
-      ctx.globalAlpha = shown
-      ctx.font = cardJaFont(layout.ja.fontPx)
-      const { lines, y, step, fontPx } = layout.ja
-      lines.forEach((line, row) => fillJaWithShadow(ctx, line, width / 2, y + row * step, fontPx))
+      ctx.font = cardJaFont(fontPx)
+      ctx.textAlign = 'left'
+      lines.forEach((line, row) => {
+        const chars = [...line]
+        const n = Math.min(chars.length, left)
+        left -= n
+        if (n > 0) fillJaWithShadow(ctx, chars.slice(0, n).join(''), lefts[row], y + row * step, fontPx)
+      })
       ctx.restore()
     }
   }
