@@ -79,3 +79,14 @@ describe('openingToKeep', () => {
     expect(openingToKeep(undefined)).toBeNull()
   })
 })
+
+describe("the TODAY'S PHRASE tag", () => {
+  it('pops in with the phrase: nothing before, past full size, then settled', async () => {
+    const { phraseTagScaleAt, TAG_POP_S } = await import('./openingStars')
+    expect(phraseTagScaleAt(-0.1)).toBe(0)
+    expect(phraseTagScaleAt(0)).toBe(0)
+    expect(phraseTagScaleAt(TAG_POP_S * 0.55)).toBeGreaterThan(1.2)
+    expect(phraseTagScaleAt(TAG_POP_S)).toBe(1)
+    expect(phraseTagScaleAt(5)).toBe(1)
+  })
+})

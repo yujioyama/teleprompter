@@ -72,6 +72,18 @@ const SHINE_S = 0.6
 /** The band is tilted this many degrees and comes in over BAND_IN_S with the phrase's first letter. */
 const BAND_TILT = -2
 const BAND_IN_S = 0.2
+/** The tag pops in with the band ("ボーン"): from nothing up past full size over TAG_POP_S, then settles. */
+export const TAG_POP_S = 0.32
+const TAG_POP_OVERSHOOT = 1.3
+
+/** How big the tag is `since` seconds after the phrase's first letter: 0 before, overshooting, then 1. */
+export function phraseTagScaleAt(since: number): number {
+  const local = since / TAG_POP_S
+  if (local <= 0) return 0
+  if (local >= 1) return 1
+  if (local < 0.55) return TAG_POP_OVERSHOOT * (1 - (1 - local / 0.55) ** 3)
+  return TAG_POP_OVERSHOOT + (1 - TAG_POP_OVERSHOOT) * ((local - 0.55) / 0.45)
+}
 const TAG_SHARE = 0.041
 const MEANING_SHARE = 0.036
 const MEANING_MIN_SHARE = 0.026
@@ -377,7 +389,7 @@ export function starsSceneOf(text: string, layout: StarsLayout, timing: OpeningT
   }
 }
 
-/** The pink band behind the phrase (in with its first letter) and the gold tag over it, a light sweeping across it now and then. */
+/** The pink band behind the phrase and the gold tag over it, both in with its first letter, a light sweeping across the tag now and then. */
 function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayout, timing: OpeningTiming, t: number) {
   const firstAt = Math.min(...layout.letters.filter(l => l.phrase).map(l => timing.charTimes[l.src] ?? timing.typedEnd))
   if (t >= firstAt) {
@@ -398,10 +410,13 @@ function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayo
     }
     ctx.restore()
   }
+  const pop = phraseTagScaleAt(t - firstAt)
+  if (pop <= 0) return
   const { tag } = ph
   const { width: w, height: h } = tag
   ctx.save()
   ctx.translate(tag.x, tag.y)
+  ctx.scale(pop, pop)
   ctx.save()
   ctx.shadowColor = 'rgba(10, 0, 20, 0.55)'
   ctx.shadowBlur = h * 0.3
@@ -415,7 +430,8 @@ function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayo
   ctx.textAlign = 'center'
   ctx.fillStyle = PHRASE_TAG_INK
   ctx.fillText(PHRASE_TAG, 0, tag.fontPx * 0.04)
-  const p = (t % SHINE_EVERY_S) / SHINE_S
+  // The light sweeps from when it has landed.
+  const p = pop === 1 ? ((t - firstAt - TAG_POP_S) % SHINE_EVERY_S) / SHINE_S : 1
   if (p < 1) {
     const x = -w / 2 - h + (w + h * 2) * p
     const sweep = ctx.createLinearGradient(x - h, 0, x + h, 0)
