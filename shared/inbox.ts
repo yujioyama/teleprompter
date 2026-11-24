@@ -108,23 +108,19 @@ export interface InboxOpening {
   ja?: string
   /** 今日のフレーズ: words of `text` set apart in pink (e.g. "I'm down"); absent for none. */
   phrase?: string
-  /** The phrase's meaning on one line (e.g. "I'm down = 乗り気だよ"); kept only with a phrase. */
-  phraseJa?: string
 }
 
 export const OPENING_TEXT_MAX_LENGTH = 120
 export const OPENING_JA_MAX_LENGTH = 80
 export const OPENING_PHRASE_MAX_LENGTH = 40
-export const OPENING_PHRASE_JA_MAX_LENGTH = 60
 
-/** The opening as kept: empty parts left out, the meaning only with a phrase. Null without text. */
+/** The opening as kept: empty parts left out. Null without text. */
 export function openingToKeep(opening: InboxOpening | undefined | null): InboxOpening | null {
   const text = opening?.text?.trim()
   if (!text) return null
   const ja = opening?.ja?.trim()
   const phrase = opening?.phrase?.trim()
-  const phraseJa = phrase ? opening?.phraseJa?.trim() : undefined
-  return { text, ...(ja ? { ja } : {}), ...(phrase ? { phrase } : {}), ...(phraseJa ? { phraseJa } : {}) }
+  return { text, ...(ja ? { ja } : {}), ...(phrase ? { phrase } : {}) }
 }
 
 /** A 挿入カード Claude sent (see InboxItem.cards). */

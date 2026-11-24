@@ -80,8 +80,6 @@ export interface ScriptOpening {
   ja?: string
   /** 今日のフレーズ: the words of `text` the episode teaches (e.g. "I'm down"), set apart in color; absent for none. */
   phrase?: string
-  /** Its meaning on one line (e.g. "I'm down = 乗り気だよ"), small under the Japanese; absent for none. */
-  phraseJa?: string
 }
 
 export interface Script {

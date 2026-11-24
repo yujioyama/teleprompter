@@ -1,6 +1,6 @@
 import { CARD_BACKGROUND_COLORS, letterCutsOf, letterTilt, popScaleAt, wobblesOf, type LetterCut, type Wobble } from './insertCard'
 import { cardFont, cardJaFont, fillJaWithShadow, letterShadow, paintCardBackground } from './drawInsertCard'
-import { drawOpeningCard, jaTypedCount, layoutJa, layoutOpening, OPENING_PHRASE_COLOR, OPENING_PHRASE_JA_FADE_S, phraseRangeOf, phraseRunsOf, wordSpansOf, type OpeningCardPlan, type OpeningTiming } from './openingCard'
+import { drawOpeningCard, jaTypedCount, layoutJa, layoutOpening, OPENING_PHRASE_COLOR, phraseRangeOf, wordSpansOf, type OpeningCardPlan, type OpeningTiming } from './openingCard'
 import { hash, random } from './seededRandom'
 
 /**
@@ -40,24 +40,15 @@ export interface StarsLetter {
   phrase?: true
 }
 
-/** A stretch of the phrase's meaning drawn in one color, from `left`. */
-export interface StarsRun {
-  text: string
-  left: number
-  phrase: boolean
-}
-
 /**
  * 今日のフレーズ (2026-11-24): the phrase's letters on a pink sticker band,
- * a gold TODAY'S PHRASE tag just over it (shown, not read out), and under
- * the Japanese a thin rule and the phrase's meaning, its phrase pink.
+ * a gold TODAY'S PHRASE tag just over it (shown, not read out). The
+ * meaning line under the Japanese was dropped (2026-11-24): no time to read it.
  */
 export interface StarsPhraseLayout {
   /** Each line's stretch of the phrase: the band behind it. */
   rows: { left: number; right: number; y: number }[]
   tag: { fontPx: number; x: number; y: number; width: number; height: number }
-  /** Absent without a meaning. */
-  meaning?: { runs: StarsRun[]; fontPx: number; y: number; rule: { y: number; half: number } }
 }
 
 /** The tag's words. */
@@ -72,9 +63,19 @@ const SHINE_S = 0.6
 /** The band is tilted this many degrees and comes in over BAND_IN_S with the phrase's first letter. */
 const BAND_TILT = -2
 const BAND_IN_S = 0.2
+/** The tag pops in with the band ("ボーン"): from nothing up past full size over TAG_POP_S, then settles. */
+export const TAG_POP_S = 0.32
+const TAG_POP_OVERSHOOT = 1.3
+
+/** How big the tag is `since` seconds after the phrase's first letter: 0 before, overshooting, then 1. */
+export function phraseTagScaleAt(since: number): number {
+  const local = since / TAG_POP_S
+  if (local <= 0) return 0
+  if (local >= 1) return 1
+  if (local < 0.55) return TAG_POP_OVERSHOOT * (1 - (1 - local / 0.55) ** 3)
+  return TAG_POP_OVERSHOOT + (1 - TAG_POP_OVERSHOOT) * ((local - 0.55) / 0.45)
+}
 const TAG_SHARE = 0.041
-const MEANING_SHARE = 0.036
-const MEANING_MIN_SHARE = 0.026
 
 export interface StarsLayout {
   fontPx: number
@@ -95,9 +96,9 @@ export function layoutStarsOpening(
   height: number,
   measure: (text: string, font: string) => number,
   ja?: string,
-  phrase?: { phrase: string; phraseJa?: string },
+  phrase?: string,
 ): StarsLayout {
-  const range = phraseRangeOf(text, phrase?.phrase)
+  const range = phraseRangeOf(text, phrase)
   const sentence = layoutStarsSentence(text, width, height, measure, ja, range)
   if (!range || !phrase) return sentence
   const tagPx = Math.round(width * TAG_SHARE)
@@ -129,25 +130,7 @@ export function layoutStarsOpening(
     width: measure(PHRASE_TAG, cardJaFont(tagPx)) + tagPx * 0.9,
     height: tagH,
   }
-  const meaningText = phrase.phraseJa?.trim()
-  let meaning: StarsPhraseLayout['meaning']
-  if (meaningText) {
-    let px = Math.round(width * MEANING_SHARE)
-    const min = Math.round(width * MEANING_MIN_SHARE)
-    while (px > min && measure(meaningText, cardJaFont(px)) > width * 0.84) px -= 2
-    const below = base.ja
-      ? base.ja.y + base.ja.step * (base.ja.lines.length - 1) + base.ja.fontPx * 0.95
-      : (letters[letters.length - 1]?.y ?? first.y) + base.fontPx * 0.75
-    const ruleY = below + px * 0.2
-    let left = (width - measure(meaningText, cardJaFont(px))) / 2
-    const runs = phraseRunsOf(meaningText, phrase.phrase).map(run => {
-      const placed = { ...run, left }
-      left += measure(run.text, cardJaFont(px))
-      return placed
-    })
-    meaning = { runs, fontPx: px, y: ruleY + px * 1.3, rule: { y: ruleY, half: width * 0.16 } }
-  }
-  return { ...base, letters, phrase: { rows, tag, ...(meaning ? { meaning } : {}) } }
+  return { ...base, letters, phrase: { rows, tag } }
 }
 
 function layoutStarsSentence(
@@ -377,7 +360,7 @@ export function starsSceneOf(text: string, layout: StarsLayout, timing: OpeningT
   }
 }
 
-/** The pink band behind the phrase (in with its first letter) and the gold tag over it, a light sweeping across it now and then. */
+/** The pink band behind the phrase and the gold tag over it, both in with its first letter, a light sweeping across the tag now and then. */
 function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayout, timing: OpeningTiming, t: number) {
   const firstAt = Math.min(...layout.letters.filter(l => l.phrase).map(l => timing.charTimes[l.src] ?? timing.typedEnd))
   if (t >= firstAt) {
@@ -398,10 +381,13 @@ function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayo
     }
     ctx.restore()
   }
+  const pop = phraseTagScaleAt(t - firstAt)
+  if (pop <= 0) return
   const { tag } = ph
   const { width: w, height: h } = tag
   ctx.save()
   ctx.translate(tag.x, tag.y)
+  ctx.scale(pop, pop)
   ctx.save()
   ctx.shadowColor = 'rgba(10, 0, 20, 0.55)'
   ctx.shadowBlur = h * 0.3
@@ -415,7 +401,8 @@ function drawPhraseBandAndTag(ctx: Ctx, layout: StarsLayout, ph: StarsPhraseLayo
   ctx.textAlign = 'center'
   ctx.fillStyle = PHRASE_TAG_INK
   ctx.fillText(PHRASE_TAG, 0, tag.fontPx * 0.04)
-  const p = (t % SHINE_EVERY_S) / SHINE_S
+  // The light sweeps from when it has landed.
+  const p = pop === 1 ? ((t - firstAt - TAG_POP_S) % SHINE_EVERY_S) / SHINE_S : 1
   if (p < 1) {
     const x = -w / 2 - h + (w + h * 2) * p
     const sweep = ctx.createLinearGradient(x - h, 0, x + h, 0)
@@ -484,26 +471,6 @@ export function drawStarsOpening(ctx: Ctx, background: CanvasImageSource | null,
       ctx.restore()
     }
   }
-  const meaning = ph?.meaning
-  if (meaning && timing.phraseJaAt !== undefined && t >= timing.phraseJaAt) {
-    const a = Math.min(1, (t - timing.phraseJaAt) / OPENING_PHRASE_JA_FADE_S)
-    ctx.save()
-    ctx.globalAlpha = a
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
-    ctx.lineWidth = Math.max(2, width * 0.003)
-    const half = meaning.rule.half * (0.4 + 0.6 * a)
-    ctx.beginPath()
-    ctx.moveTo(width / 2 - half, meaning.rule.y)
-    ctx.lineTo(width / 2 + half, meaning.rule.y)
-    ctx.stroke()
-    ctx.font = cardJaFont(meaning.fontPx)
-    ctx.textAlign = 'left'
-    for (const run of meaning.runs) {
-      ctx.fillStyle = run.phrase ? OPENING_PHRASE_COLOR : PHRASE_CARD_INK
-      fillJaWithShadow(ctx, run.text, run.left, meaning.y + (1 - a) * meaning.fontPx * 0.3, meaning.fontPx)
-    }
-    ctx.restore()
-  }
   ctx.restore()
 }
 
@@ -520,9 +487,9 @@ export function openingCardDrawer(
   measure: (text: string, font: string) => number,
 ): (ctx: Ctx, background: CanvasImageSource | null, t: number) => void {
   if (plan.style === 'stars') {
-    const scene = starsSceneOf(plan.text, layoutStarsOpening(plan.text, width, height, measure, plan.ja, plan.phrase ? { phrase: plan.phrase, phraseJa: plan.phraseJa } : undefined), plan.timing)
+    const scene = starsSceneOf(plan.text, layoutStarsOpening(plan.text, width, height, measure, plan.ja, plan.phrase), plan.timing)
     return (ctx, background, t) => drawStarsOpening(ctx, background, scene, t, width, height)
   }
-  const layout = layoutOpening(plan.text, width, height, measure, plan.ja, plan.phrase ? { phrase: plan.phrase, phraseJa: plan.phraseJa } : undefined)
+  const layout = layoutOpening(plan.text, width, height, measure, plan.ja, plan.phrase)
   return (ctx, background, t) => drawOpeningCard(ctx, background, layout, plan.timing, t)
 }
