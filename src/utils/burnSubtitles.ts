@@ -328,13 +328,14 @@ function toPng(canvas: HTMLCanvasElement): Promise<Blob> {
  * transparent PNG as wide as the video and
  * exactly as tall as its layout: white outlined text, no box. Text is
  * wrapped onto balanced lines (see subtitleLayout); `*theme*` words are
- * yellow and the `{word}` the episode introduces is mint. With `speaker`
+ * yellow, the `{word}` the episode introduces is mint, and 今日のフレーズ
+ * (`phrase`, on the user's own lines, and `[[…]]` in the Japanese) is pink. With `speaker`
  * (相手のセリフ) the plain text is tinted and that icon sits beside the
  * first line.
  */
-export async function renderCueImage(cue: SubtitleCue, speaker?: string, phone = false, speakerName?: string, thought = false): Promise<{ image: Blob; height: number }> {
+export async function renderCueImage(cue: SubtitleCue, speaker?: string, phone = false, speakerName?: string, thought = false, phrase?: string): Promise<{ image: Blob; height: number }> {
   const measure = canvasMeasure()
-  const layout = layoutCue(cue, measure, { speaker: Boolean(speaker) && !thought, thought })
+  const layout = layoutCue(cue, measure, { speaker: Boolean(speaker) && !thought, thought, phrase })
   const width = SUBTITLE_REFERENCE_WIDTH
   const { canvas, ctx } = overlayCanvas(layout.height)
 
@@ -521,7 +522,7 @@ export async function renderSubtitleOverlays(
   for (const cue of cues) {
     if (cue.ja === null) continue
     // A hook cue's emoji became the sticker; in a normal cue it has no place.
-    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id), speakerNameOf(look.hook, cue.id), isThought(look.hook, cue.id))
+    const { image, height } = await renderCueImage({ ...cue, en: stripStickers(cue.en) }, speakerOf(look.hook, cue.id), onPhone(look.hook, cue.id), speakerNameOf(look.hook, cue.id), isThought(look.hook, cue.id), speakerOf(look.hook, cue.id) ? undefined : look.hook.phrase)
     const position = safeSubtitlePosition(cuePosition(cue, look), height)
     const y = subtitleY(position, SUBTITLE_VIDEO_HEIGHT, height)
     overlays.push({ start: cue.start, end: cue.start + cueDuration(cue), image, y })

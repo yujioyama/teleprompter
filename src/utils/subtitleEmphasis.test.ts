@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { EMPHASIS_COLOR, WORD_COLOR, emphasisRuns, parseEmphasis, reapplyEmphasis, runColor, stripEmphasis, stripThemeEmphasis } from './subtitleEmphasis'
+import { EMPHASIS_COLOR, PHRASE_COLOR, WORD_COLOR, emphasisRuns, markPhrase, parseEmphasis, reapplyEmphasis, runColor, stripEmphasis, stripThemeEmphasis } from './subtitleEmphasis'
 
 describe('parseEmphasis', () => {
   it('removes the markers and flags what they enclosed', () => {
@@ -172,5 +172,29 @@ describe('reapplyEmphasis', () => {
     const out = reapplyEmphasis(cues, ['*beta*'])
     expect(out[0]).toBe(cues[0])
     expect(out[1].en).toBe('*beta*')
+  })
+})
+
+describe('今日のフレーズ', () => {
+  it('reads [[…]] as the phrase, in the Japanese', () => {
+    const e = parseEmphasis('うん、[[行く行く]]！')
+    expect(e.text).toBe('うん、行く行く！')
+    expect(e.kinds.slice(3, 7)).toEqual(['phrase', 'phrase', 'phrase', 'phrase'])
+    expect(runColor(emphasisRuns([e.text], e)[0][1])).toBe(PHRASE_COLOR)
+    expect(stripEmphasis('[[a b]] c')).toBe('a b c')
+  })
+
+  it('paints the phrase where it is said in the English, as whole words', () => {
+    const e = markPhrase(parseEmphasis('Yeah, I’m *down*!'), "I'm down")
+    expect(e.text).toBe('Yeah, I’m down!')
+    expect(emphasisRuns([e.text], e)[0]).toEqual([
+      { text: 'Yeah, ', emphasized: false },
+      { text: 'I’m down', emphasized: true, phrase: true },
+      { text: '!', emphasized: false },
+    ])
+    expect(markPhrase(parseEmphasis('I downloaded it'), 'down').kinds.every(k => k === null)).toBe(true)
+    const plain = parseEmphasis('Nothing here')
+    expect(markPhrase(plain, 'down')).toBe(plain)
+    expect(markPhrase(plain, undefined)).toBe(plain)
   })
 })

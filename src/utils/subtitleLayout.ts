@@ -1,5 +1,5 @@
 import { SubtitleCue } from './subtitleCues'
-import { emphasisRuns, parseEmphasis, type Run } from './subtitleEmphasis'
+import { emphasisRuns, markPhrase, parseEmphasis, type Run } from './subtitleEmphasis'
 
 /**
  * Burned-in subtitle geometry, in pixels of the 1080px-wide output video.
@@ -400,8 +400,8 @@ export function wrapText(text: string, maxWidth: number, width: (s: string) => n
   return lines
 }
 
-function layoutBlock(raw: string, style: TextStyle, measure: MeasureText, maxWidth: number): TextBlockLayout {
-  const emphasis = parseEmphasis(raw)
+function layoutBlock(raw: string, style: TextStyle, measure: MeasureText, maxWidth: number, phrase?: string): TextBlockLayout {
+  const emphasis = markPhrase(parseEmphasis(raw), phrase)
   let px = style.maxPx
   let lines: string[] = []
   for (; px >= style.minPx; px -= 2) {
@@ -423,15 +423,16 @@ function layoutBlock(raw: string, style: TextStyle, measure: MeasureText, maxWid
 /**
  * Lay out one cue's subtitle (English, plus Japanese once translated) at the
  * 1080px reference width. With `speaker` (相手のセリフ) it is wrapped to fit
- * a speech bubble, with room above for the icon.
+ * a speech bubble, with room above for the icon. With `phrase` (今日のフレーズ),
+ * the English paints it pink where it's said.
  */
 export function layoutCue(
   cue: Pick<SubtitleCue, 'en' | 'ja'>,
   measure: MeasureText,
-  { speaker = false, thought = false }: { speaker?: boolean; thought?: boolean } = {},
+  { speaker = false, thought = false, phrase }: { speaker?: boolean; thought?: boolean; phrase?: string } = {},
 ): CueLayout {
   const maxWidth = thought ? THOUGHT_TEXT_WIDTH : speaker ? SPEAKER_TEXT_WIDTH : SUBTITLE_TEXT_WIDTH
-  const en = layoutBlock(cue.en, EN_STYLE, measure, maxWidth)
+  const en = layoutBlock(cue.en, EN_STYLE, measure, maxWidth, phrase)
   const ja = cue.ja ? layoutBlock(cue.ja, JA_STYLE, measure, maxWidth) : null
   let textHeight = en.lines.length * en.lineHeightPx
   if (ja) textHeight += SUBTITLE_BLOCK_GAP + ja.lines.length * ja.lineHeightPx

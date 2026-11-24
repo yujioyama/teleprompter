@@ -92,6 +92,8 @@ export interface HookOptions {
    * the burn puts it in ahead of the first shot, after the cover. Absent for none.
    */
   openingCard?: OpeningCardPlan
+  /** 今日のフレーズ (the 冒頭カード's): painted pink in the user's own English lines wherever it's said (not 相手のセリフ); absent for none. */
+  phrase?: string
 }
 
 export type HookSettings = Pick<
