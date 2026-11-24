@@ -216,7 +216,8 @@ describe('handleMcpRequest', () => {
       await handleMcpRequest(callTool({ title: 'b', script: 'A', opening: { text: 'It was late.' } }), deps)
       expect((await store.list()).find(item => item.title === 'b')!.opening).toEqual({ text: 'It was late.' })
       await handleMcpRequest(callTool({ title: 'c', script: 'A', opening: { text: "Ramen? I'm down.", phrase: "I'm down", phraseJa: "I'm down = 乗り気だよ" } }), deps)
-      expect((await store.list()).find(item => item.title === 'c')!.opening).toEqual({ text: "Ramen? I'm down.", phrase: "I'm down", phraseJa: "I'm down = 乗り気だよ" })
+      // A meaning line (no longer shown) is dropped.
+      expect((await store.list()).find(item => item.title === 'c')!.opening).toEqual({ text: "Ramen? I'm down.", phrase: "I'm down" })
       await handleMcpRequest(callTool({ title: 'd', script: 'A', opening: { text: 'It was late.', phraseJa: '意味だけ' } }), deps)
       expect((await store.list()).find(item => item.title === 'd')!.opening).toEqual({ text: 'It was late.' })
     })

@@ -16,7 +16,7 @@ import { SCENE_MAX_LENGTH } from '../utils/sceneLabel'
 import { LineImage, Shot, type CardAudio, type Script, type ScriptCard, type ScriptOpening, type VideoType } from '../types'
 import InsertCardEditor, { type EditorCard } from '../components/InsertCardEditor'
 import { DEFAULT_CARD_TEXT, cardAudioOf } from '../utils/insertCard'
-import { DEFAULT_CARD_BACKGROUND, OPENING_JA_MAX_LENGTH, OPENING_PHRASE_JA_MAX_LENGTH, OPENING_PHRASE_MAX_LENGTH, OPENING_TEXT_MAX_LENGTH, isCardBackgroundName, openingToKeep } from '../../shared/inbox'
+import { DEFAULT_CARD_BACKGROUND, OPENING_JA_MAX_LENGTH, OPENING_PHRASE_MAX_LENGTH, OPENING_TEXT_MAX_LENGTH, isCardBackgroundName, openingToKeep } from '../../shared/inbox'
 import { getCardVoice } from '../utils/cardVoiceStore'
 import { DEFAULT_SPEAKER_ICON } from '../utils/speakers'
 import styles from './ScriptEditPage.module.css'
@@ -175,7 +175,6 @@ export default function ScriptEditPage() {
   const [openingText, setOpeningText] = useState<string>(() => (existingScript ? existingScript.opening?.text : inboxItem?.opening?.text) ?? '')
   const [openingJa, setOpeningJa] = useState<string>(() => (existingScript ? existingScript.opening?.ja : inboxItem?.opening?.ja) ?? '')
   const [openingPhrase, setOpeningPhrase] = useState<string>(() => (existingScript ? existingScript.opening?.phrase : inboxItem?.opening?.phrase) ?? '')
-  const [openingPhraseJa, setOpeningPhraseJa] = useState<string>(() => (existingScript ? existingScript.opening?.phraseJa : inboxItem?.opening?.phraseJa) ?? '')
   // 自分 / 相手 / 心の声 picked here for a line (by its words), over what the script or Claude said.
   const [roleOverrides, setRoleOverrides] = useState<Map<string, LineRole>>(() => new Map())
   // 挿入カード between lines, and what they do to the sound.
@@ -335,7 +334,7 @@ export default function ScriptEditPage() {
 
   /** Both on is what a script without the setting means, so only an off is kept. */
   function openingToSave(): ScriptOpening | undefined {
-    return openingToKeep({ text: openingText, ja: openingJa, phrase: openingPhrase, phraseJa: openingPhraseJa }) ?? undefined
+    return openingToKeep({ text: openingText, ja: openingJa, phrase: openingPhrase }) ?? undefined
   }
 
   function cardAudioToSave(): CardAudio | undefined {
@@ -597,17 +596,6 @@ export default function ScriptEditPage() {
             maxLength={OPENING_PHRASE_MAX_LENGTH}
             value={openingPhrase}
             onChange={e => setOpeningPhrase(e.target.value)}
-          />
-        )}
-        {openingText.trim() && openingPhrase.trim() && (
-          <input
-            aria-label="今日のフレーズの意味"
-            className={styles.titleInput}
-            type="text"
-            placeholder="フレーズの意味（任意。例: I'm down = 乗り気だよ）"
-            maxLength={OPENING_PHRASE_JA_MAX_LENGTH}
-            value={openingPhraseJa}
-            onChange={e => setOpeningPhraseJa(e.target.value)}
           />
         )}
 

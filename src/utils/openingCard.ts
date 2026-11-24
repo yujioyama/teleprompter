@@ -41,8 +41,6 @@ export interface OpeningTiming {
   jaAt: number
   /** When the voice starts (seconds into the card); null without one. */
   voiceAt: number | null
-  /** When the 今日のフレーズ's meaning starts fading in; absent without one. */
-  phraseJaAt?: number
   /** When the curtain starts to lift. */
   wipeAt: number
   /** The card's whole length, on the output frame grid. */
@@ -65,10 +63,6 @@ export const OPENING_VOICE_HOLD_S = 0.3
 /** The Japanese comes in this long after the last letter, and fades in over OPENING_JA_FADE_S. */
 export const OPENING_JA_DELAY_S = 0.05
 export const OPENING_JA_FADE_S = 0.4
-/** The phrase's meaning comes in this long after the Japanese is all in, fades in over OPENING_PHRASE_JA_FADE_S, and is up at least OPENING_PHRASE_JA_HOLD_S before the curtain lifts. */
-export const OPENING_PHRASE_JA_DELAY_S = 0.15
-export const OPENING_PHRASE_JA_FADE_S = 0.3
-export const OPENING_PHRASE_JA_HOLD_S = 0.7
 /** 今日のフレーズ's pink, the lines' own (see subtitleEmphasis). */
 export const OPENING_PHRASE_COLOR = PHRASE_COLOR
 /** The curtain lifts over this long. */
@@ -203,7 +197,7 @@ export const OPENING_STYLE_LABELS: Record<OpeningStyle, string> = { stars: '星�
  * 暖簾 takes OPENING_WIPE_S to walk through after `wipeAt`; the night sky
  * cuts to line 1 there.
  */
-export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null, style: OpeningStyle = 'noren', withPhraseJa = false): OpeningTiming {
+export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null, style: OpeningStyle = 'noren'): OpeningTiming {
   const chars = [...text]
   let charTimes: number[]
   let voiceAt: number | null = null
@@ -219,14 +213,11 @@ export function openingTimingOf(text: string, voice?: OpeningVoiceTiming | null,
   }
   const typedEnd = charTimes.length > 0 ? charTimes[charTimes.length - 1] : OPENING_TYPE_START_S
   const jaAt = roundTime(typedEnd + OPENING_JA_DELAY_S)
-  let wipeAt = roundTime(voiceAt !== null
+  const wipeAt = roundTime(voiceAt !== null
     ? Math.max(voiceEnd + OPENING_AFTER_VOICE_S, typedEnd + OPENING_VOICE_HOLD_S)
     : typedEnd + OPENING_HOLD_S)
-  // The phrase's meaning after the Japanese (typed alongside the English, so in by typedEnd).
-  const phraseJaAt = withPhraseJa ? roundTime(typedEnd + OPENING_PHRASE_JA_DELAY_S) : undefined
-  if (phraseJaAt !== undefined) wipeAt = roundTime(Math.max(wipeAt, phraseJaAt + OPENING_PHRASE_JA_HOLD_S))
   const seconds = Math.ceil((wipeAt + (style === 'noren' ? OPENING_WIPE_S : 0)) * FRAME_RATE - 1e-6) / FRAME_RATE
-  return { charTimes, typedEnd, jaAt, voiceAt, ...(phraseJaAt !== undefined ? { phraseJaAt } : {}), wipeAt, seconds }
+  return { charTimes, typedEnd, jaAt, voiceAt, wipeAt, seconds }
 }
 
 /** What the burn needs to draw the card and play its voice: all plain JSON, so it can sit in the hook. */
@@ -235,8 +226,6 @@ export interface OpeningCardPlan {
   ja?: string
   /** 今日のフレーズ, as it stands in `text`; absent for none (or when it isn't in `text`). */
   phrase?: string
-  /** Its meaning, under the Japanese; absent for none. */
-  phraseJa?: string
   timing: OpeningTiming
   /** The prepared voice (see openingVoice.ts), by its key; absent for none. */
   voiceKey?: string
@@ -254,13 +243,11 @@ export function openingCardPlanOf(
   const ja = opening?.ja?.trim()
   const range = phraseRangeOf(text, opening?.phrase)
   const phrase = range ? [...text].slice(range.from, range.to).join('') : undefined
-  const phraseJa = phrase ? opening?.phraseJa?.trim() || undefined : undefined
   return {
     text,
     ...(ja ? { ja } : {}),
     ...(phrase ? { phrase } : {}),
-    ...(phraseJa ? { phraseJa } : {}),
-    timing: openingTimingOf(text, voice?.timing, style, !!phraseJa),
+    timing: openingTimingOf(text, voice?.timing, style),
     ...(voice ? { voiceKey: voice.key } : {}),
     style,
   }
@@ -280,18 +267,6 @@ export function phraseRangeOf(text: string, phrase: string | undefined): { from:
     if (needle.every((ch, k) => chars[i + k] === ch)) return { from: i, to: i + needle.length }
   }
   return null
-}
-
-/** `text` split into runs, the first match of `phrase` in it marked. */
-export function phraseRunsOf(text: string, phrase: string | undefined): { text: string; phrase: boolean }[] {
-  const at = phraseRangeOf(text, phrase)
-  if (!at) return [{ text, phrase: false }]
-  const chars = [...text]
-  return [
-    { text: chars.slice(0, at.from).join(''), phrase: false },
-    { text: chars.slice(at.from, at.to).join(''), phrase: true },
-    { text: chars.slice(at.to).join(''), phrase: false },
-  ].filter(run => run.text)
 }
 
 // ---- Drawing ----
@@ -340,8 +315,6 @@ export interface OpeningLayout {
   ja?: { text: string; lines: string[]; fontPx: number; y: number; step: number; lefts: number[] }
   /** 今日のフレーズ: its characters (end exclusive), drawn pink. */
   phrase?: { from: number; to: number }
-  /** The phrase's meaning, under the Japanese: its runs, each drawn from `left`. */
-  meaning?: { runs: { text: string; left: number; phrase: boolean }[]; fontPx: number; y: number }
 }
 
 /** Word-wrapped lines of `text`, each at most `room` wide. */
@@ -385,7 +358,7 @@ export function layoutOpening(
   height: number,
   measure: (text: string, font: string) => number,
   ja?: string,
-  phrase?: { phrase: string; phraseJa?: string },
+  phrase?: string,
 ): OpeningLayout {
   const room = width * TEXT_WIDTH_SHARE
   let fontPx = Math.round(width * FONT_MAX_SHARE)
@@ -439,20 +412,7 @@ export function layoutOpening(
       lefts: jaLines.map(l => (width - measure(l, openingJaFont(jaPx))) / 2),
     }
   }
-  const range = phraseRangeOf(text, phrase?.phrase)
-  const meaningText = range ? phrase?.phraseJa?.trim() : undefined
-  let meaning: OpeningLayout['meaning']
-  if (meaningText) {
-    const px = Math.round(width * JA_MIN_SHARE)
-    const below = jaLayout ? jaLayout.y + jaLayout.step * (jaLayout.lines.length - 1) : top + step * (lines.length - 1) + fontPx * 0.35
-    let left = (width - measure(meaningText, openingJaFont(px))) / 2
-    const runs = phraseRunsOf(meaningText, phrase?.phrase).map(run => {
-      const placed = { ...run, left }
-      left += measure(run.text, openingJaFont(px))
-      return placed
-    })
-    meaning = { runs, fontPx: px, y: below + px * 2 }
-  }
+  const range = phraseRangeOf(text, phrase)
   return {
     fontPx,
     chars,
@@ -460,7 +420,6 @@ export function layoutOpening(
     advance,
     ...(jaLayout ? { ja: jaLayout } : {}),
     ...(range ? { phrase: range } : {}),
-    ...(meaning ? { meaning } : {}),
   }
 }
 
@@ -720,16 +679,6 @@ export function drawOpeningCard(
         left -= n
         if (n > 0) ctx.fillText(chars.slice(0, n).join(''), lefts[row], y + row * step)
       })
-    }
-    if (layout.meaning && timing.phraseJaAt !== undefined && t >= timing.phraseJaAt) {
-      ctx.save()
-      ctx.globalAlpha = alpha * Math.min(1, (t - timing.phraseJaAt) / OPENING_PHRASE_JA_FADE_S)
-      ctx.font = openingJaFont(layout.meaning.fontPx)
-      for (const run of layout.meaning.runs) {
-        ctx.fillStyle = run.phrase ? OPENING_PHRASE_COLOR : OPENING_JA_INK
-        ctx.fillText(run.text, run.left, layout.meaning.y)
-      }
-      ctx.restore()
     }
   }
   ctx.restore()
