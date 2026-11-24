@@ -1,4 +1,4 @@
-import type { CoverText, HeardCastMember, InboxCard, InboxImage, InboxItem, InboxOpening, VideoType } from '../shared/inbox.js'
+import { openingToKeep, type CoverText, type HeardCastMember, type InboxCard, type InboxImage, type InboxItem, type InboxOpening, type VideoType } from '../shared/inbox.js'
 import { redisFromEnv, type RedisLike } from './redis.js'
 
 const PREFIX = 'inbox:'
@@ -42,6 +42,7 @@ export function createInboxStore(
   return {
     async add({ title, body, caption, japanese, videoType, images, heard, heardIcon, heardVoice, heardName, heardCast, scene, opening, cover, cards, thought }) {
       const stale = (await list()).filter(old => old.title === title)
+      const kept = openingToKeep(opening)
       const item: InboxItem = {
         id: newId(),
         title,
@@ -56,7 +57,7 @@ export function createInboxStore(
         ...(heard?.length && heardName ? { heardName } : {}),
         ...(heard?.length && heardCast?.length ? { heardCast } : {}),
         ...(scene ? { scene } : {}),
-        ...(opening?.text ? { opening: { text: opening.text, ...(opening.ja ? { ja: opening.ja } : {}) } } : {}),
+        ...(kept ? { opening: kept } : {}),
         ...(cover && (cover.en || cover.ja) ? { cover } : {}),
         ...(cards?.length ? { cards } : {}),
         ...(thought?.length ? { thought } : {}),

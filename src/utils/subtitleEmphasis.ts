@@ -1,15 +1,18 @@
 /**
- * Two markers color a word in the subtitles:
+ * Three markers color a word in the subtitles:
  * - `*word*` paints the episode's English phrase yellow;
  * - `{word}` paints the Japanese word the episode introduces mint, in the
- *   English line and in its Japanese translation alike.
+ *   English line and in its Japanese translation alike;
+ * - `[[word]]` paints the 冒頭カード's 今日のフレーズ pink: in the Japanese,
+ *   where Claude marks it; in the English, wherever the phrase is said
+ *   (see markPhrase), with no marker.
  * The markers are taken out before the text is wrapped, so line breaks are
  * measured on exactly what gets drawn, and only which characters were inside
  * them (and which kind) is kept.
  */
 
-/** 'theme': `*…*`, the English phrase. 'word': `{…}`, the Japanese word. */
-export type EmphasisKind = 'theme' | 'word'
+/** 'theme': `*…*`, the English phrase. 'word': `{…}`, the Japanese word. 'phrase': `[[…]]`, 今日のフレーズ. */
+export type EmphasisKind = 'theme' | 'word' | 'phrase'
 
 export interface Emphasis {
   /** The text with its markers removed. */
@@ -26,14 +29,20 @@ export interface Run {
   emphasized: boolean
   /** Set (only) on a `{word}` run, which is drawn in WORD_COLOR. */
   word?: true
+  /** Set (only) on a 今日のフレーズ run, which is drawn in PHRASE_COLOR. */
+  phrase?: true
 }
 
 export const EMPHASIS_COLOR = '#FFD60A'
 /** The Japanese word's color: set apart from the yellow theme phrase. */
 export const WORD_COLOR = '#5CF2C4'
 
+/** 今日のフレーズ's pink: on the 冒頭カード and in the lines alike, apart from the yellow and the mint. */
+export const PHRASE_COLOR = '#FF4F98'
+
 /** The fill a run is drawn in. */
 export function runColor(run: Run): string {
+  if (run.phrase) return PHRASE_COLOR
   if (run.word) return WORD_COLOR
   return run.emphasized ? EMPHASIS_COLOR : '#ffffff'
 }
@@ -44,7 +53,8 @@ export function runColor(run: Run): string {
 // lookbehind: it throws at load on Safari < 16.4.
 const STAR = String.raw`\*([^\s*](?:[^*\n]*[^\s*])?)\*`
 const BRACE = String.raw`\{([^\s{}](?:[^{}\n]*[^\s{}])?)\}`
-const MARKER = new RegExp(`${STAR}|${BRACE}`, 'g')
+const PHRASE_MARK = String.raw`\[\[([^\s\[\]](?:[^\[\]\n]*[^\s\[\]])?)\]\]`
+const MARKER = new RegExp(`${STAR}|${BRACE}|${PHRASE_MARK}`, 'g')
 const STAR_ONLY = new RegExp(STAR, 'g')
 
 export function parseEmphasis(raw: string): Emphasis {
@@ -64,11 +74,35 @@ export function parseEmphasis(raw: string): Emphasis {
   while ((m = marker.exec(raw)) !== null) {
     push(raw.slice(last, m.index), null)
     if (m[1] !== undefined) push(m[1], 'theme')
-    else push(m[2], 'word')
+    else if (m[2] !== undefined) push(m[2], 'word')
+    else push(m[3], 'phrase')
     last = m.index + m[0].length
   }
   push(raw.slice(last), null)
   return { text, emphasized, kinds }
+}
+
+const foldForPhrase = (s: string) => s.replace(/[\u2018\u2019]/g, "'").toLowerCase()
+
+/**
+ * `emphasis` with the first place `phrase` is said in it painted as
+ * 今日のフレーズ (over a `*…*` there, if any): matched ignoring case and
+ * curly apostrophes, and only as whole words, so "down" isn't found in
+ * "download". Unchanged when it isn't there.
+ */
+export function markPhrase(emphasis: Emphasis, phrase: string | undefined): Emphasis {
+  const want = phrase?.trim()
+  if (!want) return emphasis
+  const text = foldForPhrase(emphasis.text)
+  const needle = foldForPhrase(want)
+  const isWordChar = (ch: string | undefined) => !!ch && /[\p{L}\p{N}]/u.test(ch)
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + 1)) {
+    const end = at + needle.length
+    if ((isWordChar(text[at - 1]) && isWordChar(text[at])) || (isWordChar(text[end - 1]) && isWordChar(text[end]))) continue
+    const kinds = emphasis.kinds.map((kind, i) => (i >= at && i < end ? 'phrase' : kind))
+    return { text: emphasis.text, kinds, emphasized: kinds.map(kind => kind !== null) }
+  }
+  return emphasis
 }
 
 /** The text without any markers, as it is read aloud or shown in lists. */
@@ -115,7 +149,9 @@ export function emphasisRuns(lines: string[], emphasis: Emphasis): Run[][] {
       else runs.push({ text: ch, kind })
     }
     return runs.map(({ text, kind }): Run =>
-      kind === 'word' ? { text, emphasized: true, word: true } : { text, emphasized: kind !== null },
+      kind === 'word' ? { text, emphasized: true, word: true }
+        : kind === 'phrase' ? { text, emphasized: true, phrase: true }
+          : { text, emphasized: kind !== null },
     )
   })
 }
@@ -152,16 +188,16 @@ function emphasizedPhrases(scriptTexts: string[]): Phrase[] {
   const phrases: Phrase[] = []
   for (const text of scriptTexts) {
     for (const m of text.matchAll(new RegExp(MARKER.source, 'g'))) {
-      const kind: EmphasisKind = m[1] !== undefined ? 'theme' : 'word'
-      const words = (m[1] ?? m[2]).split(/\s+/).map(normalizeWord).filter(Boolean)
+      const kind: EmphasisKind = m[1] !== undefined ? 'theme' : m[2] !== undefined ? 'word' : 'phrase'
+      const words = (m[1] ?? m[2] ?? m[3]).split(/\s+/).map(normalizeWord).filter(Boolean)
       if (words.length > 0) phrases.push({ words, kind })
     }
   }
   return phrases
 }
 
-const OPEN: Record<EmphasisKind, string> = { theme: '*', word: '{' }
-const CLOSE: Record<EmphasisKind, string> = { theme: '*', word: '}' }
+const OPEN: Record<EmphasisKind, string> = { theme: '*', word: '{', phrase: '[[' }
+const CLOSE: Record<EmphasisKind, string> = { theme: '*', word: '}', phrase: ']]' }
 
 /**
  * Put the script's `*phrases*` and `{words}` back on cues transcribed from

@@ -215,6 +215,10 @@ describe('handleMcpRequest', () => {
       expect((await store.list())[0].opening).toEqual({ text: 'My mom called at 3 a.m.', ja: '母から夜中の3時に電話' })
       await handleMcpRequest(callTool({ title: 'b', script: 'A', opening: { text: 'It was late.' } }), deps)
       expect((await store.list()).find(item => item.title === 'b')!.opening).toEqual({ text: 'It was late.' })
+      await handleMcpRequest(callTool({ title: 'c', script: 'A', opening: { text: "Ramen? I'm down.", phrase: "I'm down", phraseJa: "I'm down = 乗り気だよ" } }), deps)
+      expect((await store.list()).find(item => item.title === 'c')!.opening).toEqual({ text: "Ramen? I'm down.", phrase: "I'm down", phraseJa: "I'm down = 乗り気だよ" })
+      await handleMcpRequest(callTool({ title: 'd', script: 'A', opening: { text: 'It was late.', phraseJa: '意味だけ' } }), deps)
+      expect((await store.list()).find(item => item.title === 'd')!.opening).toEqual({ text: 'It was late.' })
     })
 
     it('keeps the cover words, filling the row left out, and drops a blank cover', async () => {

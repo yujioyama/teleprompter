@@ -17,11 +17,13 @@ export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefine
   const scriptId = script?.id
   const text = script?.opening?.text
   const ja = script?.opening?.ja
+  const phrase = script?.opening?.phrase
+  const phraseJa = script?.opening?.phraseJa
   const [plan, setPlan] = useState<OpeningCardPlan | null | undefined>(() => (text?.trim() ? undefined : null))
   const readyRef = useRef<Promise<OpeningCardPlan | null>>(Promise.resolve(null))
 
   useEffect(() => {
-    const opening = text?.trim() ? { text, ...(ja ? { ja } : {}) } : undefined
+    const opening = text?.trim() ? { text, ...(ja ? { ja } : {}), ...(phrase ? { phrase } : {}), ...(phraseJa ? { phraseJa } : {}) } : undefined
     if (!scriptId || !opening) {
       setPlan(null)
       readyRef.current = Promise.resolve(null)
@@ -42,7 +44,7 @@ export function useOpeningCard(script: Pick<Script, 'id' | 'opening'> | undefine
     return () => {
       cancelled = true
     }
-  }, [scriptId, text, ja, style])
+  }, [scriptId, text, ja, phrase, phraseJa, style])
 
   return { plan, ready: () => readyRef.current }
 }

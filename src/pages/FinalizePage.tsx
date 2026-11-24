@@ -195,6 +195,11 @@ function withOpeningCard(hook: HookOptions, plan: OpeningCardPlan | null): HookO
   return { ...hook, openingCard: plan }
 }
 
+/** The hook with 今日のフレーズ painted in the lines, or as it is without one. */
+function withPhrase(hook: HookOptions, phrase: string | undefined): HookOptions {
+  return phrase ? { ...hook, phrase } : hook
+}
+
 /** The finished audio's part of the 冒頭カード (see FinalAudioKey.opening); nothing for none or not known yet. */
 function openingAudioKeyOf(plan: OpeningCardPlan | null | undefined): { opening?: OpeningAudioKey } {
   if (!plan) return {}
@@ -662,8 +667,9 @@ export default function FinalizePage() {
   // 冒頭カード: with one, the 状況のラベル isn't shown.
   const { plan: openingCard, ready: openingCardReady } = useOpeningCard(script, settings.openingStyle)
   const scene = script?.opening?.text.trim() ? undefined : script?.scene
+  const phrase = script?.opening?.phrase?.trim() || undefined
   const hookFor = useCallback(
-    (cues: SubtitleCue[], position: SubtitlePosition) => withOpeningCard(withLineImages(
+    (cues: SubtitleCue[], position: SubtitlePosition) => withPhrase(withOpeningCard(withLineImages(
       withScene(
         // The speakers first: the opening keeps clear of their taller, bubbled cues.
         withOpening(
@@ -676,8 +682,8 @@ export default function FinalizePage() {
         scene,
       ),
       { ...lineImages, cues },
-    ), openingCard ?? null),
-    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs, scene, openingCard],
+    ), openingCard ?? null), phrase),
+    [hookSettings, oneTake, cinemaLook, lineImages, speakerInputs, scene, openingCard, phrase],
   )
   const hook = useMemo(() => hookFor(subtitleCues, subtitlePosition), [hookFor, subtitleCues, subtitlePosition])
   // The subtitles the subtitle step will open with, known as soon as the

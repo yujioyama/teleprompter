@@ -288,10 +288,12 @@ export default function SubtitleOverlayPreview({
   const cue = styled.find(c => currentTime >= c.start && currentTime < c.end)
   const isThinking = Boolean(cue && isThought(hook, cue.id))
   const isSpoken = Boolean(cue && speakerOf(hook, cue.id)) && !isThinking
+  // 今日のフレーズ is painted only on the user's own lines, not the other side's.
+  const phrase = isSpoken ? undefined : hook?.phrase
   const layout = useMemo(
     // No emoji in any cue's text: they are drawn as stickers and fairies instead.
-    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure, { speaker: isSpoken, thought: isThinking }) : null),
-    [cue, measure, isSpoken, isThinking],
+    () => (cue ? layoutCue({ ...cue, en: stripStickers(cue.en) }, measure, { speaker: isSpoken, thought: isThinking, phrase }) : null),
+    [cue, measure, isSpoken, isThinking, phrase],
   )
   // As burned: only translated cues count, and it shows over the window placeSticker gives it.
   const stickerOpening = hook?.opening ?? null
