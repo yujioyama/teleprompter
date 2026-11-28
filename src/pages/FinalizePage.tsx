@@ -1349,6 +1349,7 @@ export default function FinalizePage() {
                 lineImages={lineImages}
                 cinemaLook={cinemaLook}
                 scene={scene}
+                translationOnly={script?.translationOnly}
                 // Saved to the script, so leaving the step and coming back keeps the pick.
                 onCinemaLookChange={look => script && updateScript(script.id, { look: look ?? 'none' })}
                 burn={async (cues, position, onProgress, signal) => {

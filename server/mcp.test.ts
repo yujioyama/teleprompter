@@ -88,7 +88,7 @@ describe('handleMcpRequest', () => {
     expect(result.tools[0].description).toContain('1ショット＝1行')
     expect(result.tools[0].description).toContain('*…*')
     expect(result.tools[0].description).toContain('絵文字を1つだけ')
-    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'cover', 'opening', 'cards', 'thought'])
+    expect(Object.keys(result.tools[0].inputSchema.properties)).toEqual(['title', 'script', 'caption', 'type', 'japanese', 'images', 'heard', 'heardIcon', 'heardVoice', 'heardName', 'heardCast', 'scene', 'translationOnly', 'cover', 'opening', 'cards', 'thought'])
     expect(result.tools[0].description).toContain('images には')
     expect(result.tools[0].description).toContain('ステッカーも妖精も一切出ません')
     expect(result.tools[0].description).toContain('クレジットが要らない画像を優先')

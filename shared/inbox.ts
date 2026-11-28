@@ -60,6 +60,12 @@ export interface InboxItem {
   /** A few words on where the conversation happens, over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
   /**
+   * 英語字幕だけ: the script is read in Japanese (loosely, in his own words)
+   * and `japanese` holds each line's English. The burned subtitle shows only
+   * that English, as the main line. Absent for the usual English + Japanese.
+   */
+  translationOnly?: boolean
+  /**
    * 冒頭カード: one English sentence typed out over line 1's first frame
    * before it plays, with its Japanese faded in under it. With one, `scene`
    * isn't shown. Absent for none.

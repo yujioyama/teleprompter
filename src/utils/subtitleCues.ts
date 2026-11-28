@@ -135,6 +135,15 @@ export function withScriptJapanese(cues: SubtitleCue[], japanese: LineJapanese[]
   return cues.map((cue, i) => ({ ...cue, ja: found[i] ?? '' }))
 }
 
+/**
+ * 英語字幕だけ: each cue's translation becomes its one line. The script was
+ * read in Japanese, so what was said isn't shown; `ja` is left empty (not
+ * null) so the cue is still burned, with no second line.
+ */
+export function translationOnlyCues(cues: SubtitleCue[]): SubtitleCue[] {
+  return cues.map(cue => ({ ...cue, en: cue.ja?.trim() ? cue.ja : cue.en, ja: '' }))
+}
+
 /** The lines of a 一発撮り shot's text, one subtitle each. */
 export function takeLinesOf(text: string): string[] {
   return text.split('\n').map(line => line.trim()).filter(line => line.length > 0)

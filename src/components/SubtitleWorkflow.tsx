@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type CSSProperties } from 'react'
-import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, shiftCueStart, setCueStart } from '../utils/subtitleCues'
+import { SubtitleCue, ShotCueInput, buildClaudePrompt, cuesFromShotEntries, parseJapanesePaste, withJapaneseLines, withScriptJapanese, translationOnlyCues, shiftCueStart, setCueStart } from '../utils/subtitleCues'
 import { deleteSubtitles, fetchSubtitles, subtitleRequestId } from '../utils/subtitleRequest'
 import { useForegroundCheck } from '../hooks/useForegroundCheck'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -118,6 +118,8 @@ interface SubtitleWorkflowProps {
   cinemaLook?: CinemaLook | null
   /** 状況のラベル, over line 1; absent for none. */
   scene?: string
+  /** 英語字幕だけ: the script's translations become the only subtitle line (see translationOnlyCues). */
+  translationOnly?: boolean
   /** The picker under the bars' hint; null = none (the bars alone). */
   onCinemaLookChange?: (look: CinemaLook | null) => void
 }
@@ -160,11 +162,13 @@ export default function SubtitleWorkflow({
   lineImages,
   cinemaLook = null,
   scene,
+  translationOnly = false,
   onCinemaLookChange,
 }: SubtitleWorkflowProps) {
   const { stage, cues, pasteText, position, source } = state
   const hasAnyJapanese = cues.some(c => c.ja !== null)
-  const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && c.ja.trim() !== '')
+  // 英語字幕だけ has no second line to wait for: each cue's `ja` is left empty on purpose.
+  const allTranslated = cues.length > 0 && cues.every(c => c.ja !== null && (translationOnly || c.ja.trim() !== ''))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
@@ -260,14 +264,17 @@ export default function SubtitleWorkflow({
   }, [])
 
   function handleGenerate() {
-    const generated = withScriptJapanese(cuesFromShotEntries(shotCueInputs), scriptJapanese)
+    const withTranslations = withScriptJapanese(cuesFromShotEntries(shotCueInputs), scriptJapanese)
+    const generated = translationOnly ? translationOnlyCues(withTranslations) : withTranslations
     if (generated.length === 0) {
       setErrorMessage('字幕にできるテキストがありません。トリミング画面でスクリプトのテキストを確認してください。')
       return
     }
     setErrorMessage(null)
     const missing = generated.filter(c => c.ja === '').length
-    if (generated.some(c => c.ja)) {
+    if (translationOnly) {
+      setNotice('英語字幕だけの台本です。台本と一緒に届いた英語を字幕にしました（上の段だけが出ます）')
+    } else if (generated.some(c => c.ja)) {
       setNotice(
         missing > 0
           ? `台本と一緒に届いた日本語訳を入れました（台本を直した${missing}行は空欄です。手で入れるか、Claude用プロンプトで訳せます）`

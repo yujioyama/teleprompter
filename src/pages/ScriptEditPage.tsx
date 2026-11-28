@@ -272,6 +272,7 @@ export default function ScriptEditPage() {
         cards: scriptCardsOf(shots),
         cardAudio: cardAudioToSave(),
         opening: openingToSave(),
+        ...(inboxItem?.translationOnly && japanese?.length ? { translationOnly: true } : {}),
       })
       if (!inboxItem) clearDraft()
       if (inboxItem && settings.inboxKey) {
