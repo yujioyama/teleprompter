@@ -154,6 +154,10 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           .max(40)
           .optional()
           .describe('会話の状況の短いラベル（例: "a wrong number" / "online meeting"）。1行目のあいだだけ、1行目の字幕のすぐ下に出る'),
+        translationOnly: z
+          .boolean()
+          .optional()
+          .describe('英語字幕だけ: true のとき script は日本語で書き（ユーザーはそれを自分の言葉で崩して話す）、japanese には各行の英語訳を入れる。字幕には japanese の英語だけが1段で出て、script の日本語は字幕に出ない。japanese が必須'),
         cover: z
           .object({
             en: z.string().trim().max(60).optional().describe('サムネの大きな黄色の行（英語の語句）'),
@@ -190,9 +194,12 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           .describe('心の声（口を動かさない行）の行番号（script の何行目か、1から数える）'),
       },
     },
-    async ({ title, script, caption, japanese, type, images, heard, heardIcon, heardVoice, heardName, heardCast, scene, opening, cover, cards, thought }) => {
+    async ({ title, script, caption, japanese, type, images, heard, heardIcon, heardVoice, heardName, heardCast, scene, translationOnly, opening, cover, cards, thought }) => {
       const body = script.replace(/\r\n?/g, '\n')
       const lines = body.split('\n').filter(line => line.trim()).length
+      if (translationOnly && !japanese) {
+        return textResult('translationOnly のときは japanese に各行の英語訳を入れて送り直してください。', true)
+      }
       if (japanese) {
         if (japanese.some(line => NUMBERED.test(line))) {
           return textResult('japanese には番号を付けず、訳だけを1行ずつ入れて送り直してください。', true)
@@ -264,6 +271,7 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           ...(heardLines.length ? { heard: heardLines, ...(heardIcon ? { heardIcon } : {}), ...(heardVoice && heardVoice !== 'natural' ? { heardVoice } : {}), ...(heardName ? { heardName } : {}), ...(cast.length ? { heardCast: cast } : {}) } : {}),
           ...(type ? { videoType: type } : {}),
           ...(scene ? { scene } : {}),
+          ...(translationOnly ? { translationOnly: true } : {}),
           ...(opening ? { opening } : {}),
           ...(cover && (cover.en || cover.ja) ? { cover: { en: cover.en ?? '', ja: cover.ja ?? '' } } : {}),
           ...(cardList.length ? { cards: cardList } : {}),

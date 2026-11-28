@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, setCueStart, startBoundsOf, takeLinesOf, lineJapaneseOf, withScriptJapanese, type SubtitleCue } from './subtitleCues'
+import { buildClaudePrompt, parseJapanesePaste, withJapaneseLines, cuesFromShotEntries, cuesForShot, cuesByShot, shotTextsOf, lineStartsInTake, shiftCueStart, setCueStart, startBoundsOf, takeLinesOf, lineJapaneseOf, withScriptJapanese, translationOnlyCues, type SubtitleCue } from './subtitleCues'
 
 function makeCues(en: string[]): SubtitleCue[] {
   return en.map((text, i) => ({ id: `cue-${i}`, start: i, end: i + 1, en: text, ja: null }))
@@ -388,5 +388,23 @@ describe('withScriptJapanese', () => {
     const cues = [cue('a', 'Something else.')]
     expect(withScriptJapanese(cues, japanese)).toBe(cues)
     expect(withScriptJapanese(cues, [])).toBe(cues)
+  })
+})
+
+describe('translationOnlyCues', () => {
+  it('shows each line\'s translation as its only line', () => {
+    const cues = [
+      { id: 'a', start: 0, end: 1, en: '歯医者さんで毎回言われるやつ', ja: 'You know that thing dentists say?' },
+      { id: 'b', start: 1, end: 2, en: '心の中では *This is fine*', ja: 'In my head: "*This is fine*."' },
+    ]
+    expect(translationOnlyCues(cues)).toEqual([
+      { id: 'a', start: 0, end: 1, en: 'You know that thing dentists say?', ja: '' },
+      { id: 'b', start: 1, end: 2, en: 'In my head: "*This is fine*."', ja: '' },
+    ])
+  })
+
+  it('keeps the spoken line where no translation came with it', () => {
+    expect(translationOnlyCues([{ id: 'a', start: 0, end: 1, en: '直した行', ja: '' }]))
+      .toEqual([{ id: 'a', start: 0, end: 1, en: '直した行', ja: '' }])
   })
 })

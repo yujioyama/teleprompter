@@ -37,7 +37,7 @@ export function useScripts() {
     lineImages?: LineImage[],
     scene?: string,
     cover?: Script['cover'],
-    extras: Pick<Script, 'cards' | 'cardAudio' | 'opening'> = {},
+    extras: Pick<Script, 'cards' | 'cardAudio' | 'opening' | 'translationOnly'> = {},
   ): Script {
     const now = new Date().toISOString()
     const script: Script = {
@@ -54,6 +54,7 @@ export function useScripts() {
       ...(extras.cards?.length ? { cards: extras.cards } : {}),
       ...(extras.cardAudio ? { cardAudio: extras.cardAudio } : {}),
       ...(extras.opening?.text ? { opening: extras.opening } : {}),
+      ...(extras.translationOnly ? { translationOnly: true } : {}),
       createdAt: now,
       updatedAt: now,
     }

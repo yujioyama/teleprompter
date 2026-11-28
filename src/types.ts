@@ -110,6 +110,11 @@ export interface Script {
   /** A few words on where it happens, shown over line 1 (e.g. "a wrong number"); absent for none. */
   scene?: string
   /**
+   * 英語字幕だけ: the lines are read in Japanese and `japanese` holds each
+   * line's English; the subtitles show only that English, as the main line.
+   */
+  translationOnly?: boolean
+  /**
    * 冒頭カード: one English sentence typed out over line 1's first frame
    * before line 1 plays (see openingCard.ts). With one, `scene` isn't shown.
    */
