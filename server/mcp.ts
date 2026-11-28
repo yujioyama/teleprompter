@@ -155,7 +155,8 @@ function buildServer({ inbox, subtitles, records }: McpDeps): McpServer {
           .optional()
           .describe('会話の状況の短いラベル（例: "a wrong number" / "online meeting"）。1行目のあいだだけ、1行目の字幕のすぐ下に出る'),
         translationOnly: z
-          .boolean()
+          // Some clients send the flag as the text "true".
+          .preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean())
           .optional()
           .describe('英語字幕だけ: true のとき script は日本語で書き（ユーザーはそれを自分の言葉で崩して話す）、japanese には各行の英語訳を入れる。字幕には japanese の英語だけが1段で出て、script の日本語は字幕に出ない。japanese が必須'),
         cover: z
